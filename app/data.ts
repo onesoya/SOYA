@@ -11,6 +11,8 @@ export type BodyRecord = {
   bodyFatRate: number;
   visceralFat: number;
   condition: string;
+  measurementTiming?: string;
+  device?: string;
 };
 
 export type MealEntry = {
@@ -33,10 +35,12 @@ export type WorkoutEntry = {
   id: string;
   date: string;
   kind: EntryKind;
-  type: "PT" | "유산소" | "걷기" | "자전거" | "기타";
+  type: "PT" | "유산소";
   title: string;
   minutes: number;
-  intensity: string;
+  intensity: number | string;
+  heartRate?: string;
+  overlapsSteps?: boolean;
   details: string;
 };
 
@@ -110,9 +114,9 @@ export const initialState: AppState = {
     fiberMin: 25,
   },
   bodyRecords: [
-    { id: "body-20260814", date: "2026-08-14", time: "09:06", weight: 61.9, skeletalMuscle: 23.3, bodyFatMass: 18.9, bodyFatRate: 30.5, visceralFat: 8, condition: "아침 공복 · InBody Dial H30" },
-    { id: "body-20260813", date: "2026-08-13", time: "07:21", weight: 61.8, skeletalMuscle: 23.3, bodyFatMass: 18.8, bodyFatRate: 30.4, visceralFat: 8, condition: "아침 공복 · InBody Dial H30" },
-    { id: "body-20260812", date: "2026-08-12", time: "07:18", weight: 62.0, skeletalMuscle: 23.2, bodyFatMass: 19.0, bodyFatRate: 30.6, visceralFat: 8, condition: "아침 공복 · InBody Dial H30" },
+    { id: "body-20260814", date: "2026-08-14", time: "09:06", weight: 61.9, skeletalMuscle: 23.3, bodyFatMass: 18.9, bodyFatRate: 30.5, visceralFat: 8, measurementTiming: "아침 공복", device: "InBody Dial H30", condition: "아침 공복 · InBody Dial H30" },
+    { id: "body-20260813", date: "2026-08-13", time: "07:21", weight: 61.8, skeletalMuscle: 23.3, bodyFatMass: 18.8, bodyFatRate: 30.4, visceralFat: 8, measurementTiming: "아침 공복", device: "InBody Dial H30", condition: "아침 공복 · InBody Dial H30" },
+    { id: "body-20260812", date: "2026-08-12", time: "07:18", weight: 62.0, skeletalMuscle: 23.2, bodyFatMass: 19.0, bodyFatRate: 30.6, visceralFat: 8, measurementTiming: "아침 공복", device: "InBody Dial H30", condition: "아침 공복 · InBody Dial H30" },
   ],
   meals: [
     { id: "plan-b", date: "2026-08-14", mealType: "breakfast", kind: "plan", title: "무가당 그릭요거트와 단백질바", calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, confidence: "높음" },
@@ -121,7 +125,7 @@ export const initialState: AppState = {
     { id: "plan-d", date: "2026-08-14", mealType: "dinner", kind: "plan", title: "불고기 샐러드", calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, confidence: "추정" },
   ],
   workouts: [
-    { id: "workout-plan", date: "2026-08-14", kind: "plan", type: "유산소", title: "인클라인 트레드밀", minutes: 35, intensity: "심박수 130~140", details: "컨디션에 따라 25~40분" },
+    { id: "workout-plan", date: "2026-08-14", kind: "plan", type: "유산소", title: "인클라인 트레드밀", minutes: 35, intensity: 6, heartRate: "130~140", overlapsSteps: true, details: "컨디션에 따라 25~40분" },
   ],
   cycles: [],
   consultations: [],

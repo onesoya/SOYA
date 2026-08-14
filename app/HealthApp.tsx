@@ -21,13 +21,30 @@ type NextAction =
   | { type: "workout"; eyebrow: string; title: string; detail: string }
   | { type: "meal"; mealType: MealType; eyebrow: string; title: string; detail: string };
 
-const tabs: { id: Tab; label: string; icon: string }[] = [
-  { id: "today", label: "오늘", icon: "⌂" },
-  { id: "food", label: "식단", icon: "◒" },
-  { id: "workout", label: "운동", icon: "△" },
-  { id: "change", label: "변화", icon: "⌁" },
-  { id: "consult", label: "상담", icon: "✦" },
+const tabs: { id: Tab; label: string }[] = [
+  { id: "food", label: "식단" },
+  { id: "workout", label: "운동" },
+  { id: "today", label: "홈" },
+  { id: "change", label: "변화" },
+  { id: "consult", label: "상담" },
 ];
+
+const navIcons: Record<Tab, string> = {
+  food: "/nav-food-v2.png",
+  workout: "/nav-workout-v2.png",
+  today: "/nav-home-v2.png",
+  change: "/nav-change-v2.png",
+  consult: "/nav-consult-clean.png",
+};
+
+const confidenceFromSource = (source: string): MealEntry["confidence"] => ({
+  product: "높음",
+  recipe: "보통",
+  database: "추정",
+  manual: "추정",
+  restaurant: "낮음",
+  photo: "낮음",
+})[source] as MealEntry["confidence"] ?? "추정";
 
 const todayKey = () => {
   const now = new Date();
@@ -38,14 +55,37 @@ const todayKey = () => {
 const id = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const number = (value: FormDataEntryValue | null) => Number(value || 0);
 const dateLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(new Date(`${value}T12:00:00`));
+const monthLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(new Date(`${value.slice(0, 7)}-01T12:00:00`));
+const signed = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
+
+function monthCells(anchor: string) {
+  const [year, month] = anchor.split("-").map(Number);
+  const firstWeekday = new Date(year, month - 1, 1).getDay();
+  const days = new Date(year, month, 0).getDate();
+  return [...Array(firstWeekday).fill(null), ...Array.from({ length: days }, (_, index) => `${year}-${String(month).padStart(2, "0")}-${String(index + 1).padStart(2, "0")}`)] as (string | null)[];
+}
+
+function monthOptions(anchor: string, count = 36) {
+  const date = new Date(`${anchor.slice(0, 7)}-01T12:00:00`);
+  return Array.from({ length: count }, (_, index) => {
+    const value = new Date(date.getFullYear(), date.getMonth() - index, 1);
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`;
+  });
+}
 
 export function HealthApp() {
   const [state, setState] = useState<AppState>(initialState);
   const [tab, setTab] = useState<Tab>("today");
   const [modal, setModal] = useState<Modal>(null);
+  const [workoutDraft, setWorkoutDraft] = useState<WorkoutEntry>();
+  const [workoutPresetType, setWorkoutPresetType] = useState<WorkoutEntry["type"]>();
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "offline">("saved");
   const today = todayKey();
+
+  useEffect(() => {
+    setTab("today");
+  }, []);
 
   useEffect(() => {
     fetch("/api/state")
@@ -54,6 +94,10 @@ export function HealthApp() {
       .catch(() => setSaveState("offline"))
       .finally(() => setLoaded(true));
   }, []);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [tab]);
 
   const persist = async (next: AppState) => {
     setSaveState("saving");
@@ -122,7 +166,11 @@ export function HealthApp() {
 
   const openNextAction = () => {
     if (nextAction.type === "body") setModal("body");
-    else if (nextAction.type === "workout") setModal("workout-actual");
+    else if (nextAction.type === "workout") {
+      setWorkoutDraft(plannedWorkout);
+      setWorkoutPresetType(undefined);
+      setModal("workout-actual");
+    }
     else setModal("meal-actual");
   };
 
@@ -143,11 +191,14 @@ export function HealthApp() {
   const saveBody = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
+    const measurementTiming = String(data.get("measurementTiming"));
+    const device = String(data.get("device"));
     const record: BodyRecord = {
       id: id("body"), date: String(data.get("date")), time: String(data.get("time")),
       weight: number(data.get("weight")), skeletalMuscle: number(data.get("skeletalMuscle")),
       bodyFatMass: number(data.get("bodyFatMass")), bodyFatRate: number(data.get("bodyFatRate")),
-      visceralFat: number(data.get("visceralFat")), condition: String(data.get("condition")),
+      visceralFat: number(data.get("visceralFat")), measurementTiming, device,
+      condition: `${measurementTiming} · ${device}`,
     };
     commit((current) => ({ ...current, bodyRecords: [record, ...current.bodyRecords.filter((item) => item.date !== record.date)] }));
     setModal(null);
@@ -163,7 +214,7 @@ export function HealthApp() {
       protein: kind === "actual" ? number(data.get("protein")) : 0, carbs: kind === "actual" ? number(data.get("carbs")) : 0,
       fat: kind === "actual" ? number(data.get("fat")) : 0, sugar: kind === "actual" ? number(data.get("sugar")) : 0,
       fiber: kind === "actual" ? number(data.get("fiber")) : 0,
-      confidence: String(data.get("confidence") || "추정") as "높음" | "보통" | "추정" | "낮음",
+      confidence: confidenceFromSource(String(data.get("nutritionSource") || "manual")),
     };
     commit((current) => ({
       ...current,
@@ -175,13 +226,23 @@ export function HealthApp() {
   const saveWorkout = (event: FormEvent<HTMLFormElement>, kind: EntryKind) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
+    const editingId = String(data.get("editingId") || "");
     const workout: WorkoutEntry = {
-      id: id("workout"), date: String(data.get("date")), kind,
+      id: editingId || id("workout"), date: String(data.get("date")), kind,
       type: String(data.get("type")) as WorkoutEntry["type"], title: String(data.get("title")),
-      minutes: number(data.get("minutes")), intensity: String(data.get("intensity")), details: String(data.get("details")),
+      minutes: number(data.get("minutes")), intensity: number(data.get("intensity")),
+      heartRate: String(data.get("heartRate") || ""), overlapsSteps: data.get("overlapsSteps") === "on",
+      details: String(data.get("details")),
     };
-    commit((current) => ({ ...current, workouts: [...current.workouts, workout] }));
+    commit((current) => ({ ...current, workouts: [...current.workouts.filter((item) => item.id !== editingId), workout] }));
+    setWorkoutDraft(undefined);
     setModal(null);
+  };
+
+  const openWorkout = (kind: EntryKind, draft?: WorkoutEntry, presetType?: WorkoutEntry["type"]) => {
+    setWorkoutDraft(draft);
+    setWorkoutPresetType(presetType);
+    setModal(kind === "plan" ? "workout-plan" : "workout-actual");
   };
 
   const saveCycle = (event: FormEvent<HTMLFormElement>) => {
@@ -208,32 +269,32 @@ export function HealthApp() {
     <div className="app-shell">
       <aside className="desktop-nav">
         <div className="brand"><Image className="brand-mark" src="/tiger-icon-192.png" width={46} height={46} alt="" /><div><strong>나의 밸런스</strong><small>온전히 나를 위한 기록</small></div></div>
-        <nav>{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}><span>{item.icon}</span>{item.label}</button>)}</nav>
+        <nav>{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}><NavPixelIcon tab={item.id} />{item.label}</button>)}</nav>
         <div className="side-note"><span>감량기 {state.profile.goalWeek}주차</span><strong>체중보다 변화를 봐요</strong><p>체지방량과 골격근량의 7일 흐름을 중심으로 확인해요.</p></div>
       </aside>
 
       <main className="main-content">
         <header className="topbar">
-          <div className="topbar-heading"><Image className="topbar-tiger" src="/tiger-icon-192.png" width={48} height={48} alt="호랑이 마스코트" /><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? "오늘도 가볍게 기록해요" : tabs.find((item) => item.id === tab)?.label}</h1></div></div>
+          <div className="topbar-heading"><Image className="topbar-tiger" src="/mascot-top-transparent.png" width={76} height={76} alt="호랑이 마스코트" /><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? "오늘도 가볍게 기록해요" : tabs.find((item) => item.id === tab)?.label}</h1></div></div>
           <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "임시 저장" : "저장됨"}</span><button className="icon-button" onClick={exportData} aria-label="전체 기록 내보내기">↓</button></div>
         </header>
 
         {tab === "today" && (
-          <TodayView state={state} today={today} todayBody={todayBody} nutrition={nutrition} completedCount={completedCount} totalCount={completed.length} nextAction={nextAction} mealActual={mealActual} mealPlan={mealPlan} actualWorkouts={actualWorkouts} plannedWorkout={plannedWorkout} openNextAction={openNextAction} skipNextAction={skipNextAction} setModal={setModal} />
+          <TodayView state={state} today={today} todayBody={todayBody} nutrition={nutrition} completedCount={completedCount} totalCount={completed.length} nextAction={nextAction} mealActual={mealActual} mealPlan={mealPlan} actualWorkouts={actualWorkouts} plannedWorkout={plannedWorkout} openNextAction={openNextAction} skipNextAction={skipNextAction} setModal={setModal} openWorkout={openWorkout} />
         )}
         {tab === "food" && <FoodView state={state} today={today} setModal={setModal} />}
-        {tab === "workout" && <WorkoutView state={state} today={today} setModal={setModal} />}
+        {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} />}
         {tab === "change" && <ChangeView state={state} setModal={setModal} />}
         {tab === "consult" && <ConsultView state={state} commit={commit} />}
       </main>
 
       <button className="fab" onClick={() => setModal("quick")} aria-label="빠른 추가">+</button>
-      <nav className="mobile-nav">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}><span>{item.icon}</span><small>{item.label}</small></button>)}</nav>
+      <nav className="mobile-nav">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}><NavPixelIcon tab={item.id} /><small>{item.label}</small></button>)}</nav>
 
-      {modal === "quick" && <QuickSheet close={() => setModal(null)} select={setModal} />}
+      {modal === "quick" && <QuickSheet close={() => setModal(null)} select={(next) => { if (next === "workout-plan" || next === "workout-actual") { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); } setModal(next); }} />}
       {modal === "body" && <BodySheet today={today} latest={state.bodyRecords[0]} close={() => setModal(null)} save={saveBody} />}
       {(modal === "meal-plan" || modal === "meal-actual") && <MealSheet today={today} kind={modal === "meal-plan" ? "plan" : "actual"} plans={todayMeals} close={() => setModal(null)} save={saveMeal} />}
-      {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} planned={plannedWorkout} close={() => setModal(null)} save={saveWorkout} />}
+      {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={() => { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); setModal(null); }} save={saveWorkout} />}
       {modal === "cycle" && <CycleSheet today={today} close={() => setModal(null)} save={saveCycle} />}
     </div>
   );
@@ -254,10 +315,11 @@ type TodayViewProps = {
   openNextAction: () => void;
   skipNextAction: () => void;
   setModal: (modal: Modal) => void;
+  openWorkout: (kind: EntryKind, draft?: WorkoutEntry, presetType?: WorkoutEntry["type"]) => void;
 };
 
 function TodayView(props: TodayViewProps) {
-  const { state, today, todayBody, nutrition, completedCount, totalCount, nextAction, mealActual, mealPlan, actualWorkouts, plannedWorkout, openNextAction, skipNextAction, setModal } = props;
+  const { state, today, todayBody, nutrition, completedCount, totalCount, nextAction, mealActual, mealPlan, actualWorkouts, plannedWorkout, openNextAction, skipNextAction, setModal, openWorkout } = props;
   const goal = state.nutritionGoal;
   const latest = todayBody ?? state.bodyRecords[0];
   const prev = state.bodyRecords.find((item: BodyRecord) => item.id !== latest?.id);
@@ -273,7 +335,7 @@ function TodayView(props: TodayViewProps) {
       <div className="record-list">
         <RecordRow label="인바디" detail={todayBody ? `${todayBody.bodyFatMass}kg 체지방 · ${todayBody.skeletalMuscle}kg 골격근` : "아직 기록하지 않음"} done={Boolean(todayBody)} onClick={() => setModal("body")} />
         {(["breakfast", "lunch", "dinner"] as MealType[]).map((type) => { const actual = mealActual(type); const plan = mealPlan(type); return <RecordRow key={type} label={mealLabels[type]} detail={actual ? actual.title : plan ? `계획 · ${plan.title}` : "아직 기록하지 않음"} done={Boolean(actual)} onClick={() => setModal("meal-actual")} />; })}
-        {plannedWorkout && <RecordRow label="운동" detail={actualWorkouts[0]?.title ?? `계획 · ${plannedWorkout.title}`} done={actualWorkouts.length > 0} onClick={() => setModal("workout-actual")} />}
+        {plannedWorkout && <RecordRow label="운동" detail={actualWorkouts[0]?.title ?? `계획 · ${plannedWorkout.title}`} done={actualWorkouts.length > 0} onClick={() => openWorkout("actual", plannedWorkout)} />}
         {cycle && <RecordRow label="몸 상태" detail={cycle.state} done onClick={() => setModal("cycle")} />}
       </div>
     </section>
@@ -297,60 +359,75 @@ function TodayView(props: TodayViewProps) {
       <CardTitle title="이번 주" aside="일요일 상담까지 2일" />
       <div className="weekly-line"><div><span>유산소</span><strong>1 / 2회</strong></div><div className="progress-track"><i style={{ width: "50%" }} /></div></div>
       <div className="weekly-line"><div><span>누적 시간</span><strong>35 / 90분</strong></div><div className="progress-track"><i style={{ width: "39%" }} /></div></div>
-      <button className="secondary-button" onClick={() => setModal("workout-actual")}>운동 기록 추가</button>
+      <button className="secondary-button" onClick={() => openWorkout("actual")}>운동 기록 추가</button>
     </section>
   </div>;
 }
 
 function FoodView({ state, today, setModal }: { state: AppState; today: string; setModal: (modal: Modal) => void }) {
-  const dates = Array.from({ length: 7 }, (_, index) => { const date = new Date(`${today}T12:00:00`); date.setDate(date.getDate() + index); return date.toISOString().slice(0, 10); });
-  return <div className="section-stack"><section className="section-hero food-hero"><div><span className="eyebrow">7일 식단</span><h2>종류는 가볍게 계획하고<br />먹은 양은 정확하게 기록해요.</h2></div><button className="primary-button" onClick={() => setModal("meal-plan")}>+ 식사 계획</button></section>
-    <div className="week-days">{dates.map((date, index) => <button className={index === 0 ? "active" : ""} key={date}><small>{new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(new Date(`${date}T12:00:00`))}</small><strong>{Number(date.slice(-2))}</strong></button>)}</div>
+  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
+  const cells = monthCells(`${selectedMonth}-01`);
+  const mealStatus = (date: string) => {
+    const meals = state.meals.filter((item) => item.date === date && item.kind === "actual" && !item.skipped);
+    if (!meals.length) return "none";
+    const totals = meals.reduce((sum, item) => ({ calories: sum.calories + item.calories, protein: sum.protein + item.protein, sugar: sum.sugar + item.sugar, fiber: sum.fiber + item.fiber }), { calories: 0, protein: 0, sugar: 0, fiber: 0 });
+    if (meals.length < 3) return "partial";
+    if (totals.sugar > state.nutritionGoal.sugarMax * 1.25 || totals.calories > state.nutritionGoal.caloriesMax * 1.15 || totals.protein < state.nutritionGoal.proteinMin * 0.65) return "attention";
+    if (totals.calories >= state.nutritionGoal.caloriesMin && totals.calories <= state.nutritionGoal.caloriesMax && totals.protein >= state.nutritionGoal.proteinMin && totals.sugar <= state.nutritionGoal.sugarMax && totals.fiber >= state.nutritionGoal.fiberMin) return "balanced";
+    return "partial";
+  };
+  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading"><div><span className="eyebrow">식단 밸런스</span><label className="month-picker"><span>{monthLabel(`${selectedMonth}-01`)}</span><select value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} aria-label="확인할 달 선택">{monthOptions(today).map((month) => <option value={month} key={month}>{monthLabel(`${month}-01`)}</option>)}</select></label></div><button className="primary-button" onClick={() => setModal("meal-plan")}>식사 계획</button></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <div key={date} className={`calendar-day ${mealStatus(date)} ${date === today ? "today" : ""}`}><b>{Number(date.slice(-2))}</b></div> : <span className="calendar-blank" key={`blank-${index}`} />)}</div><div className="calendar-legend"><span><i className="balanced" />잘했어요</span><span><i className="partial" />괜찮아요</span><span><i className="attention" />아쉬워요</span></div></section>
     <section className="card"><CardTitle title={`${dateLabel(today)} 식단`} aside={<button className="text-button" onClick={() => setModal("meal-actual")}>먹은 식사 추가</button>} />
       <div className="meal-cards">{(["breakfast", "lunch", "dinner", "snack"] as MealType[]).map((type) => { const plan = state.meals.find((m) => m.date === today && m.mealType === type && m.kind === "plan"); const actual = state.meals.find((m) => m.date === today && m.mealType === type && m.kind === "actual"); return <article key={type} className="meal-card"><div><span>{mealLabels[type]}</span>{actual && <b>기록 완료</b>}</div><h3>{actual?.title ?? plan?.title ?? "아직 계획 없음"}</h3><p>{actual ? `${actual.calories} kcal · 단백질 ${actual.protein}g` : plan ? "계획을 실제 기록으로 불러올 수 있어요" : "원하는 음식 종류만 간단히 적어두세요"}</p><button onClick={() => setModal(actual ? "meal-actual" : plan ? "meal-actual" : "meal-plan")}>{actual ? "수정하기" : plan ? "계획 불러오기" : "계획하기"}</button></article>; })}</div>
     </section>
-    <section className="card confidence-guide"><CardTitle title="계산 신뢰도" /><div className="confidence-row"><span className="confidence high">높음</span><p>제품 영양표 또는 계량한 레시피</p></div><div className="confidence-row"><span className="confidence medium">보통</span><p>저장된 레시피를 1인분으로 계산</p></div><div className="confidence-row"><span className="confidence estimate">추정</span><p>일반 음식의 대표값</p></div><div className="confidence-row"><span className="confidence low">낮음</span><p>외식·배달·사진 기반 추정</p></div></section>
   </div>;
 }
 
-function WorkoutView({ state, today, setModal }: { state: AppState; today: string; setModal: (modal: Modal) => void }) {
+function WorkoutView({ state, today, openWorkout }: { state: AppState; today: string; openWorkout: (kind: EntryKind, draft?: WorkoutEntry, presetType?: WorkoutEntry["type"]) => void }) {
   const entries = state.workouts.filter((item) => item.date === today);
-  return <div className="section-stack"><section className="section-hero workout-hero"><div><span className="eyebrow">주간 운동</span><h2>횟수보다 꾸준함을,<br />칼로리보다 수행을 기록해요.</h2></div><div className="hero-actions"><button className="ghost-button" onClick={() => setModal("workout-plan")}>계획하기</button><button className="primary-button" onClick={() => setModal("workout-actual")}>+ 한 운동</button></div></section>
-    <div className="metric-grid"><MetricCard label="개인 유산소" value="1 / 2" unit="회" hint="최소 주간 목표" /><MetricCard label="누적시간" value="35 / 90" unit="분" hint="이번 주 범위" /><MetricCard label="타깃 심박" value="130~140" unit="bpm" hint="개인 유산소 기준" /></div>
-    <section className="card"><CardTitle title="오늘 운동" aside={dateLabel(today)} />{entries.length ? <div className="timeline">{entries.map((entry) => <article key={entry.id}><span className={`timeline-dot ${entry.kind}`} /><div><small>{entry.kind === "plan" ? "계획" : "완료"} · {entry.type}</small><h3>{entry.title}</h3><p>{entry.minutes}분 · {entry.intensity}</p>{entry.details && <em>{entry.details}</em>}</div></article>)}</div> : <EmptyState text="오늘 운동 계획이나 기록이 없어요." action="운동 계획하기" onClick={() => setModal("workout-plan")} />}</section>
-    <section className="card"><CardTitle title="PT 빠른 기록" /><p className="large-copy">수업 직후 기억나는 내용을 문장으로 적어주세요. 아이폰 받아쓰기를 사용해도 좋아요.</p><div className="example-note">“고블릿 스쿼트 8kg 12회 3세트, 밴드 로우 15회 3세트, 마지막에 고관절 스트레칭”</div><button className="secondary-button" onClick={() => setModal("workout-actual")}>PT 내용 기록하기</button></section>
+  const cells = monthCells(today);
+  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading"><div><span className="eyebrow">운동 해빗</span><h2>{monthLabel(today)}</h2></div><div className="calendar-actions"><button className="ghost-button" onClick={() => openWorkout("plan")}>계획</button><button className="primary-button" onClick={() => openWorkout("actual")}>기록</button></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => { if (!date) return <span className="calendar-blank" key={`blank-${index}`} />; const dayEntries = state.workouts.filter((item) => item.date === date); return <div key={date} className={`calendar-day workout-day ${date === today ? "today" : ""}`}><b>{Number(date.slice(-2))}</b><span className="workout-marks">{dayEntries.slice(0, 3).map((item) => <i key={item.id} className={`${item.type === "PT" ? "pt" : "solo"} ${item.kind}`} title={`${item.kind === "plan" ? "계획" : "완료"} · ${item.type}`} />)}</span></div>; })}</div><div className="calendar-legend workout-legend"><span><i className="pt actual" />PT 완료</span><span><i className="solo actual" />개인운동 완료</span><span><i className="pt plan" />PT 계획</span><span><i className="solo plan" />개인운동 계획</span></div></section>
+    <div className="metric-grid workout-metrics"><MetricCard label="개인 유산소" value="1 / 2" unit="회" hint="최소 주간 목표" /><MetricCard label="누적시간" value="35 / 90" unit="분" hint="이번 주 범위" /></div>
+    <section className="card"><CardTitle title="오늘 운동" aside={dateLabel(today)} />{entries.length ? <div className="timeline">{entries.map((entry) => <article key={entry.id}><span className={`timeline-dot ${entry.kind}`} /><div><small>{entry.kind === "plan" ? "계획" : "완료"} · {entry.type}</small><h3>{entry.title}</h3><p>{entry.minutes}분 · 강도 {typeof entry.intensity === "number" ? `${entry.intensity}/10` : entry.intensity || "미기록"}{entry.heartRate ? ` · 심박 ${entry.heartRate}` : ""}</p>{entry.overlapsSteps && <span className="overlap-badge">걸음 수 중복</span>}{entry.details && <em>{entry.details}</em>}<button className="timeline-action" onClick={() => openWorkout("actual", entry)}>{entry.kind === "plan" ? "계획대로 기록" : "수정"}</button></div></article>)}</div> : <EmptyState text="오늘 운동 계획이나 기록이 없어요." action="운동 계획하기" onClick={() => openWorkout("plan")} />}</section>
+    <section className="card"><CardTitle title="PT 빠른 기록" /><p className="large-copy">수업 직후 기억나는 내용을 문장으로 적어주세요. 아이폰 받아쓰기를 사용해도 좋아요.</p><div className="example-note">“고블릿 스쿼트 8kg 12회 3세트, 밴드 로우 15회 3세트, 마지막에 고관절 스트레칭”</div><button className="secondary-button" onClick={() => openWorkout("actual", undefined, "PT")}>PT 내용 기록하기</button></section>
   </div>;
 }
 
 function ChangeView({ state, setModal }: { state: AppState; setModal: (modal: Modal) => void }) {
   const latest = state.bodyRecords[0];
   const records = state.bodyRecords.slice(0, 7).reverse();
-  const maxFat = Math.max(...records.map((item) => item.bodyFatMass), 1);
-  return <div className="section-stack"><section className="section-hero change-hero"><div><span className="eyebrow">체성분 변화</span><h2>하루 숫자보다<br />방향을 선명하게 봐요.</h2></div><button className="primary-button" onClick={() => setModal("body")}>+ 인바디</button></section>
+  const oldest = records[0];
+  return <div className="section-stack"><section className="card change-overview"><div><span className="eyebrow">최근 측정 흐름</span><h2>체지방 {oldest && latest ? `${signed(latest.bodyFatMass - oldest.bodyFatMass)}kg` : "-"} · 골격근 {oldest && latest ? `${signed(latest.skeletalMuscle - oldest.skeletalMuscle)}kg` : "-"}</h2><p>{records.length}회 측정값을 같은 조건끼리 비교했어요.</p></div><button className="primary-button" onClick={() => setModal("body")}>인바디 입력</button></section>
     <div className="metric-grid"><MetricCard label="체지방량" value={String(latest?.bodyFatMass ?? "-")} unit="kg" hint="가장 중요한 감량 지표" /><MetricCard label="골격근량" value={String(latest?.skeletalMuscle ?? "-")} unit="kg" hint="유지·증가 목표" /><MetricCard label="내장지방" value={String(latest?.visceralFat ?? "-")} unit="Lv" hint="최근 측정값" /></div>
-    <section className="card chart-card"><CardTitle title="최근 체지방량" aside="7일 흐름" /><div className="bar-chart">{records.map((record) => <div key={record.id}><span style={{ height: `${Math.max(24, (record.bodyFatMass / maxFat) * 100)}%` }} /><small>{record.date.slice(5).replace("-", "/")}</small></div>)}</div><div className="chart-legend"><span>일별 측정값</span><p>측정 조건과 생리 상태가 다르면 단기 변동이 커질 수 있어요.</p></div></section>
-    <section className="card"><CardTitle title="측정 기록" aside={`${state.bodyRecords.length}개`} /><div className="data-table">{state.bodyRecords.slice(0, 8).map((record) => <div key={record.id}><span><strong>{record.date}</strong><small>{record.time} · {record.condition.split(" · ")[0]}</small></span><span>{record.bodyFatMass}<small>kg 지방</small></span><span>{record.skeletalMuscle}<small>kg 골격근</small></span></div>)}</div></section>
+    <section className="card chart-card"><CardTitle title="최근 체지방량" aside="kg · 최근 7회" /><FatTrendChart records={records} /></section>
+    <section className="card"><CardTitle title="측정 기록" aside={`${state.bodyRecords.length}개`} /><div className="data-table">{state.bodyRecords.slice(0, 8).map((record) => <div key={record.id}><span><strong>{record.date}</strong><small>{record.time} · {record.measurementTiming ?? record.condition.split(" · ")[0]} · {record.device ?? record.condition.split(" · ")[1]}</small></span><span>{record.bodyFatMass}<small>kg 지방</small></span><span>{record.skeletalMuscle}<small>kg 골격근</small></span></div>)}</div></section>
   </div>;
 }
 
 function ConsultView({ state, commit }: { state: AppState; commit: (updater: (current: AppState) => AppState) => void }) {
   const [loading, setLoading] = useState(false);
+  const [selectedConsultationId, setSelectedConsultationId] = useState<string>();
   const latest = state.consultations[0];
+  const shownConsultation = state.consultations.find((item) => item.id === selectedConsultationId) ?? latest;
   const requestReview = async () => {
     setLoading(true);
     try {
       const response = await fetch("/api/ai-review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state) });
       const data = await response.json() as { text: string; source: "openai" | "preview" };
       commit((current) => ({ ...current, consultations: [{ id: id("consult"), date: todayKey(), text: data.text, source: data.source }, ...current.consultations] }));
+      setSelectedConsultationId(undefined);
     } finally { setLoading(false); }
   };
   return <div className="section-stack"><section className="section-hero consult-hero"><div><span className="eyebrow">일요일 주간 상담</span><h2>기록을 모아보고,<br />다음 한 주를 조정해요.</h2><p>AI의 제안은 확인 후에만 실제 목표에 적용돼요.</p></div><button className="primary-button" onClick={requestReview} disabled={loading}>{loading ? "기록을 살펴보는 중…" : "✦ 상담 시작"}</button></section>
-    <div className="consult-checks"><div><span>01</span><p><strong>체성분 흐름</strong>체지방량과 골격근량의 7일 평균</p></div><div><span>02</span><p><strong>식사의 균형</strong>칼로리·탄단지·당류·식이섬유</p></div><div><span>03</span><p><strong>운동 수행</strong>PT·유산소 횟수와 누적시간</p></div></div>
-    <section className="card consultation-card"><CardTitle title={latest ? "최근 상담" : "첫 상담을 준비했어요"} aside={latest ? latest.date : ""} />{latest ? <><span className={`source-badge ${latest.source}`}>{latest.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span><div className="consultation-text">{latest.text}</div><div className="consult-buttons"><button className="ghost-button">대화 이어가기</button><button className="primary-button">다음 주 계획하기</button></div></> : <EmptyState text="체성분·식사·운동 기록을 바탕으로 이번 주를 함께 정리해요." action="첫 상담 시작" onClick={requestReview} />}</section>
+    <section className="card consultation-card"><CardTitle title={selectedConsultationId ? "상담 다시보기" : shownConsultation ? "최근 상담" : "첫 상담을 준비했어요"} aside={shownConsultation ? shownConsultation.date : ""} />{shownConsultation ? <><span className={`source-badge ${shownConsultation.source}`}>{shownConsultation.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span><div className="consultation-text">{shownConsultation.text}</div>{selectedConsultationId ? <button className="secondary-button" onClick={() => setSelectedConsultationId(undefined)}>최근 상담으로 돌아가기</button> : <div className="consult-buttons"><button className="ghost-button">대화 이어가기</button><button className="primary-button">다음 주 계획하기</button></div>}</> : <EmptyState text="체성분·식사·운동 기록을 바탕으로 이번 주를 함께 정리해요." action="첫 상담 시작" onClick={requestReview} />}</section>
+    <section className="card consultation-history"><CardTitle title="과거 상담" aside={`${Math.max(0, state.consultations.length - 1)}개`} />{state.consultations.length > 1 ? <div className="history-list">{state.consultations.slice(1).map((item) => <button key={item.id} onClick={() => setSelectedConsultationId(item.id)}><span><strong>{item.date}</strong><small>{item.source === "openai" ? "ChatGPT 상담" : "미리보기 상담"}</small></span><p>{item.text.slice(0, 70)}{item.text.length > 70 ? "…" : ""}</p><b>보기</b></button>)}</div> : <p className="history-empty">상담이 쌓이면 이전 내용을 여기에서 다시 볼 수 있어요.</p>}</section>
   </div>;
 }
 
 function CardTitle({ title, aside }: { title: string; aside?: React.ReactNode }) { return <div className="card-title"><h2>{title}</h2>{aside && <div>{aside}</div>}</div>; }
+function NavPixelIcon({ tab }: { tab: Tab }) {
+  return <img className={`nav-pixel-icon nav-icon-${tab}`} src={navIcons[tab]} alt="" draggable={false} />;
+}
 function RecordRow({ label, detail, done, onClick }: { label: string; detail: string; done: boolean; onClick: () => void }) { return <button className="record-row" onClick={onClick}><span className={`check ${done ? "done" : ""}`}>{done ? "✓" : ""}</span><span><strong>{label}</strong><small>{detail}</small></span><b>›</b></button>; }
 function NutrientBar({ label, value, min, max, unit, tone }: { label: string; value: number; min: number; max: number; unit: string; tone: string }) { const width = Math.min(100, (value / max) * 100); return <div className="nutrient"><div><span>{label}</span><strong>{value} / {min}~{max}{unit}</strong></div><div className="nutrient-track"><i className={tone} style={{ width: `${width}%` }} /></div></div>; }
 function MicroStat({ label, value, hint }: { label: string; value: string; hint: string }) { return <div className="micro-stat"><span>{label}</span><strong>{value}</strong><small>{hint}</small></div>; }
@@ -359,15 +436,46 @@ function EmptyState({ text, action, onClick }: { text: string; action: string; o
 
 function Sheet({ title, subtitle, close, children }: { title: string; subtitle?: string; close: () => void; children: React.ReactNode }) { return <div className="sheet-backdrop"><section className="sheet" role="dialog" aria-modal="true"><div className="sheet-handle" /><header><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div><button onClick={close} aria-label="닫기">×</button></header>{children}</section></div>; }
 
-function QuickSheet({ close, select }: { close: () => void; select: (modal: Modal) => void }) { return <Sheet title="무엇을 추가할까요?" subtitle="필요한 기록으로 바로 이동해요." close={close}><h3 className="sheet-section-title">지금 기록하기</h3><div className="quick-grid"><QuickButton icon="◇" label="인바디" onClick={() => select("body")} /><QuickButton icon="◒" label="먹은 식사" onClick={() => select("meal-actual")} /><QuickButton icon="△" label="한 운동" onClick={() => select("workout-actual")} /><QuickButton icon="○" label="생리 상태" onClick={() => select("cycle")} /></div><h3 className="sheet-section-title">미리 계획하기</h3><div className="quick-grid two"><QuickButton icon="◐" label="식사 계획" onClick={() => select("meal-plan")} /><QuickButton icon="□" label="운동 계획" onClick={() => select("workout-plan")} /></div></Sheet>; }
-function QuickButton({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) { return <button className="quick-button" onClick={onClick}><span>{icon}</span><strong>{label}</strong></button>; }
+function QuickSheet({ close, select }: { close: () => void; select: (modal: Modal) => void }) { return <Sheet title="무엇을 추가할까요?" subtitle="필요한 기록으로 바로 이동해요." close={close}><h3 className="sheet-section-title">지금 기록하기</h3><div className="quick-grid"><QuickButton label="인바디" onClick={() => select("body")} /><QuickButton label="생리 상태" onClick={() => select("cycle")} /><QuickButton label="먹은 식사" onClick={() => select("meal-actual")} /><QuickButton label="한 운동" onClick={() => select("workout-actual")} /></div><h3 className="sheet-section-title">미리 계획하기</h3><div className="quick-grid two"><QuickButton label="식사 계획" onClick={() => select("meal-plan")} /><QuickButton label="운동 계획" onClick={() => select("workout-plan")} /></div></Sheet>; }
+function QuickButton({ label, onClick }: { label: string; onClick: () => void }) { return <button className="quick-button" onClick={onClick}><strong>{label}</strong></button>; }
 
-function BodySheet({ today, latest, close, save }: { today: string; latest: BodyRecord; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void }) { return <Sheet title="인바디 기록" subtitle="인바디다이얼 H30에 보이는 순서대로 입력해요." close={close}><form className="form-stack" onSubmit={save}><div className="two-fields"><Field label="측정일"><input type="date" name="date" defaultValue={today} required /></Field><Field label="측정시간"><input type="time" name="time" defaultValue={new Date().toTimeString().slice(0, 5)} required /></Field></div><MeasureField label="체중" name="weight" unit="kg" previous={latest?.weight} /><MeasureField label="골격근량" name="skeletalMuscle" unit="kg" previous={latest?.skeletalMuscle} /><MeasureField label="체지방량" name="bodyFatMass" unit="kg" previous={latest?.bodyFatMass} /><MeasureField label="체지방률" name="bodyFatRate" unit="%" previous={latest?.bodyFatRate} /><MeasureField label="내장지방레벨" name="visceralFat" unit="Lv" previous={latest?.visceralFat} step="1" /><Field label="측정 조건"><select name="condition" defaultValue="아침 공복 · InBody Dial H30"><option>아침 공복 · InBody Dial H30</option><option>평소와 다른 시간 · InBody Dial H30</option><option>식후 측정 · InBody Dial H30</option><option>운동 후 측정 · InBody Dial H30</option></select></Field><button className="primary-button submit-button" type="submit">저장하기</button></form></Sheet>; }
+function FatTrendChart({ records }: { records: BodyRecord[] }) {
+  if (!records.length) return <div className="empty-chart">체성분 기록을 입력하면 흐름이 보여요.</div>;
+  const width = 700;
+  const height = 250;
+  const left = 52;
+  const right = 28;
+  const top = 34;
+  const bottom = 46;
+  const values = records.map((item) => item.bodyFatMass);
+  const min = Math.floor((Math.min(...values) - 0.2) * 10) / 10;
+  const max = Math.ceil((Math.max(...values) + 0.2) * 10) / 10;
+  const range = Math.max(max - min, 0.4);
+  const points = records.map((record, index) => ({
+    record,
+    x: left + (records.length === 1 ? (width - left - right) / 2 : index * ((width - left - right) / (records.length - 1))),
+    y: top + ((max - record.bodyFatMass) / range) * (height - top - bottom),
+  }));
+  return <div className="trend-chart-wrap"><svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="최근 체지방량 변화 선 그래프">
+    {[0, 0.5, 1].map((ratio) => { const y = top + ratio * (height - top - bottom); const value = max - ratio * range; return <g key={ratio}><line x1={left} x2={width - right} y1={y} y2={y} className="chart-grid-line" /><text x={left - 10} y={y + 4} textAnchor="end" className="chart-axis-value">{value.toFixed(1)}</text></g>; })}
+    <polyline points={points.map((point) => `${point.x},${point.y}`).join(" ")} className="trend-line" />
+    {points.map(({ record, x, y }) => <g key={record.id}><circle cx={x} cy={y} r="6" className="trend-point" /><text x={x} y={y - 14} textAnchor="middle" className="trend-value">{record.bodyFatMass}kg</text><text x={x} y={height - 16} textAnchor="middle" className="trend-date">{record.date.slice(5).replace("-", "/")}</text></g>)}
+  </svg></div>;
+}
+
+function BodySheet({ today, latest, close, save }: { today: string; latest: BodyRecord; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void }) { const [legacyTiming = "아침 공복", legacyDevice = "InBody Dial H30"] = latest?.condition?.split(" · ") ?? []; return <Sheet title="인바디 기록" subtitle="이전 측정값에서 조금씩 조절하고, 시점과 기기는 따로 남겨요." close={close}><form className="form-stack" onSubmit={save}><div className="two-fields"><Field label="측정일"><input type="date" name="date" defaultValue={today} required /></Field><Field label="측정시간"><input type="time" name="time" defaultValue={new Date().toTimeString().slice(0, 5)} required /></Field></div><MeasureField label="체중" name="weight" unit="kg" previous={latest?.weight} /><MeasureField label="골격근량" name="skeletalMuscle" unit="kg" previous={latest?.skeletalMuscle} /><MeasureField label="체지방량" name="bodyFatMass" unit="kg" previous={latest?.bodyFatMass} /><MeasureField label="체지방률" name="bodyFatRate" unit="%" previous={latest?.bodyFatRate} /><MeasureField label="내장지방레벨" name="visceralFat" unit="Lv" previous={latest?.visceralFat} step="1" /><div className="two-fields"><Field label="측정 시점"><select name="measurementTiming" defaultValue={latest?.measurementTiming ?? legacyTiming}><option>아침 공복</option><option>평소와 다른 시간</option><option>식후</option><option>운동 후</option></select></Field><Field label="측정 기기"><select name="device" defaultValue={latest?.device ?? legacyDevice}><option>InBody Dial H30</option><option>헬스장 InBody</option><option>병원 InBody</option><option>다른 체성분 기기</option></select></Field></div><button className="primary-button submit-button" type="submit">저장하기</button></form></Sheet>; }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="field"><span>{label}</span>{children}</label>; }
-function MeasureField({ label, name, unit, previous, step = "0.1" }: { label: string; name: string; unit: string; previous?: number; step?: string }) { return <label className="measure-field"><div><span>{label}</span>{previous !== undefined && <small>이전 측정 {previous}{unit}</small>}</div><div><input inputMode="decimal" type="number" step={step} min="0" name={name} required /><b>{unit}</b></div></label>; }
+function MeasureField({ label, name, unit, previous, step = "0.1" }: { label: string; name: string; unit: string; previous?: number; step?: string }) { return <label className="measure-field"><div><span>{label}</span>{previous !== undefined && <small>이전 측정 {previous}{unit}</small>}</div><div><input inputMode="decimal" type="number" step={step} min="0" name={name} defaultValue={previous} required /><b>{unit}</b></div></label>; }
 
-function MealSheet({ today, kind, plans, close, save }: { today: string; kind: EntryKind; plans: AppState["meals"]; close: () => void; save: (event: FormEvent<HTMLFormElement>, kind: EntryKind) => void }) { const hour = new Date().getHours(); const defaultType: MealType = hour < 10 ? "breakfast" : hour < 15 ? "lunch" : "dinner"; const plan = plans.find((item) => item.kind === "plan" && item.mealType === defaultType); return <Sheet title={kind === "plan" ? "식사 계획" : "먹은 식사 기록"} subtitle={kind === "plan" ? "음식의 종류만 가볍게 계획해요." : "계획을 불러온 뒤 실제 먹은 양에 맞게 수정해요."} close={close}><form className="form-stack" onSubmit={(event) => save(event, kind)}><div className="two-fields"><Field label="날짜"><input type="date" name="date" defaultValue={today} required /></Field><Field label="끼니"><select name="mealType" defaultValue={defaultType}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field></div><Field label={kind === "plan" ? "먹고 싶은 음식" : "먹은 음식"}><textarea name="title" defaultValue={kind === "actual" ? plan?.title : ""} placeholder="예: 그릭요거트와 단백질바" required /></Field>{kind === "actual" && <><div className="macro-grid"><Field label="칼로리"><input type="number" name="calories" min="0" placeholder="kcal" /></Field><Field label="단백질"><input type="number" name="protein" min="0" step="0.1" placeholder="g" /></Field><Field label="탄수화물"><input type="number" name="carbs" min="0" step="0.1" placeholder="g" /></Field><Field label="지방"><input type="number" name="fat" min="0" step="0.1" placeholder="g" /></Field><Field label="당류"><input type="number" name="sugar" min="0" step="0.1" placeholder="g" /></Field><Field label="식이섬유"><input type="number" name="fiber" min="0" step="0.1" placeholder="g" /></Field></div><Field label="계산 신뢰도"><select name="confidence" defaultValue="추정"><option>높음</option><option>보통</option><option>추정</option><option>낮음</option></select></Field></>}<button className="primary-button submit-button" type="submit">{kind === "plan" ? "계획 저장" : "식사 기록 저장"}</button></form></Sheet>; }
+function MealSheet({ today, kind, plans, close, save }: { today: string; kind: EntryKind; plans: AppState["meals"]; close: () => void; save: (event: FormEvent<HTMLFormElement>, kind: EntryKind) => void }) { const hour = new Date().getHours(); const defaultType: MealType = hour < 10 ? "breakfast" : hour < 15 ? "lunch" : "dinner"; const plan = plans.find((item) => item.kind === "plan" && item.mealType === defaultType); return <Sheet title={kind === "plan" ? "식사 계획" : "먹은 식사 기록"} subtitle={kind === "plan" ? "음식의 종류만 가볍게 계획해요." : "계획을 불러온 뒤 실제 먹은 양에 맞게 수정해요."} close={close}><form className="form-stack" onSubmit={(event) => save(event, kind)}><div className="two-fields"><Field label="날짜"><input type="date" name="date" defaultValue={today} required /></Field><Field label="끼니"><select name="mealType" defaultValue={defaultType}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field></div><Field label={kind === "plan" ? "먹고 싶은 음식" : "먹은 음식"}><textarea name="title" defaultValue={kind === "actual" ? plan?.title : ""} placeholder="예: 그릭요거트와 단백질바" required /></Field>{kind === "actual" && <><input type="hidden" name="nutritionSource" value="manual" /><div className="macro-grid"><Field label="칼로리"><input type="number" name="calories" min="0" placeholder="kcal" /></Field><Field label="단백질"><input type="number" name="protein" min="0" step="0.1" placeholder="g" /></Field><Field label="탄수화물"><input type="number" name="carbs" min="0" step="0.1" placeholder="g" /></Field><Field label="지방"><input type="number" name="fat" min="0" step="0.1" placeholder="g" /></Field><Field label="당류"><input type="number" name="sugar" min="0" step="0.1" placeholder="g" /></Field><Field label="식이섬유"><input type="number" name="fiber" min="0" step="0.1" placeholder="g" /></Field></div></>}<button className="primary-button submit-button" type="submit">{kind === "plan" ? "계획 저장" : "식사 기록 저장"}</button></form></Sheet>; }
 
-function WorkoutSheet({ today, kind, planned, close, save }: { today: string; kind: EntryKind; planned?: WorkoutEntry; close: () => void; save: (event: FormEvent<HTMLFormElement>, kind: EntryKind) => void }) { return <Sheet title={kind === "plan" ? "운동 계획" : "한 운동 기록"} subtitle={kind === "actual" ? "PT는 기억나는 대로 문장으로 적어도 좋아요." : "주간 횟수와 시간을 채울 수 있게 계획해요."} close={close}><form className="form-stack" onSubmit={(event) => save(event, kind)}><div className="two-fields"><Field label="날짜"><input type="date" name="date" defaultValue={today} required /></Field><Field label="운동 종류"><select name="type" defaultValue={planned?.type ?? "유산소"}><option>PT</option><option>유산소</option><option>걷기</option><option>자전거</option><option>기타</option></select></Field></div><Field label="운동 이름"><input name="title" defaultValue={kind === "actual" ? planned?.title : ""} placeholder="예: 인클라인 트레드밀" required /></Field><div className="two-fields"><Field label="시간"><input type="number" name="minutes" defaultValue={kind === "actual" ? planned?.minutes : ""} min="1" placeholder="분" required /></Field><Field label="강도"><input name="intensity" defaultValue={kind === "actual" ? planned?.intensity : ""} placeholder="예: 심박수 130~140" /></Field></div><Field label="운동 내용"><textarea name="details" defaultValue={kind === "actual" ? planned?.details : ""} placeholder="종목, 중량, 횟수, 세트 또는 컨디션을 적어주세요." /></Field><button className="primary-button submit-button" type="submit">{kind === "plan" ? "운동 계획 저장" : "운동 기록 저장"}</button></form></Sheet>; }
+function WorkoutSheet({ today, kind, draft, presetType, close, save }: { today: string; kind: EntryKind; draft?: WorkoutEntry; presetType?: WorkoutEntry["type"]; close: () => void; save: (event: FormEvent<HTMLFormElement>, kind: EntryKind) => void }) {
+  const editing = draft?.kind === kind;
+  const initialType = draft?.type ?? presetType ?? "유산소";
+  const [workoutType, setWorkoutType] = useState<WorkoutEntry["type"]>(initialType);
+  const previousHeartRate = draft?.heartRate ?? (typeof draft?.intensity === "string" && draft.intensity.includes("심박수") ? draft.intensity.replace("심박수", "").trim() : "");
+  const previousIntensity = typeof draft?.intensity === "number" ? draft.intensity : 5;
+  return <Sheet title={kind === "plan" ? "운동 계획" : editing ? "운동 기록 수정" : "한 운동 기록"} subtitle={kind === "actual" ? "계획을 가져온 경우에도 실제 수행에 맞게 편집할 수 있어요." : "시간·체감 강도·심박수를 나눠서 계획해요."} close={close}><form className="form-stack" onSubmit={(event) => save(event, kind)}><input type="hidden" name="editingId" value={editing ? draft.id : ""} /><div className="two-fields"><Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><Field label="운동 종류"><select name="type" value={workoutType} onChange={(event) => setWorkoutType(event.target.value as WorkoutEntry["type"])}><option>PT</option><option>유산소</option></select></Field></div><Field label="운동 이름"><input name="title" defaultValue={draft?.title ?? ""} placeholder={workoutType === "PT" ? "예: 필라테스 + 기능운동" : "예: 인클라인 트레드밀"} required /></Field><div className="two-fields"><Field label="시간 (분)"><input type="number" name="minutes" defaultValue={draft?.minutes ?? ""} min="1" placeholder="예: 35" required /></Field><Field label="체감 강도 (1~10)"><select name="intensity" defaultValue={previousIntensity}>{[1,2,3,4,5,6,7,8,9,10].map((value) => <option value={value} key={value}>{value}</option>)}</select></Field></div><div className="rpe-scale"><span>1–2 아주 가벼움</span><span>3–4 가벼움</span><span>5–6 보통</span><span>7–8 힘듦</span><span>9–10 매우 힘듦</span></div><Field label="목표·평균 심박수 · 선택"><input name="heartRate" defaultValue={previousHeartRate} placeholder="예: 130~140" /></Field>{workoutType === "유산소" && <label className="check-field"><input type="checkbox" name="overlapsSteps" defaultChecked={draft?.overlapsSteps} /><span><strong>일상 걸음 수와 중복되는 운동</strong><small>걷기·달리기·인클라인 트레드밀·마이마운틴처럼 걸음에 함께 잡히면 체크해요.</small></span></label>}<Field label="운동 내용"><textarea name="details" defaultValue={draft?.details ?? ""} placeholder="종목, 중량, 횟수, 세트 또는 컨디션을 적어주세요." /></Field><button className="primary-button submit-button" type="submit">{kind === "plan" ? "운동 계획 저장" : editing ? "수정 저장" : "운동 기록 저장"}</button></form></Sheet>;
+}
 
 function CycleSheet({ today, close, save }: { today: string; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void }) { return <Sheet title="생리 상태 기록" subtitle="첫 버전에서는 체성분 해석에 필요한 상태만 간단히 남겨요." close={close}><form className="form-stack" onSubmit={save}><Field label="날짜"><input type="date" name="date" defaultValue={today} required /></Field><Field label="오늘 상태"><select name="state"><option>없음</option><option>갈색 출혈</option><option>본 출혈</option><option>부정출혈</option></select></Field><Field label="메모 · 선택"><textarea name="note" placeholder="평소와 다른 점이 있다면 적어주세요." /></Field><button className="primary-button submit-button" type="submit">상태 저장</button></form></Sheet>; }
