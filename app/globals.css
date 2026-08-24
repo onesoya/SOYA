@@ -217,6 +217,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .sheet-section-title { margin: 20px 0 10px; color: var(--muted); font-size: 11px; }
 .quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
 .quick-grid.two { grid-template-columns: repeat(2, 1fr); }
+.quick-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .quick-button { min-height: 92px; border: 1px solid var(--line); border-radius: 18px; background: white; display: grid; place-content: center; gap: 9px; cursor: pointer; }
 .quick-button:hover { border-color: #dfb2a7; background: #fff9f7; }
 .quick-button span { font-size: 21px; color: var(--coral); }
@@ -530,16 +531,23 @@ h1, h2, h3, strong, b { font-weight: 700; }
   position: relative;
 }
 .calendar-day {
+  width: 100%;
+  padding: 0;
   border: 1px solid var(--line);
   background: #fffdf8;
+  color: inherit;
+  font: inherit;
   display: grid;
   place-items: center;
+  cursor: pointer;
 }
 .calendar-day b { font-size: 10px; }
 .calendar-day.balanced { background: #dcebd8; color: #263323; }
 .calendar-day.partial { background: #f6e5a9; color: #3a311b; }
 .calendar-day.attention { background: #f3c0b7; color: #43201b; }
+.calendar-day.meal-planned::after { content: ""; position: absolute; right: 5px; bottom: 5px; width: 6px; height: 6px; background: var(--coral); box-shadow: 1px 1px 0 var(--ink); }
 .calendar-day.today { border: 2px solid var(--ink); }
+.calendar-day.selected { box-shadow: inset 0 0 0 2px var(--coral); }
 .calendar-day.today::before {
   content: "TODAY";
   position: absolute;
@@ -552,6 +560,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .calendar-legend i.balanced { background: #86aa7f; }
 .calendar-legend i.partial { background: #e6bd59; }
 .calendar-legend i.attention { background: #e67566; }
+.calendar-legend i.planned { background: var(--coral); }
 .calendar-legend {
   display: flex;
   flex-wrap: wrap;
@@ -583,6 +592,54 @@ h1, h2, h3, strong, b { font-weight: 700; }
   font-weight: 700;
   cursor: pointer;
 }
+.entry-button-row { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.entry-button-row .timeline-action, .entry-button-row .delete-text-button { margin-top: 10px; }
+.delete-text-button { border: 0; background: transparent; color: #b65348; padding: 0; font-size: 9px; font-weight: 800; cursor: pointer; }
+
+.editable-meal-card { min-height: 178px; gap: 9px; }
+.editable-meal-card > div:first-child { min-height: 18px; }
+.entry-item { padding-top: 9px; border-top: 1px solid var(--line); display: grid !important; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; }
+.entry-item > div { display: grid; gap: 3px; }
+.entry-item > div:last-child { display: flex; gap: 8px; }
+.entry-item small { color: var(--muted); font-size: 8px; }
+.entry-item strong { font-size: 10px; line-height: 1.5; }
+.entry-item span { color: var(--muted); font-size: 8px; font-weight: 500; }
+.entry-item button, .meal-add-actions button { margin: 0; white-space: nowrap; }
+.entry-item .delete-text-button { color: #b65348; }
+.meal-card .no-entry { margin: auto 0; }
+.meal-add-actions { margin-top: auto; display: flex !important; justify-content: flex-start !important; gap: 14px; }
+
+.detail-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 18px; }
+.detail-actions .primary-button, .detail-actions .delete-button { min-height: 44px; }
+.delete-button { min-height: 42px; padding: 0 15px; border: 1px solid #b65348; background: transparent; color: #b65348; font-size: 10px; font-weight: 850; cursor: pointer; }
+.full-delete-button { width: 100%; margin-top: 12px; }
+
+.week-plan-nav { display: grid; grid-template-columns: 38px minmax(0, 1fr) 38px; align-items: center; gap: 7px; margin-bottom: 12px; }
+.week-plan-nav button { width: 38px; height: 38px; border: 1px solid var(--ink); background: var(--cream); color: var(--ink); font-size: 21px; cursor: pointer; }
+.week-plan-nav strong { text-align: center; font-size: 11px; }
+.week-plan-jump { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.week-plan-jump > button { height: 50px; padding: 0 12px; border: 1px solid var(--coral); background: var(--paper); color: var(--coral); font-size: 9px; font-weight: 850; cursor: pointer; }
+.week-plan-targets { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.week-plan-targets span { padding: 6px 8px; border: 1px solid var(--line); background: var(--cream); color: var(--muted); font-size: 8px; font-weight: 750; }
+.week-plan-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin: 14px 0 18px; }
+.week-plan-days button { position: relative; min-width: 0; min-height: 52px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); display: grid; place-content: center; gap: 3px; cursor: pointer; }
+.week-plan-days button span { color: var(--muted); font-size: 8px; }
+.week-plan-days button b { font-size: 11px; }
+.week-plan-days button.has-plan::after { content: ""; position: absolute; right: 4px; bottom: 4px; width: 5px; height: 5px; background: var(--sage); }
+.week-plan-days button.active { border-color: var(--ink); background: var(--coral); color: white; box-shadow: 2px 2px 0 var(--ink); }
+.week-plan-days button.active span { color: white; }
+.weekly-editor { padding: 16px; border: 1px solid var(--ink); background: var(--cream); box-shadow: 3px 3px 0 rgba(51, 46, 43, .13); }
+.weekly-editor-title h3 { margin: 5px 0 16px; font-size: 15px; }
+.weekly-editor h4 { margin: 0 0 10px; font-size: 11px; }
+.weekly-meal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.weekly-workout-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 20px 0 10px; }
+.weekly-workout-heading h4 { margin: 0; }
+.weekly-workout-heading button { border: 0; background: transparent; color: var(--coral); font-size: 9px; font-weight: 850; cursor: pointer; }
+.weekly-workouts { display: grid; gap: 12px; }
+.weekly-workout-card { padding: 13px; border: 1px solid var(--line); background: var(--paper); display: grid; gap: 10px; }
+.weekly-workout-card-title { display: flex; align-items: center; justify-content: space-between; }
+.weekly-workout-card-title strong { font-size: 10px; }
+.weekly-empty { margin: 0; padding: 18px; border: 1px dashed var(--line); color: var(--muted); text-align: center; font-size: 9px; }
 
 .change-overview {
   min-height: 130px;
