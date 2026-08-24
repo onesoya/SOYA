@@ -21,6 +21,8 @@ export type FoodLibraryItem = {
   fat: number;
   sugar: number;
   fiber: number;
+  dataSource?: "mfds" | "manual";
+  sourceCode?: string;
   category?: "product" | "measured_recipe" | "saved_recipe" | "general" | "restaurant";
   confidence?: "높음" | "보통" | "추정" | "낮음";
 };

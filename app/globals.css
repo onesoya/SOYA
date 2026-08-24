@@ -47,6 +47,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .save-state.saving { color: var(--gold); }
 .save-state.offline { color: var(--coral); }
 .icon-button { width: 42px; height: 42px; border-radius: 14px; border: 1px solid var(--line); background: var(--paper); cursor: pointer; font-size: 20px; }
+.header-library-button { min-height: 42px; padding: 0 12px; border: 1px solid var(--ink); background: var(--paper); color: var(--coral); box-shadow: 3px 3px 0 var(--ink); font-size: 9px; font-weight: 850; white-space: nowrap; cursor: pointer; }
 
 .dashboard-grid { display: grid; grid-template-columns: 1.08fr 0.92fr; gap: 18px; align-items: start; }
 .full-card { grid-column: 1 / -1; }
@@ -283,6 +284,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .food-library-form { padding-bottom: 18px; border-bottom: 2px solid var(--line); }
 .food-library-form-actions { display: flex; justify-content: flex-end; gap: 9px; }
 .food-library-form-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.official-food-search { padding: 12px; border: 1px solid var(--ink); background: var(--cream); display: grid; gap: 9px; box-shadow: 3px 3px 0 rgba(51, 46, 43, .12); }
+.official-food-search-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.official-food-search-heading strong { font-size: 10px; }
+.official-food-search-heading span { color: var(--sage); font-size: 7px; font-weight: 850; }
+.official-food-search-bar { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.official-food-search-bar input { width: 100%; min-width: 0; height: 42px; padding: 0 10px; border: 1px solid var(--line); border-radius: 0; background: white; color: var(--ink); font: inherit; font-size: 10px; }
+.official-food-search-bar button { min-width: 58px; border: 1px solid var(--ink); background: var(--paper); color: var(--coral); font-size: 9px; font-weight: 850; cursor: pointer; }
+.official-food-search-bar button:disabled { opacity: .45; cursor: not-allowed; }
+.official-food-search > p { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.6; }
+.official-food-results { max-height: 180px; overflow-y: auto; display: grid; gap: 5px; }
+.official-food-results button { min-width: 0; padding: 9px 10px; border: 1px solid var(--line); background: var(--paper); display: grid; gap: 4px; text-align: left; cursor: pointer; }
+.official-food-results strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.official-food-results span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 7px; }
 .food-set-components { display: grid; gap: 10px; }
 .food-set-row { min-width: 0; padding: 10px; border: 1px solid var(--line); background: var(--cream); display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, .8fr) auto; align-items: end; gap: 8px; }
 .food-set-row .delete-text-button { min-height: 48px; padding: 0 5px; }
@@ -553,6 +567,10 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .month-options button.active { border-color: var(--ink); background: var(--coral); color: white; box-shadow: 2px 2px 0 var(--ink); }
 .calendar-actions { display: flex; gap: 8px; }
 .calendar-actions .ghost-button { color: var(--ink); background: var(--cream); }
+.food-calendar-heading > div { width: 100%; }
+.food-month-actions { width: 100%; display: flex; align-items: flex-end; justify-content: space-between; gap: 9px; }
+.food-month-actions .month-navigator { min-width: 0; }
+.food-plan-button { min-height: 30px; padding: 0 11px; flex: 0 0 auto; font-size: 9px; box-shadow: 2px 2px 0 var(--ink); }
 .calendar-weekdays, .month-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -704,11 +722,11 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .trend-chart { display: block; width: 100%; min-width: 520px; height: auto; overflow: visible; }
 .chart-grid-line { stroke: #ded5ca; stroke-width: 1; stroke-dasharray: 4 5; }
 .chart-axis-value, .trend-date, .trend-value { font-family: Galmuri9, Galmuri11, sans-serif; }
-.chart-axis-value { fill: var(--muted); font-size: 10px; }
+.chart-axis-value { fill: var(--muted); font-size: 11px; }
 .trend-line { fill: none; stroke: var(--coral); stroke-width: 4; stroke-linecap: square; stroke-linejoin: miter; }
 .trend-point { fill: var(--paper); stroke: var(--ink); stroke-width: 3; }
-.trend-value { fill: var(--ink); font-size: 11px; font-weight: 700; }
-.trend-date { fill: var(--muted); font-size: 9px; }
+.trend-value { fill: var(--ink); font-size: 12px; font-weight: 700; }
+.trend-date { fill: var(--muted); font-size: 10px; }
 .empty-chart { min-height: 180px; display: grid; place-items: center; color: var(--muted); font-size: 10px; }
 .section-stack, .chart-card, .trend-chart-wrap, .data-table, .data-table > button { min-width: 0; max-width: 100%; }
 .data-table > button > span:first-child { min-width: 0; }
@@ -765,12 +783,16 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .topbar-tiger { width: 84px; height: 84px; }
   .topbar h1 { font-size: 20px; line-height: 1.35; }
   .date-text { margin-bottom: 5px; font-size: 10px; }
+  .header-library-button { max-width: 82px; min-height: 40px; padding: 0 8px; font-size: 8px; line-height: 1.45; white-space: normal; }
   .pixel-calendar-card { padding: 18px 14px 16px; }
   .calendar-heading { align-items: center; flex-wrap: wrap; }
   .calendar-heading h2 { font-size: 18px; }
   .month-navigator { grid-template-columns: 28px minmax(112px, auto) 28px auto; }
   .month-arrow { width: 28px; height: 28px; }
   .month-current { min-height: 28px; font-size: 15px; }
+  .food-month-actions { align-items: center; gap: 6px; }
+  .food-month-actions .month-navigator { grid-template-columns: 26px minmax(92px, auto) 26px auto; }
+  .food-plan-button { min-height: 28px; padding-inline: 8px; font-size: 8px; }
   .calendar-day, .calendar-blank { min-height: 46px; }
   .calendar-day.today::before { display: none; }
   .calendar-legend { gap: 9px 12px; }

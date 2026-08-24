@@ -31,6 +31,19 @@ type WeeklyWorkoutDraft = {
 };
 type WeeklyDayDraft = { meals: Record<MealType, string[]>; workouts: WeeklyWorkoutDraft[] };
 type WeeklyDraft = Record<string, WeeklyDayDraft>;
+type OfficialFoodResult = {
+  code: string;
+  name: string;
+  baseAmount: number;
+  unit: FoodUnit;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  sugar: number;
+  fiber: number;
+  maker?: string;
+};
 type NextAction =
   | { type: "body"; eyebrow: string; title: string; detail: string }
   | { type: "workout"; eyebrow: string; title: string; detail: string }
@@ -429,6 +442,8 @@ export function HealthApp() {
       fat: number(data.get("fat")),
       sugar: number(data.get("sugar")),
       fiber: number(data.get("fiber")),
+      dataSource: data.get("dataSource") === "mfds" ? "mfds" : "manual",
+      sourceCode: String(data.get("sourceCode") || "") || undefined,
     };
     commit((current) => ({
       ...current,
@@ -546,13 +561,13 @@ export function HealthApp() {
       <main className="main-content">
         <header className="topbar">
           <div className="topbar-heading"><Image className="topbar-tiger" src="/mascot-top-transparent.png" width={76} height={76} alt="호랑이 마스코트" /><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? "오늘도 가볍게 기록해요" : tabs.find((item) => item.id === tab)?.label}</h1></div></div>
-          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "임시 저장" : "저장됨"}</span><button className="icon-button" onClick={exportData} aria-label="전체 기록 내보내기">↓</button></div>
+          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "임시 저장" : "저장됨"}</span>{tab === "food" ? <button className="header-library-button" onClick={() => setModal("food-library")}>음식 보관함 추가</button> : <button className="icon-button" onClick={exportData} aria-label="전체 기록 내보내기">↓</button>}</div>
         </header>
 
         {tab === "today" && (
           <TodayView state={state} today={today} todayBody={todayBody} nutrition={nutrition} completedCount={completedCount} totalCount={completed.length} nextAction={nextAction} mealActual={mealActual} mealPlan={mealPlan} actualWorkouts={actualWorkouts} plannedWorkout={plannedWorkout} openNextAction={openNextAction} skipNextAction={skipNextAction} setModal={setModal} setTab={setTab} openMeal={openMeal} openWorkout={openWorkout} />
         )}
-        {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openLibrary={() => setModal("food-library")} />}
+        {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} />}
         {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} />}
         {tab === "change" && <ChangeView state={state} setModal={setModal} openDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} />}
         {tab === "consult" && <ConsultView state={state} commit={commit} openWeeklyPlan={() => setModal("weekly-plan")} deleteConsultation={deleteConsultation} openDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
@@ -642,7 +657,7 @@ function TodayView(props: TodayViewProps) {
   </div>;
 }
 
-function FoodView({ state, today, openMeal, deleteMeal, openLibrary }: { state: AppState; today: string; openMeal: (kind: EntryKind, presetType?: MealType, draft?: MealEntry, date?: string) => void; deleteMeal: (entry: MealEntry) => void; openLibrary: () => void }) {
+function FoodView({ state, today, openMeal, deleteMeal }: { state: AppState; today: string; openMeal: (kind: EntryKind, presetType?: MealType, draft?: MealEntry, date?: string) => void; deleteMeal: (entry: MealEntry) => void }) {
   const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(today);
   const cells = monthCells(`${selectedMonth}-01`);
@@ -664,7 +679,7 @@ function FoodView({ state, today, openMeal, deleteMeal, openLibrary }: { state: 
     setSelectedMonth(today.slice(0, 7));
     setSelectedDate(today);
   };
-  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading"><div><span className="eyebrow">식단 밸런스</span><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /></div><div className="calendar-actions"><button className="ghost-button" onClick={openLibrary}>음식 보관함 추가</button><button className="primary-button" onClick={() => openMeal("plan", undefined, undefined, selectedDate)}>식사 계획</button></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <button type="button" key={date} onClick={() => setSelectedDate(date)} className={`calendar-day ${mealStatus(date)} ${hasMealPlan(date) ? "meal-planned" : ""} ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b></button> : <span className="calendar-blank" key={`blank-${index}`} />)}</div><div className="calendar-legend"><span><i className="balanced" />잘했어요</span><span><i className="partial" />괜찮아요</span><span><i className="attention" />아쉬워요</span><span><b className="plan-heart">♥</b>계획</span></div></section>
+  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading food-calendar-heading"><div><span className="eyebrow">식단 밸런스</span><div className="food-month-actions"><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /><button className="primary-button food-plan-button" onClick={() => openMeal("plan", undefined, undefined, selectedDate)}>식사 계획</button></div></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <button type="button" key={date} onClick={() => setSelectedDate(date)} className={`calendar-day ${mealStatus(date)} ${hasMealPlan(date) ? "meal-planned" : ""} ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b></button> : <span className="calendar-blank" key={`blank-${index}`} />)}</div><div className="calendar-legend"><span><i className="balanced" />잘했어요</span><span><i className="partial" />괜찮아요</span><span><i className="attention" />아쉬워요</span><span><b className="plan-heart">♥</b>계획</span></div></section>
     <section className="card"><CardTitle title={`${dateLabel(selectedDate)} 식단`} aside={<button className="text-button" onClick={() => openMeal("actual", undefined, undefined, selectedDate)}>먹은 식사 추가</button>} />
       <div className="meal-cards">{(["breakfast", "lunch", "dinner", "snack"] as MealType[]).map((type) => {
         const plans = state.meals.filter((m) => m.date === selectedDate && m.mealType === type && m.kind === "plan");
@@ -851,6 +866,7 @@ function FoodLibrarySheet({ library, close, save, saveSet, remove }: { library: 
   const foods = library.filter((item) => item.kind !== "set");
   const [mode, setMode] = useState<"food" | "set">("food");
   const [editing, setEditing] = useState<FoodLibraryItem>();
+  const [officialDraft, setOfficialDraft] = useState<FoodLibraryItem>();
   const [formVersion, setFormVersion] = useState(0);
   const [setName, setSetName] = useState("");
   const [components, setComponents] = useState<ComponentDraft[]>([
@@ -861,6 +877,7 @@ function FoodLibrarySheet({ library, close, save, saveSet, remove }: { library: 
   const reset = (nextMode: "food" | "set") => {
     setMode(nextMode);
     setEditing(undefined);
+    setOfficialDraft(undefined);
     setSetName("");
     setComponents([{ id: id("component"), foodId: "", amount: 1 }, { id: id("component"), foodId: "", amount: 1 }]);
     setFormVersion((version) => version + 1);
@@ -871,6 +888,7 @@ function FoodLibrarySheet({ library, close, save, saveSet, remove }: { library: 
   };
   const edit = (item: FoodLibraryItem) => {
     setEditing(item);
+    setOfficialDraft(undefined);
     setMode(item.kind === "set" ? "set" : "food");
     setSetName(item.kind === "set" ? item.name : "");
     setComponents(item.kind === "set" && item.components?.length
@@ -899,14 +917,39 @@ function FoodLibrarySheet({ library, close, save, saveSet, remove }: { library: 
     const factor = component.amount / foodBasis(food).amount;
     return { calories: sum.calories + food.calories * factor, protein: sum.protein + food.protein * factor };
   }, { calories: 0, protein: 0 });
+  const formFood = editing && editing.kind !== "set" ? editing : officialDraft;
+  const chooseOfficialFood = (food: OfficialFoodResult) => {
+    setMode("food");
+    setEditing(undefined);
+    setOfficialDraft({
+      id: "",
+      name: food.name,
+      kind: "food",
+      baseAmount: food.baseAmount,
+      unit: food.unit,
+      servingLabel: `${food.baseAmount}${food.unit}`,
+      calories: food.calories,
+      protein: food.protein,
+      carbs: food.carbs,
+      fat: food.fat,
+      sugar: food.sugar,
+      fiber: food.fiber,
+      dataSource: "mfds",
+      sourceCode: food.code,
+    });
+    setFormVersion((version) => version + 1);
+  };
 
   return <Sheet title="음식 보관함 추가" close={close}>
     <div className="library-mode-tabs"><button type="button" className={mode === "food" ? "active" : ""} onClick={() => reset("food")}>음식 추가</button><button type="button" className={mode === "set" ? "active" : ""} onClick={() => reset("set")}>세트 만들기</button></div>
-    {mode === "food" ? <form key={`${editing?.id ?? "new"}-${formVersion}`} className="form-stack food-library-form" onSubmit={finishSave}>
+    {mode === "food" ? <form key={`${formFood?.id ?? "new"}-${formVersion}`} className="form-stack food-library-form" onSubmit={finishSave}>
+      <OfficialFoodSearch onChoose={chooseOfficialFood} />
       <input type="hidden" name="editingId" value={editing?.kind !== "set" ? editing?.id ?? "" : ""} />
-      <Field label="음식 이름"><input name="name" defaultValue={editing?.kind !== "set" ? editing?.name ?? "" : ""} placeholder="예: 무가당 그릭요거트" required /></Field>
-      <div className="two-fields food-basis-fields"><Field label="영양정보 기준량"><input type="number" name="baseAmount" min="0.1" step="0.1" inputMode="decimal" defaultValue={editing?.kind !== "set" ? foodBasis(editing ?? { id: "", name: "", calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0 }).amount : 1} required /></Field><Field label="단위"><select name="unit" defaultValue={editing?.kind !== "set" && editing ? foodBasis(editing).unit : "g"}>{foodUnits.map((unit) => <option key={unit}>{unit}</option>)}</select></Field></div>
-      <div className="macro-grid"><Field label="칼로리"><input type="number" name="calories" min="0" step="0.1" defaultValue={editing?.kind !== "set" ? editing?.calories ?? "" : ""} placeholder="kcal" required /></Field><Field label="단백질"><input type="number" name="protein" min="0" step="0.1" defaultValue={editing?.kind !== "set" ? editing?.protein ?? "" : ""} placeholder="g" /></Field><Field label="탄수화물"><input type="number" name="carbs" min="0" step="0.1" defaultValue={editing?.kind !== "set" ? editing?.carbs ?? "" : ""} placeholder="g" /></Field><Field label="지방"><input type="number" name="fat" min="0" step="0.1" defaultValue={editing?.kind !== "set" ? editing?.fat ?? "" : ""} placeholder="g" /></Field><Field label="당류"><input type="number" name="sugar" min="0" step="0.1" defaultValue={editing?.kind !== "set" ? editing?.sugar ?? "" : ""} placeholder="g" /></Field><Field label="식이섬유"><input type="number" name="fiber" min="0" step="0.1" defaultValue={editing?.kind !== "set" ? editing?.fiber ?? "" : ""} placeholder="g" /></Field></div>
+      <input type="hidden" name="dataSource" value={formFood?.dataSource ?? "manual"} />
+      <input type="hidden" name="sourceCode" value={formFood?.sourceCode ?? ""} />
+      <Field label="음식 이름"><input name="name" defaultValue={formFood?.name ?? ""} placeholder="예: 무가당 그릭요거트" required /></Field>
+      <div className="two-fields food-basis-fields"><Field label="영양정보 기준량"><input type="number" name="baseAmount" min="0.1" step="0.1" inputMode="decimal" defaultValue={formFood ? foodBasis(formFood).amount : 1} required /></Field><Field label="단위"><select name="unit" defaultValue={formFood ? foodBasis(formFood).unit : "g"}>{foodUnits.map((unit) => <option key={unit}>{unit}</option>)}</select></Field></div>
+      <div className="macro-grid"><Field label="칼로리"><input type="number" name="calories" min="0" step="0.1" defaultValue={formFood?.calories ?? ""} placeholder="kcal" required /></Field><Field label="단백질"><input type="number" name="protein" min="0" step="0.1" defaultValue={formFood?.protein ?? ""} placeholder="g" /></Field><Field label="탄수화물"><input type="number" name="carbs" min="0" step="0.1" defaultValue={formFood?.carbs ?? ""} placeholder="g" /></Field><Field label="지방"><input type="number" name="fat" min="0" step="0.1" defaultValue={formFood?.fat ?? ""} placeholder="g" /></Field><Field label="당류"><input type="number" name="sugar" min="0" step="0.1" defaultValue={formFood?.sugar ?? ""} placeholder="g" /></Field><Field label="식이섬유"><input type="number" name="fiber" min="0" step="0.1" defaultValue={formFood?.fiber ?? ""} placeholder="g" /></Field></div>
       <div className="food-library-form-actions">{editing && <button type="button" className="ghost-button" onClick={() => reset("food")}>새 음식</button>}<button className="primary-button" type="submit">{editing ? "수정 저장" : "보관함에 저장"}</button></div>
     </form> : <form className="form-stack food-library-form" onSubmit={finishSet}>
       <Field label="세트 이름"><input value={setName} onChange={(event) => setSetName(event.target.value)} placeholder="예: 아침 요거트 세트" required /></Field>
@@ -919,8 +962,40 @@ function FoodLibrarySheet({ library, close, save, saveSet, remove }: { library: 
       <div className="food-set-total"><span>세트 1인분</span><strong>{roundNutrient(totals.calories)} kcal · 단백질 {roundNutrient(totals.protein)}g</strong></div>
       <div className="food-library-form-actions">{editing && <button type="button" className="ghost-button" onClick={() => reset("set")}>새 세트</button>}<button className="primary-button" type="submit" disabled={foods.length < 2}>{editing ? "세트 수정 저장" : "세트 저장"}</button></div>
     </form>}
-    <div className="food-library-list">{library.length ? library.map((item) => <article key={item.id}><div><span>{item.kind === "set" ? `세트 · 음식 ${item.components?.length ?? 0}개` : "음식"}</span><strong>{item.name}</strong><small>{foodBasisLabel(item)} · {item.calories}kcal · 단백질 {item.protein}g</small></div><div><button type="button" onClick={() => edit(item)}>수정</button><button type="button" className="delete-text-button" onClick={() => remove(item)}>삭제</button></div></article>) : <p>저장된 음식이 없어요.</p>}</div>
+    <div className="food-library-list">{library.length ? library.map((item) => <article key={item.id}><div><span>{item.kind === "set" ? `세트 · 음식 ${item.components?.length ?? 0}개` : item.dataSource === "mfds" ? "음식 · 식약처" : "음식"}</span><strong>{item.name}</strong><small>{foodBasisLabel(item)} · {item.calories}kcal · 단백질 {item.protein}g</small></div><div><button type="button" onClick={() => edit(item)}>수정</button><button type="button" className="delete-text-button" onClick={() => remove(item)}>삭제</button></div></article>) : <p>저장된 음식이 없어요.</p>}</div>
   </Sheet>;
+}
+
+function OfficialFoodSearch({ onChoose }: { onChoose: (food: OfficialFoodResult) => void }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<OfficialFoodResult[]>([]);
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "unconfigured" | "error">("idle");
+  const search = async () => {
+    if (query.trim().length < 2) return;
+    setStatus("loading");
+    try {
+      const response = await fetch(`/api/food-search?q=${encodeURIComponent(query.trim())}`);
+      const data = await response.json() as { configured?: boolean; items?: OfficialFoodResult[] };
+      if (!data.configured) {
+        setResults([]);
+        setStatus("unconfigured");
+        return;
+      }
+      setResults(data.items ?? []);
+      setStatus("ready");
+    } catch {
+      setResults([]);
+      setStatus("error");
+    }
+  };
+  return <section className="official-food-search">
+    <div className="official-food-search-heading"><strong>기본 영양정보 찾기</strong><span>식품의약품안전처</span></div>
+    <div className="official-food-search-bar"><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void search(); } }} placeholder="예: 소고기무국" /><button type="button" onClick={() => void search()} disabled={query.trim().length < 2 || status === "loading"}>{status === "loading" ? "검색 중" : "검색"}</button></div>
+    {status === "unconfigured" && <p>공식 데이터 연결키가 준비되면 바로 검색할 수 있어요.</p>}
+    {status === "error" && <p>검색하지 못했어요. 잠시 후 다시 시도해주세요.</p>}
+    {status === "ready" && !results.length && <p>검색 결과가 없어요. 아래에서 직접 입력할 수 있어요.</p>}
+    {results.length > 0 && <div className="official-food-results">{results.map((food) => <button type="button" key={`${food.code}-${food.name}`} onClick={() => onChoose(food)}><strong>{food.name}</strong><span>{food.baseAmount}{food.unit} · {food.calories}kcal{food.maker ? ` · ${food.maker}` : ""}</span></button>)}</div>}
+  </section>;
 }
 
 function WeeklyPlanSheet({ state, today, close, save }: { state: AppState; today: string; close: () => void; save: (start: string, draft: WeeklyDraft) => void }) {
