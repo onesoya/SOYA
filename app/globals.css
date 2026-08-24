@@ -545,7 +545,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .calendar-day.balanced { background: #dcebd8; color: #263323; }
 .calendar-day.partial { background: #f6e5a9; color: #3a311b; }
 .calendar-day.attention { background: #f3c0b7; color: #43201b; }
-.calendar-day.meal-planned::after { content: ""; position: absolute; right: 5px; bottom: 5px; width: 6px; height: 6px; background: var(--coral); box-shadow: 1px 1px 0 var(--ink); }
+.calendar-day.meal-planned::after { content: "♥"; position: absolute; right: 4px; bottom: 2px; color: var(--coral); font-family: Arial, sans-serif; font-size: 11px; line-height: 1; text-shadow: 1px 1px 0 var(--paper); }
 .calendar-day.today { border: 2px solid var(--ink); }
 .calendar-day.selected { box-shadow: inset 0 0 0 2px var(--coral); }
 .calendar-day.today::before {
@@ -560,7 +560,6 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .calendar-legend i.balanced { background: #86aa7f; }
 .calendar-legend i.partial { background: #e6bd59; }
 .calendar-legend i.attention { background: #e67566; }
-.calendar-legend i.planned { background: var(--coral); }
 .calendar-legend {
   display: flex;
   flex-wrap: wrap;
@@ -571,6 +570,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
 }
 .calendar-legend span { display: flex; align-items: center; gap: 6px; }
 .calendar-legend i { width: 9px; height: 9px; border: 1px solid var(--ink); }
+.calendar-legend .plan-heart { color: var(--coral); font-family: Arial, sans-serif; font-size: 12px; line-height: 1; }
 
 .workout-day { align-content: center; gap: 5px; }
 .workout-marks { min-height: 10px; display: flex; justify-content: center; gap: 2px; }
@@ -632,6 +632,15 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .weekly-editor-title h3 { margin: 5px 0 16px; font-size: 15px; }
 .weekly-editor h4 { margin: 0 0 10px; font-size: 11px; }
 .weekly-meal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.weekly-meal-group { min-width: 0; display: grid; align-content: start; gap: 7px; padding: 9px; border: 1px solid var(--line); background: var(--paper); }
+.weekly-meal-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.weekly-meal-heading strong { font-size: 10px; }
+.weekly-meal-heading button { border: 0; padding: 0; background: transparent; color: var(--coral); font-size: 8px; font-weight: 850; cursor: pointer; white-space: nowrap; }
+.weekly-meal-items { display: grid; gap: 6px; }
+.weekly-meal-item { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 30px; gap: 5px; }
+.weekly-meal-item.single { grid-template-columns: minmax(0, 1fr); }
+.weekly-meal-item input { width: 100%; min-width: 0; height: 42px; border: 1px solid var(--ink); border-radius: 0; padding: 0 10px; background: white; color: var(--ink); font: inherit; font-size: 10px; }
+.weekly-meal-item button { width: 30px; height: 42px; border: 1px solid var(--ink); background: var(--cream); color: var(--ink); font-size: 17px; cursor: pointer; }
 .weekly-workout-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 20px 0 10px; }
 .weekly-workout-heading h4 { margin: 0; }
 .weekly-workout-heading button { border: 0; background: transparent; color: var(--coral); font-size: 9px; font-weight: 850; cursor: pointer; }
@@ -733,6 +742,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .trend-chart { min-width: 0; width: 100%; }
   .data-table > button { grid-template-columns: minmax(0, 1fr) 58px 58px 8px; gap: 5px; }
   .history-list button { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .weekly-meal-grid { grid-template-columns: minmax(0, 1fr); }
   .sheet header { top: -12px; }
   .sheet-leading-fields { grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 10px; }
   .sheet-leading-fields > .field { width: 100%; min-width: 0; overflow: hidden; }

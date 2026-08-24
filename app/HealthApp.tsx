@@ -27,7 +27,7 @@ type WeeklyWorkoutDraft = {
   overlapsSteps: boolean;
   details: string;
 };
-type WeeklyDayDraft = { meals: Record<MealType, string>; workouts: WeeklyWorkoutDraft[] };
+type WeeklyDayDraft = { meals: Record<MealType, string[]>; workouts: WeeklyWorkoutDraft[] };
 type WeeklyDraft = Record<string, WeeklyDayDraft>;
 type NextAction =
   | { type: "body"; eyebrow: string; title: string; detail: string }
@@ -105,7 +105,10 @@ function weekDates(start: string) {
 
 function createWeeklyDraft(state: AppState, start: string): WeeklyDraft {
   return Object.fromEntries(weekDates(start).map((date) => {
-    const meals = Object.fromEntries((Object.keys(mealLabels) as MealType[]).map((mealType) => [mealType, state.meals.find((item) => item.date === date && item.kind === "plan" && item.mealType === mealType)?.title ?? ""])) as Record<MealType, string>;
+    const meals = Object.fromEntries((Object.keys(mealLabels) as MealType[]).map((mealType) => {
+      const titles = state.meals.filter((item) => item.date === date && item.kind === "plan" && item.mealType === mealType).map((item) => item.title);
+      return [mealType, titles.length ? titles : [""]];
+    })) as Record<MealType, string[]>;
     const workouts = state.workouts.filter((item) => item.date === date && item.kind === "plan").map((item) => ({
       id: item.id, type: item.type, title: item.title, minutes: String(item.minutes || ""), intensity: typeof item.intensity === "number" ? item.intensity : 5,
       heartRate: item.heartRate ?? "", overlapsSteps: Boolean(item.overlapsSteps), details: item.details,
@@ -114,7 +117,7 @@ function createWeeklyDraft(state: AppState, start: string): WeeklyDraft {
   }));
 }
 
-function MonthNavigator({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function MonthNavigator({ value, onChange, onToday }: { value: string; onChange: (value: string) => void; onToday?: () => void }) {
   const [open, setOpen] = useState(false);
   const [pickerYear, setPickerYear] = useState(Number(value.slice(0, 4)));
   const openPicker = () => {
@@ -126,7 +129,7 @@ function MonthNavigator({ value, onChange }: { value: string; onChange: (value: 
     <button type="button" className="month-arrow" onClick={() => onChange(shiftMonth(value, -1))} aria-label="이전 달">‹</button>
     <button type="button" className="month-current" onClick={openPicker} aria-expanded={open}>{monthLabel(`${value}-01`)} <span>▼</span></button>
     <button type="button" className="month-arrow" onClick={() => onChange(shiftMonth(value, 1))} aria-label="다음 달">›</button>
-    <button type="button" className="month-today" onClick={() => { onChange(todayKey().slice(0, 7)); setOpen(false); }} aria-label="오늘이 있는 달로 이동">TODAY</button>
+    <button type="button" className="month-today" onClick={() => { onChange(todayKey().slice(0, 7)); onToday?.(); setOpen(false); }} aria-label="오늘 날짜로 이동">TODAY</button>
     {open && <div className="month-panel">
       <div className="year-row"><button type="button" onClick={() => setPickerYear((year) => year - 1)} aria-label="이전 연도">‹</button><strong>{pickerYear}년</strong><button type="button" onClick={() => setPickerYear((year) => year + 1)} aria-label="다음 연도">›</button></div>
       <div className="month-options">{Array.from({ length: 12 }, (_, index) => {
@@ -271,6 +274,7 @@ export function HealthApp() {
     }
     else if (nextAction.type === "meal") {
       setMealPresetType(nextAction.mealType);
+      setMealDraft(mealPlan(nextAction.mealType));
       setModal("meal-actual");
     }
   };
@@ -335,7 +339,7 @@ export function HealthApp() {
     };
     commit((current) => ({
       ...current,
-      meals: [...current.meals.filter((item) => item.id !== editingId && !(item.date === meal.date && item.mealType === meal.mealType && item.kind === kind)), meal],
+      meals: [...current.meals.filter((item) => item.id !== editingId), meal],
     }));
     setMealDraft(undefined);
     setMealDate(undefined);
@@ -402,8 +406,10 @@ export function HealthApp() {
     for (const date of dates) {
       const day = draft[date];
       (Object.keys(mealLabels) as MealType[]).forEach((mealType) => {
-        const title = day.meals[mealType].trim();
-        if (title) meals.push({ id: id("meal-plan"), date, mealType, kind: "plan", title, calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, confidence: "추정" });
+        day.meals[mealType].forEach((value) => {
+          const title = value.trim();
+          if (title) meals.push({ id: id("meal-plan"), date, mealType, kind: "plan", title, calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, confidence: "추정" });
+        });
       });
       day.workouts.forEach((item) => {
         if (!item.title.trim()) return;
@@ -493,7 +499,7 @@ type TodayViewProps = {
   skipNextAction: () => void;
   setModal: (modal: Modal) => void;
   setTab: (tab: Tab) => void;
-  openMeal: (kind: EntryKind, presetType?: MealType) => void;
+  openMeal: (kind: EntryKind, presetType?: MealType, draft?: MealEntry, date?: string) => void;
   openWorkout: (kind: EntryKind, draft?: WorkoutEntry, presetType?: WorkoutEntry["type"]) => void;
 };
 
@@ -515,7 +521,7 @@ function TodayView(props: TodayViewProps) {
       <CardTitle title="오늘 기록" aside={`${completedCount}/${totalCount}`} />
       <div className="record-list">
         <RecordRow label="인바디" detail={todayBody ? `${todayBody.bodyFatMass}kg 체지방 · ${todayBody.skeletalMuscle}kg 골격근` : "아직 기록하지 않음"} done={Boolean(todayBody)} onClick={() => setModal("body")} />
-        {(["breakfast", "lunch", "dinner"] as MealType[]).map((type) => { const actual = mealActual(type); const plan = mealPlan(type); return <RecordRow key={type} label={mealLabels[type]} detail={actual ? actual.title : plan ? `계획 · ${plan.title}` : "아직 기록하지 않음"} done={Boolean(actual)} onClick={() => openMeal("actual", type)} />; })}
+        {(["breakfast", "lunch", "dinner"] as MealType[]).map((type) => { const actual = mealActual(type); const plan = mealPlan(type); return <RecordRow key={type} label={mealLabels[type]} detail={actual ? actual.title : plan ? `계획 · ${plan.title}` : "아직 기록하지 않음"} done={Boolean(actual)} onClick={() => openMeal("actual", type, actual ?? plan, today)} />; })}
         {plannedWorkout && <RecordRow label="운동" detail={actualWorkouts[0]?.title ?? `계획 · ${plannedWorkout.title}`} done={actualWorkouts.length > 0} onClick={() => openWorkout("actual", plannedWorkout)} />}
         {cycle && <RecordRow label="몸 상태" detail={cycle.state} done onClick={() => setModal("cycle")} />}
       </div>
@@ -552,7 +558,7 @@ function FoodView({ state, today, openMeal, deleteMeal }: { state: AppState; tod
     const meals = state.meals.filter((item) => item.date === date && item.kind === "actual" && !item.skipped);
     if (!meals.length) return "none";
     const totals = meals.reduce((sum, item) => ({ calories: sum.calories + item.calories, protein: sum.protein + item.protein, sugar: sum.sugar + item.sugar, fiber: sum.fiber + item.fiber }), { calories: 0, protein: 0, sugar: 0, fiber: 0 });
-    if (meals.length < 3) return "partial";
+    if (new Set(meals.map((item) => item.mealType)).size < 3) return "partial";
     if (totals.sugar > state.nutritionGoal.sugarMax * 1.25 || totals.calories > state.nutritionGoal.caloriesMax * 1.15 || totals.protein < state.nutritionGoal.proteinMin * 0.65) return "attention";
     if (totals.calories >= state.nutritionGoal.caloriesMin && totals.calories <= state.nutritionGoal.caloriesMax && totals.protein >= state.nutritionGoal.proteinMin && totals.sugar <= state.nutritionGoal.sugarMax && totals.fiber >= state.nutritionGoal.fiberMin) return "balanced";
     return "partial";
@@ -562,16 +568,20 @@ function FoodView({ state, today, openMeal, deleteMeal }: { state: AppState; tod
     setSelectedMonth(month);
     if (!selectedDate.startsWith(month)) setSelectedDate(`${month}-01`);
   };
-  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading"><div><span className="eyebrow">식단 밸런스</span><MonthNavigator value={selectedMonth} onChange={changeMonth} /></div><button className="primary-button" onClick={() => openMeal("plan", undefined, undefined, selectedDate)}>식사 계획</button></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <button type="button" key={date} onClick={() => setSelectedDate(date)} className={`calendar-day ${mealStatus(date)} ${hasMealPlan(date) ? "meal-planned" : ""} ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b></button> : <span className="calendar-blank" key={`blank-${index}`} />)}</div><div className="calendar-legend"><span><i className="balanced" />잘했어요</span><span><i className="partial" />괜찮아요</span><span><i className="attention" />아쉬워요</span><span><i className="planned" />계획</span></div></section>
+  const goToday = () => {
+    setSelectedMonth(today.slice(0, 7));
+    setSelectedDate(today);
+  };
+  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading"><div><span className="eyebrow">식단 밸런스</span><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /></div><button className="primary-button" onClick={() => openMeal("plan", undefined, undefined, selectedDate)}>식사 계획</button></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <button type="button" key={date} onClick={() => setSelectedDate(date)} className={`calendar-day ${mealStatus(date)} ${hasMealPlan(date) ? "meal-planned" : ""} ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b></button> : <span className="calendar-blank" key={`blank-${index}`} />)}</div><div className="calendar-legend"><span><i className="balanced" />잘했어요</span><span><i className="partial" />괜찮아요</span><span><i className="attention" />아쉬워요</span><span><b className="plan-heart">♥</b>계획</span></div></section>
     <section className="card"><CardTitle title={`${dateLabel(selectedDate)} 식단`} aside={<button className="text-button" onClick={() => openMeal("actual", undefined, undefined, selectedDate)}>먹은 식사 추가</button>} />
       <div className="meal-cards">{(["breakfast", "lunch", "dinner", "snack"] as MealType[]).map((type) => {
-        const plan = state.meals.find((m) => m.date === selectedDate && m.mealType === type && m.kind === "plan");
-        const actual = state.meals.find((m) => m.date === selectedDate && m.mealType === type && m.kind === "actual");
-        return <article key={type} className="meal-card editable-meal-card"><div><span>{mealLabels[type]}</span>{actual && <b>기록 완료</b>}</div>
-          {plan && <EntryItem label="계획" title={plan.title} edit={() => openMeal("plan", type, plan, selectedDate)} remove={() => deleteMeal(plan)} />}
-          {actual && <EntryItem label="기록" title={actual.title} detail={`${actual.calories} kcal · 단백질 ${actual.protein}g`} edit={() => openMeal("actual", type, actual, selectedDate)} remove={() => deleteMeal(actual)} />}
-          {!plan && !actual && <p className="no-entry">아직 계획이나 기록이 없어요.</p>}
-          <div className="meal-add-actions">{!plan && <button onClick={() => openMeal("plan", type, undefined, selectedDate)}>계획하기</button>}{!actual && <button onClick={() => openMeal("actual", type, undefined, selectedDate)}>기록하기</button>}</div>
+        const plans = state.meals.filter((m) => m.date === selectedDate && m.mealType === type && m.kind === "plan");
+        const actuals = state.meals.filter((m) => m.date === selectedDate && m.mealType === type && m.kind === "actual");
+        return <article key={type} className="meal-card editable-meal-card"><div><span>{mealLabels[type]}</span>{actuals.length > 0 && <b>기록 완료</b>}</div>
+          {plans.map((plan) => <EntryItem key={plan.id} label="계획" title={plan.title} record={() => openMeal("actual", type, plan, selectedDate)} edit={() => openMeal("plan", type, plan, selectedDate)} remove={() => deleteMeal(plan)} />)}
+          {actuals.map((actual) => <EntryItem key={actual.id} label="기록" title={actual.title} detail={`${actual.calories} kcal · 단백질 ${actual.protein}g`} edit={() => openMeal("actual", type, actual, selectedDate)} remove={() => deleteMeal(actual)} />)}
+          {!plans.length && !actuals.length && <p className="no-entry">아직 계획이나 기록이 없어요.</p>}
+          <div className="meal-add-actions">{!actuals.length && <button onClick={() => openMeal("plan", type, undefined, selectedDate)}>계획 추가</button>}<button onClick={() => openMeal("actual", type, undefined, selectedDate)}>{actuals.length ? "기록 추가" : "기록하기"}</button></div>
         </article>;
       })}</div>
     </section>
@@ -585,12 +595,16 @@ function WorkoutView({ state, today, openWorkout, deleteWorkout, openGoal }: { s
   const cells = monthCells(`${selectedMonth}-01`);
   const goal = state.workoutGoal ?? initialState.workoutGoal!;
   const cardio = weeklyCardio(state, today);
-  const openForDate = (kind: EntryKind) => openWorkout(kind, { id: "", date: selectedDate, kind, type: "유산소", title: "", minutes: 35, intensity: 5, heartRate: "", overlapsSteps: true, details: "" });
+  const openForDate = (kind: EntryKind) => openWorkout(kind, { id: "", date: selectedDate, kind, type: "유산소", title: "", minutes: 35, intensity: 5, heartRate: "", overlapsSteps: false, details: "" });
   const changeMonth = (month: string) => {
     setSelectedMonth(month);
     if (!selectedDate.startsWith(month)) setSelectedDate(`${month}-01`);
   };
-  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading"><div><span className="eyebrow">운동 해빗</span><MonthNavigator value={selectedMonth} onChange={changeMonth} /></div><div className="calendar-actions"><button className="ghost-button" onClick={() => openForDate("plan")}>계획</button><button className="primary-button" onClick={() => openForDate("actual")}>기록</button></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => { if (!date) return <span className="calendar-blank" key={`blank-${index}`} />; const dayEntries = state.workouts.filter((item) => item.date === date); return <button type="button" onClick={() => setSelectedDate(date)} key={date} className={`calendar-day workout-day ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b><span className="workout-marks">{dayEntries.slice(0, 3).map((item) => <WorkoutMark key={item.id} type={item.type} kind={item.kind} />)}</span></button>; })}</div><div className="calendar-legend workout-legend"><span><WorkoutMark type="PT" kind="actual" />PT 완료</span><span><WorkoutMark type="유산소" kind="actual" />개인운동 완료</span><span><WorkoutMark type="PT" kind="plan" />PT 계획</span><span><WorkoutMark type="유산소" kind="plan" />개인운동 계획</span></div></section>
+  const goToday = () => {
+    setSelectedMonth(today.slice(0, 7));
+    setSelectedDate(today);
+  };
+  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading"><div><span className="eyebrow">운동 해빗</span><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /></div><div className="calendar-actions"><button className="ghost-button" onClick={() => openForDate("plan")}>계획</button><button className="primary-button" onClick={() => openForDate("actual")}>기록</button></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => { if (!date) return <span className="calendar-blank" key={`blank-${index}`} />; const dayEntries = state.workouts.filter((item) => item.date === date); return <button type="button" onClick={() => setSelectedDate(date)} key={date} className={`calendar-day workout-day ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b><span className="workout-marks">{dayEntries.slice(0, 3).map((item) => <WorkoutMark key={item.id} type={item.type} kind={item.kind} />)}</span></button>; })}</div><div className="calendar-legend workout-legend"><span><WorkoutMark type="PT" kind="actual" />PT 완료</span><span><WorkoutMark type="유산소" kind="actual" />개인운동 완료</span><span><WorkoutMark type="PT" kind="plan" />PT 계획</span><span><WorkoutMark type="유산소" kind="plan" />개인운동 계획</span></div></section>
     <section className="workout-goal-block"><div className="workout-goal-heading"><h2>주간 목표</h2><button className="text-button" onClick={openGoal}>목표 설정</button></div><div className="metric-grid workout-metrics"><MetricCard label="개인 유산소" value={`${cardio.sessions} / ${goal.cardioSessions}`} unit="회" hint="최소 주간 목표" /><MetricCard label="누적시간" value={`${cardio.minutes} / ${goal.cardioMinutes}`} unit="분" hint="이번 주 목표" /></div></section>
     <section className="card"><CardTitle title="운동 계획·기록" aside={dateLabel(selectedDate)} />{entries.length ? <div className="timeline">{entries.map((entry) => <article key={entry.id}><span className={`timeline-dot ${entry.kind}`} /><div><small>{entry.kind === "plan" ? "계획" : "완료"} · {entry.type}</small><h3>{entry.title}</h3><p>{entry.minutes}분 · 강도 {typeof entry.intensity === "number" ? `${entry.intensity}/10` : entry.intensity || "미기록"}{entry.heartRate ? ` · 심박 ${entry.heartRate}` : ""}</p>{entry.overlapsSteps && <span className="overlap-badge">걸음 수 중복</span>}{entry.details && <em>{entry.details}</em>}<div className="entry-button-row">{entry.kind === "plan" && <button className="timeline-action" onClick={() => openWorkout("actual", entry)}>계획대로 기록</button>}<button className="timeline-action" onClick={() => openWorkout(entry.kind, entry)}>수정</button><button className="delete-text-button" onClick={() => deleteWorkout(entry)}>삭제</button></div></div></article>)}</div> : <EmptyState text="이날 운동 계획이나 기록이 없어요." action="운동 계획하기" onClick={() => openForDate("plan")} showIcon={false} />}</section>
     <section className="card"><CardTitle title="PT 빠른 기록" /><button className="secondary-button" onClick={() => openWorkout("actual", undefined, "PT")}>PT 내용 기록하기</button></section>
@@ -642,7 +656,7 @@ function NutrientBar({ label, value, min, max, unit, tone }: { label: string; va
 function MicroStat({ label, value, hint }: { label: string; value: string; hint: string }) { return <div className="micro-stat"><span>{label}</span><strong>{value}</strong><small>{hint}</small></div>; }
 function MetricCard({ label, value, unit, hint }: { label: string; value: string; unit: string; hint: string }) { return <article className="metric-card"><span>{label}</span><strong>{value}<small>{unit}</small></strong><p>{hint}</p></article>; }
 function EmptyState({ text, action, onClick, showIcon = true }: { text: string; action: string; onClick: () => void; showIcon?: boolean }) { return <div className={`empty-state ${showIcon ? "" : "without-icon"}`}>{showIcon && <span>○</span>}<p>{text}</p><button onClick={onClick}>{action}</button></div>; }
-function EntryItem({ label, title, detail, edit, remove }: { label: string; title: string; detail?: string; edit: () => void; remove: () => void }) { return <div className="entry-item"><div><small>{label}</small><strong>{title}</strong>{detail && <span>{detail}</span>}</div><div><button onClick={edit}>수정</button><button className="delete-text-button" onClick={remove}>삭제</button></div></div>; }
+function EntryItem({ label, title, detail, record, edit, remove }: { label: string; title: string; detail?: string; record?: () => void; edit: () => void; remove: () => void }) { return <div className="entry-item"><div><small>{label}</small><strong>{title}</strong>{detail && <span>{detail}</span>}</div><div>{record && <button onClick={record}>기록</button>}<button onClick={edit}>수정</button><button className="delete-text-button" onClick={remove}>삭제</button></div></div>; }
 
 function Sheet({ title, subtitle, close, children }: { title: string; subtitle?: string; close: () => void; children: React.ReactNode }) { return <div className="sheet-backdrop"><section className="sheet" role="dialog" aria-modal="true"><div className="sheet-handle" /><header><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div><button onClick={close} aria-label="닫기">×</button></header>{children}</section></div>; }
 
@@ -677,7 +691,7 @@ function BodySheet({ today, latest, draft, close, save }: { today: string; lates
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="field"><span>{label}</span>{children}</label>; }
 function MeasureField({ label, name, unit, previous, value, step = "0.1" }: { label: string; name: string; unit: string; previous?: number; value?: number; step?: string }) { return <label className="measure-field"><div><span>{label}</span>{previous !== undefined && <small>이전 측정 {previous}{unit}</small>}</div><div><input inputMode="decimal" type="number" step={step} min="0" name={name} defaultValue={value ?? previous} required /><b>{unit}</b></div></label>; }
 
-function MealSheet({ today, kind, plans, draft, presetType, close, save }: { today: string; kind: EntryKind; plans: AppState["meals"]; draft?: MealEntry; presetType?: MealType; close: () => void; save: (event: FormEvent<HTMLFormElement>, kind: EntryKind) => void }) { const hour = new Date().getHours(); const defaultType: MealType = draft?.mealType ?? presetType ?? (hour < 10 ? "breakfast" : hour < 15 ? "lunch" : "dinner"); const plan = plans.find((item) => item.kind === "plan" && item.mealType === defaultType); const editing = draft?.kind === kind; return <Sheet title={editing ? (kind === "plan" ? "식사 계획 수정" : "먹은 식사 수정") : kind === "plan" ? "식사 계획" : "먹은 식사 기록"} close={close}><form className="form-stack meal-form" onSubmit={(event) => save(event, kind)}><input type="hidden" name="editingId" value={editing ? draft.id : ""} /><div className="two-fields sheet-leading-fields"><Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><Field label="끼니"><select name="mealType" defaultValue={defaultType}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field></div><Field label={kind === "plan" ? "먹고 싶은 음식" : "먹은 음식"}><textarea className="meal-food-input" rows={2} name="title" defaultValue={draft?.title ?? (kind === "actual" ? plan?.title : "")} placeholder="예: 그릭요거트와 단백질바" required /></Field>{kind === "actual" && <><input type="hidden" name="nutritionSource" value="manual" /><div className="macro-grid"><Field label="칼로리"><input type="number" name="calories" min="0" defaultValue={draft?.calories || ""} placeholder="kcal" /></Field><Field label="단백질"><input type="number" name="protein" min="0" step="0.1" defaultValue={draft?.protein || ""} placeholder="g" /></Field><Field label="탄수화물"><input type="number" name="carbs" min="0" step="0.1" defaultValue={draft?.carbs || ""} placeholder="g" /></Field><Field label="지방"><input type="number" name="fat" min="0" step="0.1" defaultValue={draft?.fat || ""} placeholder="g" /></Field><Field label="당류"><input type="number" name="sugar" min="0" step="0.1" defaultValue={draft?.sugar || ""} placeholder="g" /></Field><Field label="식이섬유"><input type="number" name="fiber" min="0" step="0.1" defaultValue={draft?.fiber || ""} placeholder="g" /></Field></div></>}<button className="primary-button submit-button" type="submit">{editing ? "수정 저장" : kind === "plan" ? "계획 저장" : "식사 기록 저장"}</button></form></Sheet>; }
+function MealSheet({ today, kind, draft, presetType, close, save }: { today: string; kind: EntryKind; plans: AppState["meals"]; draft?: MealEntry; presetType?: MealType; close: () => void; save: (event: FormEvent<HTMLFormElement>, kind: EntryKind) => void }) { const hour = new Date().getHours(); const defaultType: MealType = draft?.mealType ?? presetType ?? (hour < 10 ? "breakfast" : hour < 15 ? "lunch" : "dinner"); const editing = draft?.kind === kind; return <Sheet title={editing ? (kind === "plan" ? "식사 계획 수정" : "먹은 식사 수정") : kind === "plan" ? "식사 계획" : "먹은 식사 기록"} close={close}><form className="form-stack meal-form" onSubmit={(event) => save(event, kind)}><input type="hidden" name="editingId" value={editing ? draft.id : ""} /><div className="two-fields sheet-leading-fields"><Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><Field label="끼니"><select name="mealType" defaultValue={defaultType}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field></div><Field label={kind === "plan" ? "먹고 싶은 음식" : "먹은 음식"}><textarea className="meal-food-input" rows={2} name="title" defaultValue={draft?.title ?? ""} placeholder="예: 무가당 그릭요거트 200g" required /></Field>{kind === "actual" && <><input type="hidden" name="nutritionSource" value="manual" /><div className="macro-grid"><Field label="칼로리"><input type="number" name="calories" min="0" defaultValue={draft?.calories || ""} placeholder="kcal" /></Field><Field label="단백질"><input type="number" name="protein" min="0" step="0.1" defaultValue={draft?.protein || ""} placeholder="g" /></Field><Field label="탄수화물"><input type="number" name="carbs" min="0" step="0.1" defaultValue={draft?.carbs || ""} placeholder="g" /></Field><Field label="지방"><input type="number" name="fat" min="0" step="0.1" defaultValue={draft?.fat || ""} placeholder="g" /></Field><Field label="당류"><input type="number" name="sugar" min="0" step="0.1" defaultValue={draft?.sugar || ""} placeholder="g" /></Field><Field label="식이섬유"><input type="number" name="fiber" min="0" step="0.1" defaultValue={draft?.fiber || ""} placeholder="g" /></Field></div></>}<button className="primary-button submit-button" type="submit">{editing ? "수정 저장" : kind === "plan" ? "계획 저장" : "식사 기록 저장"}</button></form></Sheet>; }
 
 function WeeklyPlanSheet({ state, today, close, save }: { state: AppState; today: string; close: () => void; save: (start: string, draft: WeeklyDraft) => void }) {
   const initialStart = weekStart(today, 1);
@@ -694,11 +708,16 @@ function WeeklyPlanSheet({ state, today, close, save }: { state: AppState; today
     setActiveIndex(0);
     setDraft(createWeeklyDraft(state, next));
   };
-  const updateMeal = (mealType: MealType, title: string) => setDraft((current) => ({ ...current, [activeDate]: { ...current[activeDate], meals: { ...current[activeDate].meals, [mealType]: title } } }));
+  const updateMeal = (mealType: MealType, index: number, title: string) => setDraft((current) => ({ ...current, [activeDate]: { ...current[activeDate], meals: { ...current[activeDate].meals, [mealType]: current[activeDate].meals[mealType].map((item, itemIndex) => itemIndex === index ? title : item) } } }));
+  const addMeal = (mealType: MealType) => setDraft((current) => ({ ...current, [activeDate]: { ...current[activeDate], meals: { ...current[activeDate].meals, [mealType]: [...current[activeDate].meals[mealType], ""] } } }));
+  const removeMeal = (mealType: MealType, index: number) => setDraft((current) => {
+    const remaining = current[activeDate].meals[mealType].filter((_, itemIndex) => itemIndex !== index);
+    return { ...current, [activeDate]: { ...current[activeDate], meals: { ...current[activeDate].meals, [mealType]: remaining.length ? remaining : [""] } } };
+  });
   const updateWorkout = (workoutId: string, patch: Partial<WeeklyWorkoutDraft>) => setDraft((current) => ({ ...current, [activeDate]: { ...current[activeDate], workouts: current[activeDate].workouts.map((item) => item.id === workoutId ? { ...item, ...patch } : item) } }));
-  const addWorkout = () => setDraft((current) => ({ ...current, [activeDate]: { ...current[activeDate], workouts: [...current[activeDate].workouts, { id: id("weekly-workout"), type: "유산소", title: "", minutes: "35", intensity: 5, heartRate: "", overlapsSteps: true, details: "" }] } }));
+  const addWorkout = () => setDraft((current) => ({ ...current, [activeDate]: { ...current[activeDate], workouts: [...current[activeDate].workouts, { id: id("weekly-workout"), type: "유산소", title: "", minutes: "35", intensity: 5, heartRate: "", overlapsSteps: false, details: "" }] } }));
   const removeWorkout = (workoutId: string) => setDraft((current) => ({ ...current, [activeDate]: { ...current[activeDate], workouts: current[activeDate].workouts.filter((item) => item.id !== workoutId) } }));
-  const hasPlan = (date: string) => Object.values(draft[date].meals).some(Boolean) || draft[date].workouts.length > 0;
+  const hasPlan = (date: string) => Object.values(draft[date].meals).some((items) => items.some((item) => item.trim())) || draft[date].workouts.some((item) => item.title.trim());
 
   return <Sheet title="주간 계획하기" close={close}>
     <div className="week-plan-nav"><button type="button" onClick={() => loadWeek(addDays(start, -7))} aria-label="이전 주">‹</button><strong>{start.replaceAll("-", ".")} – {addDays(start, 6).replaceAll("-", ".")}</strong><button type="button" onClick={() => loadWeek(addDays(start, 7))} aria-label="다음 주">›</button></div>
@@ -708,7 +727,7 @@ function WeeklyPlanSheet({ state, today, close, save }: { state: AppState; today
     <div className="weekly-editor">
       <div className="weekly-editor-title"><div><span className="eyebrow">{dayNames[activeIndex]}요일</span><h3>{dateLabel(activeDate)}</h3></div></div>
       <h4>식단 계획</h4>
-      <div className="weekly-meal-grid">{(Object.keys(mealLabels) as MealType[]).map((mealType) => <Field key={mealType} label={mealLabels[mealType]}><input value={day.meals[mealType]} onChange={(event) => updateMeal(mealType, event.target.value)} placeholder="음식 종류" /></Field>)}</div>
+      <div className="weekly-meal-grid">{(Object.keys(mealLabels) as MealType[]).map((mealType) => <div className="weekly-meal-group" key={mealType}><div className="weekly-meal-heading"><strong>{mealLabels[mealType]}</strong><button type="button" onClick={() => addMeal(mealType)}>+ 음식 추가</button></div><div className="weekly-meal-items">{day.meals[mealType].map((title, index) => <div className={`weekly-meal-item ${day.meals[mealType].length === 1 ? "single" : ""}`} key={`${mealType}-${index}`}><input value={title} onChange={(event) => updateMeal(mealType, index, event.target.value)} placeholder="음식 종류" />{day.meals[mealType].length > 1 && <button type="button" onClick={() => removeMeal(mealType, index)} aria-label={`${mealLabels[mealType]} 음식 ${index + 1} 삭제`}>×</button>}</div>)}</div></div>)}</div>
       <div className="weekly-workout-heading"><h4>운동 계획</h4><button type="button" onClick={addWorkout}>+ 운동 추가</button></div>
       <div className="weekly-workouts">{day.workouts.map((workout, index) => <article key={workout.id} className="weekly-workout-card">
         <div className="weekly-workout-card-title"><strong>운동 {index + 1}</strong><button type="button" className="delete-text-button" onClick={() => removeWorkout(workout.id)}>삭제</button></div>
