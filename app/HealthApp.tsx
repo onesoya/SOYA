@@ -85,6 +85,7 @@ function MonthNavigator({ value, onChange }: { value: string; onChange: (value: 
     <button type="button" className="month-arrow" onClick={() => onChange(shiftMonth(value, -1))} aria-label="이전 달">‹</button>
     <button type="button" className="month-current" onClick={openPicker} aria-expanded={open}>{monthLabel(`${value}-01`)} <span>▼</span></button>
     <button type="button" className="month-arrow" onClick={() => onChange(shiftMonth(value, 1))} aria-label="다음 달">›</button>
+    <button type="button" className="month-today" onClick={() => { onChange(todayKey().slice(0, 7)); setOpen(false); }} aria-label="오늘이 있는 달로 이동">TODAY</button>
     {open && <div className="month-panel">
       <div className="year-row"><button type="button" onClick={() => setPickerYear((year) => year - 1)} aria-label="이전 연도">‹</button><strong>{pickerYear}년</strong><button type="button" onClick={() => setPickerYear((year) => year + 1)} aria-label="다음 연도">›</button></div>
       <div className="month-options">{Array.from({ length: 12 }, (_, index) => {

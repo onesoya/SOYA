@@ -498,11 +498,12 @@ h1, h2, h3, strong, b { font-weight: 700; }
 }
 .calendar-heading > div:first-child { display: grid; justify-items: start; }
 .calendar-heading h2 { margin: 5px 0 0; font-size: 22px; }
-.month-navigator { position: relative; display: grid; grid-template-columns: 30px minmax(128px, auto) 30px; align-items: center; gap: 4px; margin-top: 5px; }
+.month-navigator { position: relative; display: grid; grid-template-columns: 30px minmax(128px, auto) 30px auto; align-items: center; gap: 4px; margin-top: 5px; }
 .month-navigator > button, .year-row button, .month-options button { border: 1px solid var(--line); background: var(--paper); color: var(--ink); cursor: pointer; }
 .month-arrow { width: 30px; height: 30px; padding: 0; font-size: 20px; line-height: 1; }
 .month-current { min-height: 30px; padding: 0 7px; font-size: 18px; font-weight: 800; white-space: nowrap; }
 .month-current span { margin-left: 4px; color: var(--coral); font-size: 8px; vertical-align: middle; }
+.month-today { height: 30px; padding: 0 7px; border-color: var(--coral) !important; color: var(--coral) !important; font-size: 8px; font-weight: 900; }
 .month-panel { position: absolute; z-index: 30; top: calc(100% + 8px); left: 0; width: min(270px, calc(100vw - 60px)); padding: 11px; border: 2px solid var(--ink); background: var(--paper); box-shadow: 4px 4px 0 rgba(51, 46, 43, .18); }
 .year-row { display: grid; grid-template-columns: 32px 1fr 32px; align-items: center; gap: 7px; text-align: center; }
 .year-row button { width: 32px; height: 30px; font-size: 18px; }
@@ -661,7 +662,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .pixel-calendar-card { padding: 18px 14px 16px; }
   .calendar-heading { align-items: center; flex-wrap: wrap; }
   .calendar-heading h2 { font-size: 18px; }
-  .month-navigator { grid-template-columns: 28px minmax(112px, auto) 28px; }
+  .month-navigator { grid-template-columns: 28px minmax(112px, auto) 28px auto; }
   .month-arrow { width: 28px; height: 28px; }
   .month-current { min-height: 28px; font-size: 15px; }
   .calendar-day, .calendar-blank { min-height: 46px; }
