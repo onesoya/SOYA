@@ -1,5 +1,20 @@
 export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 export type EntryKind = "plan" | "actual";
+export type FoodLibraryCategory = "product" | "measured_recipe" | "saved_recipe" | "general" | "restaurant";
+
+export type FoodLibraryItem = {
+  id: string;
+  name: string;
+  category: FoodLibraryCategory;
+  servingLabel: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  sugar: number;
+  fiber: number;
+  confidence: "높음" | "보통" | "추정" | "낮음";
+};
 
 export type BodyRecord = {
   id: string;
@@ -28,6 +43,9 @@ export type MealEntry = {
   sugar: number;
   fiber: number;
   confidence: "높음" | "보통" | "추정" | "낮음";
+  foodLibraryId?: string;
+  servings?: number;
+  servingLabel?: string;
   skipped?: boolean;
 };
 
@@ -83,6 +101,7 @@ export type AppState = {
     cardioMinutes: number;
   };
   bodyRecords: BodyRecord[];
+  foodLibrary?: FoodLibraryItem[];
   meals: MealEntry[];
   workouts: WorkoutEntry[];
   cycles: CycleEntry[];
@@ -126,6 +145,7 @@ export const initialState: AppState = {
     { id: "body-20260813", date: "2026-08-13", time: "07:21", weight: 61.8, skeletalMuscle: 23.3, bodyFatMass: 18.8, bodyFatRate: 30.4, visceralFat: 8, measurementTiming: "아침 공복", device: "InBody Dial H30", condition: "아침 공복 · InBody Dial H30" },
     { id: "body-20260812", date: "2026-08-12", time: "07:18", weight: 62.0, skeletalMuscle: 23.2, bodyFatMass: 19.0, bodyFatRate: 30.6, visceralFat: 8, measurementTiming: "아침 공복", device: "InBody Dial H30", condition: "아침 공복 · InBody Dial H30" },
   ],
+  foodLibrary: [],
   meals: [
     { id: "plan-b", date: "2026-08-14", mealType: "breakfast", kind: "plan", title: "무가당 그릭요거트와 단백질바", calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, confidence: "높음" },
     { id: "actual-b", date: "2026-08-14", mealType: "breakfast", kind: "actual", title: "무가당 그릭요거트 200g, 단백질바", calories: 365, protein: 31, carbs: 34, fat: 12, sugar: 10, fiber: 7, confidence: "높음" },
