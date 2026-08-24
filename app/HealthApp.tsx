@@ -67,12 +67,32 @@ function monthCells(anchor: string) {
   return [...Array(firstWeekday).fill(null), ...Array.from({ length: days }, (_, index) => `${year}-${String(month).padStart(2, "0")}-${String(index + 1).padStart(2, "0")}`)] as (string | null)[];
 }
 
-function monthOptions(anchor: string, count = 36) {
-  const date = new Date(`${anchor.slice(0, 7)}-01T12:00:00`);
-  return Array.from({ length: count }, (_, index) => {
-    const value = new Date(date.getFullYear(), date.getMonth() - index, 1);
-    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`;
-  });
+function shiftMonth(value: string, amount: number) {
+  const [year, month] = value.split("-").map(Number);
+  const next = new Date(year, month - 1 + amount, 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function MonthNavigator({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [pickerYear, setPickerYear] = useState(Number(value.slice(0, 4)));
+  const openPicker = () => {
+    setPickerYear(Number(value.slice(0, 4)));
+    setOpen((current) => !current);
+  };
+
+  return <div className="month-navigator">
+    <button type="button" className="month-arrow" onClick={() => onChange(shiftMonth(value, -1))} aria-label="이전 달">‹</button>
+    <button type="button" className="month-current" onClick={openPicker} aria-expanded={open}>{monthLabel(`${value}-01`)} <span>▼</span></button>
+    <button type="button" className="month-arrow" onClick={() => onChange(shiftMonth(value, 1))} aria-label="다음 달">›</button>
+    {open && <div className="month-panel">
+      <div className="year-row"><button type="button" onClick={() => setPickerYear((year) => year - 1)} aria-label="이전 연도">‹</button><strong>{pickerYear}년</strong><button type="button" onClick={() => setPickerYear((year) => year + 1)} aria-label="다음 연도">›</button></div>
+      <div className="month-options">{Array.from({ length: 12 }, (_, index) => {
+        const month = `${pickerYear}-${String(index + 1).padStart(2, "0")}`;
+        return <button type="button" className={month === value ? "active" : ""} key={month} onClick={() => { onChange(month); setOpen(false); }}>{index + 1}월</button>;
+      })}</div>
+    </div>}
+  </div>;
 }
 
 function weeklyCardio(state: AppState, anchor: string) {
@@ -195,7 +215,7 @@ export function HealthApp() {
     if (plannedWorkout && !actualWorkouts.length && hour >= 17 && !state.skippedTasks.includes(`${today}:workout`)) {
       return { type: "workout" as const, eyebrow: "오늘의 운동", title: "계획한 운동을 마쳤나요?", detail: `${plannedWorkout.title} · ${plannedWorkout.minutes}분` };
     }
-    return { type: "done" as const, eyebrow: "오늘 기록", title: "오늘 기록을 모두 마쳤어요", detail: "필요한 기록이 생기면 아래 + 버튼으로 언제든 추가할 수 있어요." };
+    return { type: "done" as const, eyebrow: "오늘 기록", title: "오늘 기록을 모두 마쳤어요", detail: "필요한 기록이 생기면\n아래 + 버튼으로 언제든 추가할 수 있어요" };
   }, [actualWorkouts.length, mealActual, mealPlan, plannedWorkout, state.skippedTasks, today, todayBody]);
 
   const openNextAction = () => {
@@ -437,7 +457,7 @@ function FoodView({ state, today, openMeal }: { state: AppState; today: string; 
     if (totals.calories >= state.nutritionGoal.caloriesMin && totals.calories <= state.nutritionGoal.caloriesMax && totals.protein >= state.nutritionGoal.proteinMin && totals.sugar <= state.nutritionGoal.sugarMax && totals.fiber >= state.nutritionGoal.fiberMin) return "balanced";
     return "partial";
   };
-  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading"><div><span className="eyebrow">식단 밸런스</span><label className="month-picker"><span>{monthLabel(`${selectedMonth}-01`)}</span><select value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} aria-label="확인할 달 선택">{monthOptions(today).map((month) => <option value={month} key={month}>{monthLabel(`${month}-01`)}</option>)}</select></label></div><button className="primary-button" onClick={() => openMeal("plan")}>식사 계획</button></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <div key={date} className={`calendar-day ${mealStatus(date)} ${date === today ? "today" : ""}`}><b>{Number(date.slice(-2))}</b></div> : <span className="calendar-blank" key={`blank-${index}`} />)}</div><div className="calendar-legend"><span><i className="balanced" />잘했어요</span><span><i className="partial" />괜찮아요</span><span><i className="attention" />아쉬워요</span></div></section>
+  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading"><div><span className="eyebrow">식단 밸런스</span><MonthNavigator value={selectedMonth} onChange={setSelectedMonth} /></div><button className="primary-button" onClick={() => openMeal("plan")}>식사 계획</button></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <div key={date} className={`calendar-day ${mealStatus(date)} ${date === today ? "today" : ""}`}><b>{Number(date.slice(-2))}</b></div> : <span className="calendar-blank" key={`blank-${index}`} />)}</div><div className="calendar-legend"><span><i className="balanced" />잘했어요</span><span><i className="partial" />괜찮아요</span><span><i className="attention" />아쉬워요</span></div></section>
     <section className="card"><CardTitle title={`${dateLabel(today)} 식단`} aside={<button className="text-button" onClick={() => openMeal("actual")}>먹은 식사 추가</button>} />
       <div className="meal-cards">{(["breakfast", "lunch", "dinner", "snack"] as MealType[]).map((type) => { const plan = state.meals.find((m) => m.date === today && m.mealType === type && m.kind === "plan"); const actual = state.meals.find((m) => m.date === today && m.mealType === type && m.kind === "actual"); return <article key={type} className="meal-card"><div><span>{mealLabels[type]}</span>{actual && <b>기록 완료</b>}</div><h3>{actual?.title ?? plan?.title ?? "아직 계획 없음"}</h3>{actual && <p>{actual.calories} kcal · 단백질 {actual.protein}g</p>}<button onClick={() => openMeal(actual || plan ? "actual" : "plan", type)}>{actual ? "수정하기" : plan ? "계획 불러오기" : "계획하기"}</button></article>; })}</div>
     </section>
@@ -445,11 +465,12 @@ function FoodView({ state, today, openMeal }: { state: AppState; today: string; 
 }
 
 function WorkoutView({ state, today, openWorkout, openGoal }: { state: AppState; today: string; openWorkout: (kind: EntryKind, draft?: WorkoutEntry, presetType?: WorkoutEntry["type"]) => void; openGoal: () => void }) {
+  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
   const entries = state.workouts.filter((item) => item.date === today);
-  const cells = monthCells(today);
+  const cells = monthCells(`${selectedMonth}-01`);
   const goal = state.workoutGoal ?? initialState.workoutGoal!;
   const cardio = weeklyCardio(state, today);
-  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading"><div><span className="eyebrow">운동 해빗</span><h2>{monthLabel(today)}</h2></div><div className="calendar-actions"><button className="ghost-button" onClick={() => openWorkout("plan")}>계획</button><button className="primary-button" onClick={() => openWorkout("actual")}>기록</button></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => { if (!date) return <span className="calendar-blank" key={`blank-${index}`} />; const dayEntries = state.workouts.filter((item) => item.date === date); return <div key={date} className={`calendar-day workout-day ${date === today ? "today" : ""}`}><b>{Number(date.slice(-2))}</b><span className="workout-marks">{dayEntries.slice(0, 3).map((item) => <WorkoutMark key={item.id} type={item.type} kind={item.kind} />)}</span></div>; })}</div><div className="calendar-legend workout-legend"><span><WorkoutMark type="PT" kind="actual" />PT 완료</span><span><WorkoutMark type="유산소" kind="actual" />개인운동 완료</span><span><WorkoutMark type="PT" kind="plan" />PT 계획</span><span><WorkoutMark type="유산소" kind="plan" />개인운동 계획</span></div></section>
+  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading"><div><span className="eyebrow">운동 해빗</span><MonthNavigator value={selectedMonth} onChange={setSelectedMonth} /></div><div className="calendar-actions"><button className="ghost-button" onClick={() => openWorkout("plan")}>계획</button><button className="primary-button" onClick={() => openWorkout("actual")}>기록</button></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => { if (!date) return <span className="calendar-blank" key={`blank-${index}`} />; const dayEntries = state.workouts.filter((item) => item.date === date); return <div key={date} className={`calendar-day workout-day ${date === today ? "today" : ""}`}><b>{Number(date.slice(-2))}</b><span className="workout-marks">{dayEntries.slice(0, 3).map((item) => <WorkoutMark key={item.id} type={item.type} kind={item.kind} />)}</span></div>; })}</div><div className="calendar-legend workout-legend"><span><WorkoutMark type="PT" kind="actual" />PT 완료</span><span><WorkoutMark type="유산소" kind="actual" />개인운동 완료</span><span><WorkoutMark type="PT" kind="plan" />PT 계획</span><span><WorkoutMark type="유산소" kind="plan" />개인운동 계획</span></div></section>
     <section className="workout-goal-block"><div className="workout-goal-heading"><h2>주간 목표</h2><button className="text-button" onClick={openGoal}>목표 설정</button></div><div className="metric-grid workout-metrics"><MetricCard label="개인 유산소" value={`${cardio.sessions} / ${goal.cardioSessions}`} unit="회" hint="최소 주간 목표" /><MetricCard label="누적시간" value={`${cardio.minutes} / ${goal.cardioMinutes}`} unit="분" hint="이번 주 목표" /></div></section>
     <section className="card"><CardTitle title="오늘 운동" aside={dateLabel(today)} />{entries.length ? <div className="timeline">{entries.map((entry) => <article key={entry.id}><span className={`timeline-dot ${entry.kind}`} /><div><small>{entry.kind === "plan" ? "계획" : "완료"} · {entry.type}</small><h3>{entry.title}</h3><p>{entry.minutes}분 · 강도 {typeof entry.intensity === "number" ? `${entry.intensity}/10` : entry.intensity || "미기록"}{entry.heartRate ? ` · 심박 ${entry.heartRate}` : ""}</p>{entry.overlapsSteps && <span className="overlap-badge">걸음 수 중복</span>}{entry.details && <em>{entry.details}</em>}<button className="timeline-action" onClick={() => openWorkout("actual", entry)}>{entry.kind === "plan" ? "계획대로 기록" : "수정"}</button></div></article>)}</div> : <EmptyState text="오늘 운동 계획이나 기록이 없어요." action="운동 계획하기" onClick={() => openWorkout("plan")} showIcon={false} />}</section>
     <section className="card"><CardTitle title="PT 빠른 기록" /><button className="secondary-button" onClick={() => openWorkout("actual", undefined, "PT")}>PT 내용 기록하기</button></section>
