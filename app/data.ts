@@ -78,6 +78,10 @@ export type AppState = {
     sugarMax: number;
     fiberMin: number;
   };
+  workoutGoal?: {
+    cardioSessions: number;
+    cardioMinutes: number;
+  };
   bodyRecords: BodyRecord[];
   meals: MealEntry[];
   workouts: WorkoutEntry[];
@@ -112,6 +116,10 @@ export const initialState: AppState = {
     fatMax: 60,
     sugarMax: 50,
     fiberMin: 25,
+  },
+  workoutGoal: {
+    cardioSessions: 2,
+    cardioMinutes: 90,
   },
   bodyRecords: [
     { id: "body-20260814", date: "2026-08-14", time: "09:06", weight: 61.9, skeletalMuscle: 23.3, bodyFatMass: 18.9, bodyFatRate: 30.5, visceralFat: 8, measurementTiming: "아침 공복", device: "InBody Dial H30", condition: "아침 공복 · InBody Dial H30" },

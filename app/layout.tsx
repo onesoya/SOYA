@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "galmuri/dist/galmuri.css";
 import "./globals.css";
 
@@ -17,6 +17,12 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: "/tiger-icon-180.png", sizes: "180x180", type: "image/png" }],
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
