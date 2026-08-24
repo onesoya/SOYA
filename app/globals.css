@@ -272,8 +272,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .saved-food-results strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
 .saved-food-results span { grid-column: 1; color: var(--muted); font-size: 7px; }
 .saved-food-results em { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--coral); font-size: 7px; font-style: normal; font-weight: 850; }
+.saved-food-empty { margin: 4px 0; padding: 10px; color: var(--muted); font-size: 9px; text-align: center; }
+.amount-with-unit { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 42px; align-items: center; border: 1px solid #827568; background: white; box-shadow: 3px 3px 0 rgba(51, 46, 43, .12); }
+.amount-with-unit input { min-width: 0; border: 0 !important; box-shadow: none !important; }
+.amount-with-unit b { color: var(--muted); font-size: 9px; text-align: center; }
+.library-mode-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 16px; border: 1px solid var(--ink); }
+.library-mode-tabs button { min-height: 42px; border: 0; background: var(--paper); color: var(--muted); font-size: 10px; font-weight: 850; cursor: pointer; }
+.library-mode-tabs button + button { border-left: 1px solid var(--ink); }
+.library-mode-tabs button.active { background: var(--coral); color: white; }
 .food-library-form { padding-bottom: 18px; border-bottom: 2px solid var(--line); }
 .food-library-form-actions { display: flex; justify-content: flex-end; gap: 9px; }
+.food-library-form-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.food-set-components { display: grid; gap: 10px; }
+.food-set-row { min-width: 0; padding: 10px; border: 1px solid var(--line); background: var(--cream); display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, .8fr) auto; align-items: end; gap: 8px; }
+.food-set-row .delete-text-button { min-height: 48px; padding: 0 5px; }
+.food-set-add { min-height: 40px; border: 1px dashed var(--coral); background: var(--paper); color: var(--coral); font-size: 9px; font-weight: 850; cursor: pointer; }
+.food-set-total { padding: 12px 14px; border: 1px solid var(--ink); background: var(--cream); display: flex; justify-content: space-between; gap: 12px; }
+.food-set-total span { color: var(--muted); font-size: 9px; }
+.food-set-total strong { font-size: 10px; text-align: right; }
 .food-library-list { display: grid; margin-top: 16px; }
 .food-library-list > p { margin: 10px 0 0; color: var(--muted); font-size: 9px; text-align: center; }
 .food-library-list article { padding: 13px 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
@@ -362,6 +378,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .macro-grid { grid-template-columns: 1fr 1fr; }
   .measure-field > div:last-child { min-width: 120px; }
   .measure-field input { width: 88px; }
+  .food-set-row { grid-template-columns: minmax(0, 1fr) minmax(110px, .65fr); }
+  .food-set-row .delete-text-button { grid-column: 1 / -1; min-height: 28px; justify-self: end; }
 }
 
 /* Pixel tiger theme */

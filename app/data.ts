@@ -1,19 +1,28 @@
 export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 export type EntryKind = "plan" | "actual";
-export type FoodLibraryCategory = "product" | "measured_recipe" | "saved_recipe" | "general" | "restaurant";
+export type FoodUnit = "g" | "kg" | "개" | "인분";
+
+export type FoodSetComponent = {
+  foodId: string;
+  amount: number;
+};
 
 export type FoodLibraryItem = {
   id: string;
   name: string;
-  category: FoodLibraryCategory;
-  servingLabel: string;
+  kind?: "food" | "set";
+  baseAmount?: number;
+  unit?: FoodUnit;
+  components?: FoodSetComponent[];
+  servingLabel?: string;
   calories: number;
   protein: number;
   carbs: number;
   fat: number;
   sugar: number;
   fiber: number;
-  confidence: "높음" | "보통" | "추정" | "낮음";
+  category?: "product" | "measured_recipe" | "saved_recipe" | "general" | "restaurant";
+  confidence?: "높음" | "보통" | "추정" | "낮음";
 };
 
 export type BodyRecord = {
@@ -42,9 +51,10 @@ export type MealEntry = {
   fat: number;
   sugar: number;
   fiber: number;
-  confidence: "높음" | "보통" | "추정" | "낮음";
+  confidence?: "높음" | "보통" | "추정" | "낮음";
   foodLibraryId?: string;
   servings?: number;
+  quantity?: number;
   servingLabel?: string;
   skipped?: boolean;
 };
