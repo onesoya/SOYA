@@ -1005,7 +1005,6 @@ function MenstrualView({ state, today, openRecord }: { state: AppState; today: s
     <section className="card menstrual-day-detail"><CardTitle title={dateLabel(selectedDate)} aside={<button className="text-button" onClick={() => openRecord(selectedDate)}>{selected ? "수정" : "기록하기"}</button>} />
       {selected ? <><div className="menstrual-summary"><strong>{selected.state}</strong>{selected.flow && selected.flow !== "없음" && <span>월경량 {selected.flow}</span>}{selected.pain && selected.pain !== "없음" && <span>월경통 {selected.pain}</span>}{(selected.symptoms ?? []).map((symptom) => <span key={symptom}>{symptom}</span>)}</div><div className="menstrual-detail-grid"><div><span>에너지</span><strong>{selected.energy ? conditionLabels[selected.energy - 1] : "-"}</strong></div><div><span>식욕</span><strong>{selected.appetite ? conditionLabels[selected.appetite - 1] : "-"}</strong></div>{(selected.sexCount ?? 0) > 0 && <div><span>사랑 기록</span><strong>{selected.sexCount}회 · {selected.contraception}</strong></div>}</div>{selected.note && <p className="menstrual-note">{selected.note}</p>}</> : <EmptyState text="이날의 월경과 컨디션 기록이 없어요." action="기록하기" onClick={() => openRecord(selectedDate)} showIcon={false} />}
     </section>
-    <p className="prediction-note">꽃무늬는 최근 월경 기록으로 계산한 예상 가임기예요. 피임이나 임신 판단의 확정 기준으로 사용할 수는 없어요.</p>
   </div>;
 }
 
@@ -1498,7 +1497,7 @@ function CycleSheet({ today, draft, previous, close, save, remove }: { today: st
   return <Sheet title="월경·컨디션 기록" close={close}><form className="form-stack" onSubmit={save}>
     <input type="hidden" name="editingId" value={draft?.id ?? ""} />
     <Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field>
-    <Field label="오늘 상태"><select name="state" defaultValue={draft?.state ?? previous?.state ?? "없음"}><option>없음</option><option>갈색 출혈</option><option>본 출혈</option><option>부정출혈</option></select></Field>
+    <Field label="오늘 출혈 상태"><select name="state" defaultValue={draft?.state ?? previous?.state ?? "없음"}><option>없음</option><option>갈색 출혈</option><option>본 출혈</option><option>부정출혈</option></select></Field>
     <div className="two-fields"><Field label="월경량"><select name="flow" defaultValue={draft?.flow ?? previous?.flow ?? "없음"}><option>없음</option><option>소량</option><option>보통</option><option>많음</option></select></Field><Field label="월경통"><select name="pain" defaultValue={draft?.pain ?? "없음"}><option>없음</option><option>약함</option><option>보통</option><option>심함</option></select></Field></div>
     <div className="two-fields"><Field label="에너지"><select name="energy" defaultValue={draft?.energy ?? 3}>{conditionLabels.map((label, index) => <option value={index + 1} key={label}>{label}</option>)}</select></Field><Field label="식욕"><select name="appetite" defaultValue={draft?.appetite ?? 3}>{conditionLabels.map((label, index) => <option value={index + 1} key={label}>{label}</option>)}</select></Field></div>
     <fieldset className="cycle-check-group"><legend>오늘 느낀 증상</legend><div>{symptoms.map((symptom) => <label key={symptom}><input type="checkbox" name="symptoms" value={symptom} defaultChecked={draft?.symptoms?.includes(symptom)} /><span>{symptom}</span></label>)}</div></fieldset>
