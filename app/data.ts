@@ -30,6 +30,8 @@ export type FoodLibraryItem = {
 export type MealFoodComponent = {
   id: string;
   foodLibraryId?: string;
+  dataSource?: "mfds" | "manual";
+  sourceCode?: string;
   name: string;
   quantity?: number;
   unit?: FoodUnit;
