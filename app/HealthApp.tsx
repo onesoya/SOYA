@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, isValidElement, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AppState,
   BodyRecord,
@@ -123,6 +123,16 @@ const number = (value: FormDataEntryValue | null) => Number(value || 0);
 const dateLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(new Date(`${value}T12:00:00`));
 const monthLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(new Date(`${value.slice(0, 7)}-01T12:00:00`));
 const signed = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
+
+function cycleSummary(entry: CycleEntry) {
+  const details = [
+    entry.state,
+    entry.flow && entry.flow !== "없음" ? `양 ${entry.flow}` : "",
+    entry.pain && entry.pain !== "없음" ? `통증 ${entry.pain}` : "",
+    ...(entry.symptoms ?? []),
+  ].filter(Boolean);
+  return details.join(" · ");
+}
 
 function monthCells(anchor: string) {
   const [year, month] = anchor.split("-").map(Number);
@@ -661,6 +671,12 @@ export function HealthApp() {
     setModal(null);
   };
 
+  const deleteCycle = (entry: CycleEntry) => {
+    if (!window.confirm(`${entry.date} 생리·컨디션 기록을 삭제할까요?`)) return;
+    commit((current) => ({ ...current, cycles: current.cycles.filter((item) => item.id !== entry.id) }));
+    setModal(null);
+  };
+
   const saveWeeklyPlan = (start: string, draft: WeeklyDraft) => {
     const dates = new Set(weekDates(start));
     const meals: MealEntry[] = [];
@@ -689,8 +705,21 @@ export function HealthApp() {
   const saveCycle = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const cycle: CycleEntry = { id: id("cycle"), date: String(data.get("date")), state: String(data.get("state")) as CycleEntry["state"], note: String(data.get("note")) };
-    commit((current) => ({ ...current, cycles: [...current.cycles.filter((item) => item.date !== cycle.date), cycle] }));
+    const editingId = String(data.get("editingId") ?? "");
+    const cycle: CycleEntry = {
+      id: editingId || id("cycle"),
+      date: String(data.get("date")),
+      state: String(data.get("state")) as CycleEntry["state"],
+      flow: String(data.get("flow")) as CycleEntry["flow"],
+      pain: String(data.get("pain")) as CycleEntry["pain"],
+      energy: number(data.get("energy")),
+      appetite: number(data.get("appetite")),
+      symptoms: data.getAll("symptoms").map(String),
+      sexCount: number(data.get("sexCount")),
+      contraception: String(data.get("contraception")) as CycleEntry["contraception"],
+      note: String(data.get("note")),
+    };
+    commit((current) => ({ ...current, cycles: [...current.cycles.filter((item) => item.id !== editingId && item.date !== cycle.date), cycle] }));
     setModal(null);
   };
 
@@ -742,7 +771,7 @@ export function HealthApp() {
       {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={() => { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); setModal(null); }} save={saveWorkout} />}
       {modal === "workout-goal" && <WorkoutGoalSheet goal={state.workoutGoal ?? initialState.workoutGoal!} close={() => setModal(null)} save={saveWorkoutGoal} />}
       {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} close={() => setModal(null)} save={saveWeeklyPlan} />}
-      {modal === "cycle" && <CycleSheet today={today} close={() => setModal(null)} save={saveCycle} />}
+      {modal === "cycle" && <CycleSheet today={today} draft={state.cycles.find((item) => item.date === today)} close={() => setModal(null)} save={saveCycle} remove={deleteCycle} />}
       {modal === "consultation-detail" && selectedConsultation && <ConsultationDetailSheet consultation={selectedConsultation} close={() => { setSelectedConsultation(undefined); setModal(null); }} remove={() => deleteConsultation(selectedConsultation)} />}
     </div>
   );
@@ -800,7 +829,7 @@ function TodayView(props: TodayViewProps) {
         {!travelToday && <RecordRow label="인바디" detail={todayBody ? `${todayBody.bodyFatMass}kg 체지방 · ${todayBody.skeletalMuscle}kg 골격근` : "아직 기록하지 않음"} done={Boolean(todayBody)} onClick={() => setModal("body")} />}
         {(["breakfast", "lunch", "dinner"] as MealType[]).map((type) => { const actual = mealActual(type); const plan = mealPlan(type); return <RecordRow key={type} label={mealLabels[type]} detail={actual ? actual.title : plan ? `계획 · ${plan.title}` : "아직 기록하지 않음"} done={Boolean(actual)} onClick={() => openMeal("actual", type, actual ?? plan, today)} />; })}
         {plannedWorkout && <RecordRow label="운동" detail={actualWorkouts[0]?.title ?? `계획 · ${plannedWorkout.title}`} done={actualWorkouts.length > 0} onClick={() => openWorkout("actual", plannedWorkout)} />}
-        {cycle && <RecordRow label="몸 상태" detail={cycle.state} done onClick={() => setModal("cycle")} />}
+        {cycle && <RecordRow label="몸 상태" detail={cycleSummary(cycle)} done onClick={() => setModal("cycle")} />}
       </div>
     </section>
 
@@ -988,7 +1017,28 @@ function FatTrendChart({ records }: { records: BodyRecord[] }) {
 }
 
 function BodySheet({ today, latest, draft, close, save }: { today: string; latest?: BodyRecord; draft?: BodyRecord; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void }) { const [legacyTiming = "아침 공복", legacyDevice = "InBody Dial H30"] = (draft?.condition ?? latest?.condition)?.split(" · ") ?? []; return <Sheet title={draft ? "인바디 기록 수정" : "인바디 기록"} close={close}><form className="form-stack" onSubmit={save}><input type="hidden" name="editingId" value={draft?.id ?? ""} /><div className="two-fields sheet-leading-fields"><Field label="측정일"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><Field label="측정시간"><input type="time" name="time" defaultValue={draft?.time ?? new Date().toTimeString().slice(0, 5)} required /></Field></div><MeasureField label="체중" name="weight" unit="kg" previous={latest?.weight} value={draft?.weight} /><MeasureField label="골격근량" name="skeletalMuscle" unit="kg" previous={latest?.skeletalMuscle} value={draft?.skeletalMuscle} /><MeasureField label="체지방량" name="bodyFatMass" unit="kg" previous={latest?.bodyFatMass} value={draft?.bodyFatMass} /><MeasureField label="체지방률" name="bodyFatRate" unit="%" previous={latest?.bodyFatRate} value={draft?.bodyFatRate} /><MeasureField label="내장지방레벨" name="visceralFat" unit="Lv" previous={latest?.visceralFat} value={draft?.visceralFat} step="1" /><div className="two-fields"><Field label="측정 시점"><select name="measurementTiming" defaultValue={draft?.measurementTiming ?? latest?.measurementTiming ?? legacyTiming}><option>아침 공복</option><option>평소와 다른 시간</option><option>식후</option><option>운동 후</option></select></Field><Field label="측정 기기"><select name="device" defaultValue={draft?.device ?? latest?.device ?? legacyDevice}><option>InBody Dial H30</option><option>헬스장 InBody</option><option>병원 InBody</option><option>다른 체성분 기기</option></select></Field></div><button className="primary-button submit-button" type="submit">{draft ? "수정 저장" : "저장하기"}</button></form></Sheet>; }
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="field"><span>{label}</span>{children}</label>; }
+function ClearableFieldControl({ children }: { children: React.ReactNode }) {
+  const props = isValidElement(children) ? children.props as { value?: unknown; defaultValue?: unknown } : {};
+  const [hasValue, setHasValue] = useState(Boolean(props.value ?? props.defaultValue ?? ""));
+  const clear = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const control = event.currentTarget.parentElement?.querySelector("input, textarea") as HTMLInputElement | HTMLTextAreaElement | null;
+    if (!control) return;
+    const prototype = control instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(control, "");
+    control.dispatchEvent(new Event("input", { bubbles: true }));
+    control.dispatchEvent(new Event("change", { bubbles: true }));
+    control.focus();
+    setHasValue(false);
+  };
+  return <span className="clearable-field-control" onInput={(event) => setHasValue(Boolean((event.target as HTMLInputElement | HTMLTextAreaElement).value))}>{children}{hasValue && <button type="button" className="field-clear-button" onClick={clear} aria-label="입력 내용 지우기">×</button>}</span>;
+}
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const props = isValidElement(children) ? children.props as { type?: string } : {};
+  const clearable = isValidElement(children) && (children.type === "textarea" || (children.type === "input" && [undefined, "text", "search", "email", "url", "tel"].includes(props.type)));
+  return <label className="field"><span>{label}</span>{clearable ? <ClearableFieldControl>{children}</ClearableFieldControl> : children}</label>;
+}
 function MeasureField({ label, name, unit, previous, value, step = "0.1" }: { label: string; name: string; unit: string; previous?: number; value?: number; step?: string }) { return <label className="measure-field"><div><span>{label}</span>{previous !== undefined && <small>이전 측정 {previous}{unit}</small>}</div><div><input inputMode="decimal" type="number" step={step} min="0" name={name} defaultValue={value ?? previous} required /><b>{unit}</b></div></label>; }
 
 function MealSheet({ today, kind, library, draft, presetType, close, save }: { today: string; kind: EntryKind; library: FoodLibraryItem[]; draft?: MealEntry; presetType?: MealType; close: () => void; save: (event: FormEvent<HTMLFormElement>, kind: EntryKind) => void }) {
@@ -1357,4 +1407,18 @@ function ConsultationDetailSheet({ consultation, close, remove }: { consultation
   return <Sheet title="상담 다시보기" close={close}><div className="detail-date"><strong>{consultation.date}</strong></div><span className={`source-badge ${consultation.source}`}>{consultation.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span><div className="consultation-text consultation-popup-text">{consultation.text}</div><button type="button" className="delete-button full-delete-button" onClick={remove}>상담 삭제</button></Sheet>;
 }
 
-function CycleSheet({ today, close, save }: { today: string; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void }) { return <Sheet title="생리 상태 기록" close={close}><form className="form-stack" onSubmit={save}><Field label="날짜"><input type="date" name="date" defaultValue={today} required /></Field><Field label="오늘 상태"><select name="state"><option>없음</option><option>갈색 출혈</option><option>본 출혈</option><option>부정출혈</option></select></Field><Field label="메모 · 선택"><textarea name="note" placeholder="평소와 다른 점이 있다면 적어주세요." /></Field><button className="primary-button submit-button" type="submit">상태 저장</button></form></Sheet>; }
+function CycleSheet({ today, draft, close, save, remove }: { today: string; draft?: CycleEntry; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void; remove: (entry: CycleEntry) => void }) {
+  const symptoms = ["졸림", "피로"];
+  return <Sheet title="생리·컨디션 기록" close={close}><form className="form-stack" onSubmit={save}>
+    <input type="hidden" name="editingId" value={draft?.id ?? ""} />
+    <Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field>
+    <Field label="오늘 상태"><select name="state" defaultValue={draft?.state ?? "없음"}><option>없음</option><option>갈색 출혈</option><option>본 출혈</option><option>부정출혈</option></select></Field>
+    <div className="two-fields"><Field label="생리량"><select name="flow" defaultValue={draft?.flow ?? "없음"}><option>없음</option><option>소량</option><option>보통</option><option>많음</option></select></Field><Field label="생리통"><select name="pain" defaultValue={draft?.pain ?? "없음"}><option>없음</option><option>약함</option><option>보통</option><option>심함</option></select></Field></div>
+    <div className="two-fields"><Field label="에너지 (1~5)"><select name="energy" defaultValue={draft?.energy ?? 3}>{[1,2,3,4,5].map((value) => <option value={value} key={value}>{value}</option>)}</select></Field><Field label="식욕 (1~5)"><select name="appetite" defaultValue={draft?.appetite ?? 3}>{[1,2,3,4,5].map((value) => <option value={value} key={value}>{value}</option>)}</select></Field></div>
+    <fieldset className="cycle-check-group"><legend>오늘 느낀 증상</legend><div>{symptoms.map((symptom) => <label key={symptom}><input type="checkbox" name="symptoms" value={symptom} defaultChecked={draft?.symptoms?.includes(symptom)} /><span>{symptom}</span></label>)}</div></fieldset>
+    <section className="cycle-love-section"><strong>사랑 기록</strong><div className="two-fields"><Field label="횟수"><input type="number" name="sexCount" min="0" max="20" defaultValue={draft?.sexCount ?? 0} /></Field><Field label="피임 여부"><select name="contraception" defaultValue={draft?.contraception ?? "해당 없음"}><option>해당 없음</option><option>피임함</option><option>피임하지 않음</option></select></Field></div></section>
+    <Field label="메모 (선택)"><textarea name="note" defaultValue={draft?.note ?? ""} placeholder="평소와 다른 점이 있다면 적어주세요." /></Field>
+    <button className="primary-button submit-button" type="submit">{draft ? "수정 저장" : "기록 저장"}</button>
+    {draft && <button className="delete-button full-delete-button" type="button" onClick={() => remove(draft)}>기록 삭제</button>}
+  </form></Sheet>;
+}

@@ -95,6 +95,13 @@ export type CycleEntry = {
   id: string;
   date: string;
   state: "없음" | "갈색 출혈" | "본 출혈" | "부정출혈";
+  flow?: "없음" | "소량" | "보통" | "많음";
+  pain?: "없음" | "약함" | "보통" | "심함";
+  energy?: number;
+  appetite?: number;
+  symptoms?: string[];
+  sexCount?: number;
+  contraception?: "해당 없음" | "피임함" | "피임하지 않음";
   note: string;
 };
 
