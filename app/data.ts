@@ -123,6 +123,19 @@ export type WeeklyReview = {
 
 export type TravelLevel = "가볍게 기록" | "균형 유지" | "목표 유지";
 
+export type ReminderSettings = {
+  bodyEnabled: boolean;
+  bodyTime: string;
+  mealEnabled: Record<MealType, boolean>;
+  mealTimes: Record<MealType, string>;
+  workoutEnabled: boolean;
+  workoutTime: string;
+  weeklyEnabled: boolean;
+  weeklyDay: number;
+  weeklyTime: string;
+  travelBehavior: "기본 유지" | "핵심만" | "모두 끄기";
+};
+
 export type AppState = {
   profile: {
     mode: "감량기" | "유지기";
@@ -160,6 +173,7 @@ export type AppState = {
   cycles: CycleEntry[];
   consultations: Consultation[];
   weeklyReviews?: WeeklyReview[];
+  reminderSettings?: ReminderSettings;
   skippedTasks: string[];
 };
 
@@ -196,6 +210,18 @@ export const initialState: AppState = {
   workoutGoal: {
     cardioSessions: 2,
     cardioMinutes: 90,
+  },
+  reminderSettings: {
+    bodyEnabled: true,
+    bodyTime: "07:00",
+    mealEnabled: { breakfast: true, lunch: true, dinner: true, snack: false },
+    mealTimes: { breakfast: "07:30", lunch: "12:00", dinner: "18:00", snack: "15:00" },
+    workoutEnabled: true,
+    workoutTime: "19:00",
+    weeklyEnabled: true,
+    weeklyDay: 0,
+    weeklyTime: "10:00",
+    travelBehavior: "핵심만",
   },
   bodyRecords: [
     { id: "body-20260814", date: "2026-08-14", time: "09:06", weight: 61.9, skeletalMuscle: 23.3, bodyFatMass: 18.9, bodyFatRate: 30.5, visceralFat: 8, measurementTiming: "아침 공복", device: "InBody Dial H30", condition: "아침 공복 · InBody Dial H30" },

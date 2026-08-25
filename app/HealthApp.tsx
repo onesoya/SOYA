@@ -14,12 +14,13 @@ import {
   mealLabels,
   MealEntry,
   MealType,
+  ReminderSettings,
   TravelLevel,
   WorkoutEntry,
 } from "./data";
 
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
-type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail";
+type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail" | "reminders";
 type Consultation = AppState["consultations"][number];
 type WeeklyReview = NonNullable<AppState["weeklyReviews"]>[number];
 type BleedingState = Exclude<CycleEntry["state"], "없음">;
@@ -60,10 +61,13 @@ type OfficialFoodResult = {
 };
 type NutritionTotal = { calories: number; protein: number; carbs: number; fat: number; sugar: number; fiber: number };
 type NextAction =
-  | { type: "body"; eyebrow: string; title: string; detail: string }
-  | { type: "workout"; eyebrow: string; title: string; detail: string }
-  | { type: "meal"; mealType: MealType; eyebrow: string; title: string; detail: string }
+  | { type: "body"; eyebrow: string; title: string; detail: string; time: string; due: boolean }
+  | { type: "workout"; eyebrow: string; title: string; detail: string; time: string; due: boolean }
+  | { type: "meal"; mealType: MealType; eyebrow: string; title: string; detail: string; time: string; due: boolean }
+  | { type: "weekly"; eyebrow: string; title: string; detail: string; time: string; due: boolean }
   | { type: "done"; eyebrow: string; title: string; detail: string };
+
+const defaultReminders = initialState.reminderSettings!;
 
 const tabs: { id: Tab; label: string }[] = [
   { id: "food", label: "식단" },
@@ -464,6 +468,12 @@ export function HealthApp() {
           },
           foodLibrary: (saved.foodLibrary ?? []).map(normalizeFoodLibraryItem),
           weeklyReviews: saved.weeklyReviews ?? [],
+          reminderSettings: {
+            ...defaultReminders,
+            ...saved.reminderSettings,
+            mealEnabled: { ...defaultReminders.mealEnabled, ...saved.reminderSettings?.mealEnabled },
+            mealTimes: { ...defaultReminders.mealTimes, ...saved.reminderSettings?.mealTimes },
+          },
         });
       })
       .catch(() => setSaveState("offline"))
@@ -536,21 +546,41 @@ export function HealthApp() {
   const completedCount = completed.filter(Boolean).length;
 
   const nextAction = useMemo(() => {
-    const hour = new Date().getHours();
-    if (!travelToday && !todayBody && hour < 11 && !state.skippedTasks.includes(`${today}:body`)) {
-      return { type: "body" as const, eyebrow: "아침 공복 기록", title: "오늘 인바디를 기록할까요?", detail: "체지방량과 골격근량의 흐름을 이어가요." };
+    const settings = state.reminderSettings ?? defaultReminders;
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const toMinutes = (time: string) => {
+      const [hour, minute] = time.split(":").map(Number);
+      return hour * 60 + minute;
+    };
+    const travelBehavior = travelToday ? settings.travelBehavior : "기본 유지";
+    if (travelBehavior === "모두 끄기") {
+      return { type: "done" as const, eyebrow: "여행 중 알림 쉼", title: "오늘은 알림 없이 가볍게", detail: "필요한 기록이 생기면\n아래 + 버튼으로 언제든 추가할 수 있어요" };
     }
-    const mealOrder: MealType[] = hour < 10 ? ["breakfast", "lunch", "dinner"] : hour < 15 ? ["lunch", "dinner"] : ["dinner"];
-    const pendingMeal = mealOrder.find((mealType) => !mealActual(mealType));
-    if (pendingMeal) {
-      const plan = mealPlan(pendingMeal);
-      return { type: "meal" as const, mealType: pendingMeal, eyebrow: `${mealLabels[pendingMeal]} 기록`, title: `${mealLabels[pendingMeal]} 식사를 기록할 시간이에요`, detail: plan ? `계획: ${plan.title}` : "계획은 없어요. 먹은 내용을 바로 남겨보세요." };
+
+    const candidates: Exclude<NextAction, { type: "done" }>[] = [];
+    const addTiming = <T extends Omit<Exclude<NextAction, { type: "done" }>, "due">>(candidate: T) => candidates.push({ ...candidate, due: nowMinutes >= toMinutes(candidate.time) } as Exclude<NextAction, { type: "done" }>);
+    if (!travelToday && settings.bodyEnabled && !todayBody && !state.skippedTasks.includes(`${today}:body`)) {
+      addTiming({ type: "body", time: settings.bodyTime, eyebrow: "아침 공복 기록", title: "오늘 인바디를 기록할까요?", detail: "체지방량과 골격근량의 흐름을 이어가요." });
     }
-    if (plannedWorkout && !actualWorkouts.length && hour >= 17 && !state.skippedTasks.includes(`${today}:workout`)) {
-      return { type: "workout" as const, eyebrow: "오늘의 운동", title: "계획한 운동을 마쳤나요?", detail: `${plannedWorkout.title} · ${plannedWorkout.minutes}분` };
+    (["breakfast", "lunch", "dinner"] as MealType[]).forEach((mealType) => {
+      if (!settings.mealEnabled[mealType] || mealActual(mealType)) return;
+      const plan = mealPlan(mealType);
+      addTiming({ type: "meal", mealType, time: settings.mealTimes[mealType], eyebrow: `${mealLabels[mealType]} 기록`, title: `${mealLabels[mealType]} 식사를 기록할 시간이에요`, detail: plan ? `계획: ${plan.title}` : "계획은 없어요. 먹은 내용을 바로 남겨보세요." });
+    });
+    if (travelBehavior !== "핵심만" && settings.workoutEnabled && plannedWorkout && !actualWorkouts.length && !state.skippedTasks.includes(`${today}:workout`)) {
+      addTiming({ type: "workout", time: settings.workoutTime, eyebrow: "오늘의 운동", title: "계획한 운동을 마쳤나요?", detail: `${plannedWorkout.title} · ${plannedWorkout.minutes}분` });
     }
-    return { type: "done" as const, eyebrow: "오늘 기록", title: "오늘 기록을 모두 마쳤어요", detail: "필요한 기록이 생기면\n아래 + 버튼으로 언제든 추가할 수 있어요" };
-  }, [actualWorkouts.length, mealActual, mealPlan, plannedWorkout, state.skippedTasks, today, todayBody, travelToday]);
+    const nextWeekStart = addDays(weekStart(today), 7);
+    const nextWeekEnd = addDays(nextWeekStart, 6);
+    const hasNextWeekPlan = state.meals.some((entry) => entry.kind === "plan" && entry.date >= nextWeekStart && entry.date <= nextWeekEnd)
+      || state.workouts.some((entry) => entry.kind === "plan" && entry.date >= nextWeekStart && entry.date <= nextWeekEnd);
+    if (travelBehavior !== "핵심만" && settings.weeklyEnabled && now.getDay() === settings.weeklyDay && !hasNextWeekPlan && !state.skippedTasks.includes(`${today}:weekly`)) {
+      addTiming({ type: "weekly", time: settings.weeklyTime, eyebrow: "일요일 주간 계획", title: "다음 주를 함께 계획할까요?", detail: `${nextWeekStart.replaceAll("-", ".")}부터 식단과 운동을 준비해요.` });
+    }
+    if (!candidates.length) return { type: "done" as const, eyebrow: "오늘 기록", title: "오늘 기록을 모두 마쳤어요", detail: "필요한 기록이 생기면\n아래 + 버튼으로 언제든 추가할 수 있어요" };
+    return [...candidates].sort((a, b) => Number(b.due) - Number(a.due) || toMinutes(a.time) - toMinutes(b.time))[0];
+  }, [actualWorkouts.length, mealActual, mealPlan, plannedWorkout, state.meals, state.reminderSettings, state.skippedTasks, state.workouts, today, todayBody, travelToday]);
 
   const openNextAction = () => {
     if (nextAction.type === "body") setModal("body");
@@ -564,6 +594,15 @@ export function HealthApp() {
       setMealDraft(mealPlan(nextAction.mealType));
       setModal("meal-actual");
     }
+    else if (nextAction.type === "weekly") {
+      setWeeklyPlanStart(addDays(weekStart(today), 7));
+      setModal("weekly-plan");
+    }
+  };
+
+  const saveReminders = (settings: ReminderSettings) => {
+    commit((current) => ({ ...current, reminderSettings: settings }));
+    setModal(null);
   };
 
   const skipNextAction = () => {
@@ -977,7 +1016,7 @@ export function HealthApp() {
       <main className="main-content">
         <header className="topbar">
           <div className="topbar-heading"><Image className="topbar-tiger" src="/mascot-top-transparent.png" width={76} height={76} alt="호랑이 마스코트" /><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? travelToday ? "여행 중에도 내 리듬대로" : "오늘도 가볍게 기록해요" : tabs.find((item) => item.id === tab)?.label}</h1></div></div>
-          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "임시 저장" : "저장됨"}</span>{tab === "food" ? <button className="header-library-button" onClick={() => setModal("food-library")}>음식 보관함 추가</button> : <button className="icon-button" onClick={exportData} aria-label="전체 기록 내보내기">↓</button>}</div>
+          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "임시 저장" : "저장됨"}</span><button className="icon-button reminder-button" onClick={() => setModal("reminders")} aria-label="알림 설정"><span className="pixel-bell" aria-hidden="true" /></button>{tab === "food" ? <button className="header-library-button" onClick={() => setModal("food-library")}>음식 보관함 추가</button> : <button className="icon-button" onClick={exportData} aria-label="전체 기록 내보내기">↓</button>}</div>
         </header>
 
         {tab === "today" && (
@@ -1004,6 +1043,7 @@ export function HealthApp() {
       {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} initialStart={weeklyPlanStart} close={() => { setWeeklyPlanStart(undefined); setModal(null); }} save={saveWeeklyPlan} />}
       {modal === "cycle" && <CycleSheet today={cycleDate ?? today} draft={state.cycles.find((item) => item.date === (cycleDate ?? today))} previous={state.cycles.find((item) => item.date === addDays(cycleDate ?? today, -1))} existing={state.cycles} initialRange={cycleRangeDraft} close={() => { setCycleDate(undefined); setCycleRangeDraft(undefined); setModal(null); }} save={saveCycle} saveRanges={saveCycleRanges} remove={deleteCycle} />}
       {modal === "consultation-detail" && selectedConsultation && <ConsultationDetailSheet consultation={selectedConsultation} close={() => { setSelectedConsultation(undefined); setModal(null); }} remove={() => deleteConsultation(selectedConsultation)} />}
+      {modal === "reminders" && <ReminderSettingsSheet settings={state.reminderSettings ?? defaultReminders} close={() => setModal(null)} save={saveReminders} />}
     </div>
   );
 }
@@ -1043,8 +1083,8 @@ function TodayView(props: TodayViewProps) {
   const travelToday = isTravelDate(state.profile, today);
   return <div className="dashboard-grid">
     <section className="next-card full-card">
-      <div><span className="eyebrow">{nextAction.eyebrow}</span><h2>{nextAction.title}</h2><p>{nextAction.detail}</p></div>
-      {nextAction.type !== "done" && <div className="next-actions"><button className="ghost-button" onClick={skipNextAction}>오늘은 건너뛰기</button><button className="primary-button" onClick={openNextAction}>기록하기 <span>→</span></button></div>}
+      <div><span className="eyebrow">{nextAction.eyebrow}</span><h2>{nextAction.title}</h2><p>{nextAction.type !== "done" && <b className={`next-time ${nextAction.due ? "due" : "upcoming"}`}>{nextAction.time} {nextAction.due ? "알림" : "예정"}</b>}{nextAction.detail}</p></div>
+      {nextAction.type !== "done" && <div className="next-actions"><button className="ghost-button" onClick={skipNextAction}>오늘은 건너뛰기</button><button className="primary-button" onClick={openNextAction}>{nextAction.type === "weekly" ? "계획하기" : "기록하기"} <span>→</span></button></div>}
     </section>
 
     <section className="card goal-summary-card">
@@ -1877,6 +1917,20 @@ function WeeklyPlanSheet({ state, today, initialStart, close, save }: { state: A
 
 function WorkoutGoalSheet({ goal, close, save }: { goal: NonNullable<AppState["workoutGoal"]>; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void }) {
   return <Sheet title="주간 운동 목표" close={close}><form className="form-stack" onSubmit={save}><Field label="개인 유산소 최소 횟수"><input type="number" name="cardioSessions" min="1" max="14" defaultValue={goal.cardioSessions} required /></Field><Field label="개인 유산소 누적시간 (분)"><input type="number" name="cardioMinutes" min="1" max="1000" defaultValue={goal.cardioMinutes} required /></Field><button className="primary-button submit-button" type="submit">목표 저장</button></form></Sheet>;
+}
+
+function ReminderSettingsSheet({ settings, close, save }: { settings: ReminderSettings; close: () => void; save: (settings: ReminderSettings) => void }) {
+  const [draft, setDraft] = useState<ReminderSettings>(settings);
+  const update = <K extends keyof ReminderSettings>(key: K, value: ReminderSettings[K]) => setDraft((current) => ({ ...current, [key]: value }));
+  const updateMealEnabled = (mealType: MealType, enabled: boolean) => setDraft((current) => ({ ...current, mealEnabled: { ...current.mealEnabled, [mealType]: enabled } }));
+  const updateMealTime = (mealType: MealType, time: string) => setDraft((current) => ({ ...current, mealTimes: { ...current.mealTimes, [mealType]: time } }));
+  const row = (label: string, enabled: boolean, toggle: (enabled: boolean) => void, time: string, changeTime: (time: string) => void) => <label className={`reminder-row ${enabled ? "active" : ""}`}><input className="reminder-check" type="checkbox" checked={enabled} onChange={(event) => toggle(event.target.checked)} /><span><strong>{label}</strong><small>{enabled ? time : "알림 끔"}</small></span><input className="reminder-time" type="time" value={time} disabled={!enabled} onChange={(event) => changeTime(event.target.value)} aria-label={`${label} 알림 시간`} /></label>;
+  return <Sheet title="알림 설정" close={close}><form className="form-stack reminder-settings-form" onSubmit={(event) => { event.preventDefault(); save(draft); }}>
+    <section className="reminder-section"><strong>매일 기록</strong>{row("아침 인바디", draft.bodyEnabled, (enabled) => update("bodyEnabled", enabled), draft.bodyTime, (time) => update("bodyTime", time))}{(["breakfast", "lunch", "dinner"] as MealType[]).map((mealType) => <div key={mealType}>{row(`${mealLabels[mealType]} 기록`, draft.mealEnabled[mealType], (enabled) => updateMealEnabled(mealType, enabled), draft.mealTimes[mealType], (time) => updateMealTime(mealType, time))}</div>)}</section>
+    <section className="reminder-section"><strong>운동과 계획</strong>{row("계획한 운동", draft.workoutEnabled, (enabled) => update("workoutEnabled", enabled), draft.workoutTime, (time) => update("workoutTime", time))}<div className={`reminder-row weekly ${draft.weeklyEnabled ? "active" : ""}`}><input className="reminder-check" type="checkbox" checked={draft.weeklyEnabled} onChange={(event) => update("weeklyEnabled", event.target.checked)} /><span><strong>주간 계획</strong><small>{draft.weeklyEnabled ? "다음 주 식단·운동" : "알림 끔"}</small></span><select value={draft.weeklyDay} disabled={!draft.weeklyEnabled} onChange={(event) => update("weeklyDay", Number(event.target.value))} aria-label="주간 계획 요일">{["일", "월", "화", "수", "목", "금", "토"].map((day, index) => <option value={index} key={day}>{day}요일</option>)}</select><input className="reminder-time" type="time" value={draft.weeklyTime} disabled={!draft.weeklyEnabled} onChange={(event) => update("weeklyTime", event.target.value)} aria-label="주간 계획 알림 시간" /></div></section>
+    <section className="reminder-section travel-reminder-section"><div><strong>여행 중 알림</strong><small>여행 모드에만 적용</small></div><div className="travel-reminder-options">{(["기본 유지", "핵심만", "모두 끄기"] as ReminderSettings["travelBehavior"][]).map((behavior) => <button type="button" key={behavior} className={draft.travelBehavior === behavior ? "active" : ""} onClick={() => update("travelBehavior", behavior)}>{behavior}</button>)}</div><p>{draft.travelBehavior === "핵심만" ? "식사 기록만 남기고 인바디·운동·주간 계획 알림은 쉬어요." : draft.travelBehavior === "모두 끄기" ? "여행 기간에는 모든 알림을 쉬어요." : "평소 설정한 알림을 그대로 사용해요."}</p></section>
+    <button className="primary-button submit-button" type="submit">알림 설정 저장</button>
+  </form></Sheet>;
 }
 
 function NutritionGoalSheet({ goal, close, save }: { goal: AppState["nutritionGoal"]; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void }) {

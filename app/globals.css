@@ -47,6 +47,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .save-state.saving { color: var(--gold); }
 .save-state.offline { color: var(--coral); }
 .icon-button { width: 42px; height: 42px; border-radius: 14px; border: 1px solid var(--line); background: var(--paper); cursor: pointer; font-size: 20px; }
+.reminder-button { display: grid; place-items: center; }
+.pixel-bell { position: relative; display: block; width: 15px; height: 14px; border: 2px solid var(--ink); border-top-width: 3px; border-radius: 7px 7px 2px 2px; }
+.pixel-bell::before { content: ""; position: absolute; left: 4px; top: -6px; width: 3px; height: 3px; background: var(--coral); border: 1px solid var(--ink); }
+.pixel-bell::after { content: ""; position: absolute; left: 4px; bottom: -5px; width: 4px; height: 3px; background: var(--ink); }
 .header-library-button { min-height: 42px; padding: 0 12px; border: 1px solid var(--ink); background: var(--paper); color: var(--coral); box-shadow: 3px 3px 0 var(--ink); font-size: 9px; font-weight: 850; white-space: nowrap; cursor: pointer; }
 
 .dashboard-grid { display: grid; grid-template-columns: 1.08fr 0.92fr; gap: 18px; align-items: start; }
@@ -60,6 +64,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .next-card .eyebrow { color: #f4b6aa; }
 .next-card h2 { margin: 10px 0 8px; font-size: clamp(22px, 3vw, 30px); letter-spacing: -1px; }
 .next-card p { margin: 0; color: #d5cec5; font-size: 14px; white-space: pre-line; }
+.next-time { display: block; width: max-content; margin-bottom: 8px; padding: 4px 7px; border: 1px solid currentColor; color: #f4b6aa; font-size: 9px; line-height: 1.35; }
+.next-time.upcoming { color: #d8c8b8; }
 .next-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .primary-button, .secondary-button, .ghost-button { border: 0; border-radius: 14px; min-height: 44px; padding: 0 17px; font-size: 13px; font-weight: 850; cursor: pointer; }
 .primary-button { background: var(--coral); color: white; box-shadow: 0 10px 24px rgba(227, 111, 95, 0.24); }
@@ -169,6 +175,25 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .travel-toggle small { color: var(--muted); font-size: 7px; line-height: 1.5; }
 .travel-toggle input { width: 22px; height: 22px; accent-color: var(--coral); }
 .travel-layer-fields { display: grid; gap: 11px; }
+.reminder-settings-form { gap: 14px; }
+.reminder-section { padding: 12px; border: 1px solid var(--ink); background: var(--cream); display: grid; gap: 8px; }
+.reminder-section > strong, .travel-reminder-section > div:first-child > strong { color: var(--coral); font-size: 10px; }
+.reminder-row { min-width: 0; min-height: 54px; padding: 8px 9px; border: 1px solid var(--line); background: var(--paper); display: grid; grid-template-columns: 20px minmax(0, 1fr) 96px; align-items: center; gap: 9px; cursor: pointer; }
+.reminder-row.active { border-color: var(--ink); }
+.reminder-row > span { min-width: 0; display: grid; gap: 3px; }
+.reminder-row strong { font-size: 9px; }
+.reminder-row small { color: var(--muted); font-size: 7px; }
+.reminder-check { width: 18px; height: 18px; margin: 0; accent-color: var(--coral); }
+.reminder-time, .reminder-row.weekly select { width: 100%; min-width: 0; height: 36px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 9px; text-align: center; }
+.reminder-time:disabled, .reminder-row.weekly select:disabled { opacity: .4; }
+.reminder-row.weekly { grid-template-columns: 20px minmax(0, 1fr) 68px 86px; }
+.travel-reminder-section > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.travel-reminder-section > div:first-child small { color: var(--muted); font-size: 7px; }
+.travel-reminder-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--ink); }
+.travel-reminder-options button { min-width: 0; min-height: 38px; padding: 4px; border: 0; background: var(--paper); color: var(--muted); font: inherit; font-size: 8px; font-weight: 800; cursor: pointer; }
+.travel-reminder-options button + button { border-left: 1px solid var(--ink); }
+.travel-reminder-options button.active { background: var(--coral); color: white; }
+.travel-reminder-section p { margin: 0; color: var(--muted); font-size: 7px; line-height: 1.6; }
 .micro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 19px; }
 .micro-stat { padding: 13px; background: var(--cream); border-radius: 16px; display: grid; gap: 4px; }
 .micro-stat span, .micro-stat small { color: var(--muted); font-size: 9px; }
@@ -1071,6 +1096,9 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .topbar-tiger { width: 84px; height: 84px; }
   .topbar h1 { font-size: 20px; line-height: 1.35; }
   .date-text { margin-bottom: 5px; font-size: 10px; }
+  .topbar { gap: 9px; }
+  .header-actions { gap: 6px; }
+  .reminder-button { width: 38px; height: 40px; }
   .header-library-button { max-width: 82px; min-height: 40px; padding: 0 8px; font-size: 8px; line-height: 1.45; white-space: normal; }
   .pixel-calendar-card {
     --calendar-action-top: 44px;
@@ -1125,6 +1153,9 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .sheet-leading-fields .field input,
   .sheet-leading-fields .field select { display: block; width: 100%; min-width: 0; max-width: 100%; }
   .field input, .field select, .field textarea { font-size: 16px; }
+  .reminder-row { grid-template-columns: 20px minmax(0, 1fr) 88px; padding-inline: 8px; }
+  .reminder-row.weekly { grid-template-columns: 20px minmax(0, 1fr) 62px 82px; gap: 6px; }
+  .reminder-time, .reminder-row.weekly select { font-size: 16px; }
   .rpe-scale span { font-size: 6px; padding-inline: 2px; }
   .cycle-period-calendar { padding: 11px 9px; }
   .cycle-period-calendar > .month-navigator { grid-template-columns: 26px minmax(104px, auto) 26px auto; }
