@@ -1170,8 +1170,8 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .calendar-toolbar .month-current { font-size: 13px; }
   .calendar-toolbar .month-today { padding-inline: 5px; font-size: 7px; }
   .calendar-toolbar-actions { gap: 4px; }
-  .calendar-toolbar-actions button { min-width: 39px; min-height: 28px; padding-inline: 6px; font-size: 7px; }
-  .food-calendar-actions { top: calc(var(--calendar-action-top) - 32px); width: 82px; gap: 4px; }
+  .calendar-toolbar-actions button { min-width: 44px; min-height: 28px; padding-inline: 6px; font-size: 7px; }
+  .food-calendar-actions { top: calc(var(--calendar-action-top) - 32px); width: 92px; gap: 4px; }
   .food-calendar-actions > .food-calendar-library-button { min-width: 0; padding-inline: 2px; font-size: 6px; }
   .food-calendar-action-row { gap: 4px; }
   .food-calendar-action-row button { min-width: 0; }
