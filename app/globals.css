@@ -302,16 +302,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .weekly-goal-progress > div:nth-child(2) { height: 8px; border: 1px solid var(--ink); background: var(--cream); overflow: hidden; }
 .weekly-goal-progress i { display: block; height: 100%; background: var(--coral); }
 .weekly-goal-progress p { margin: 0; color: var(--muted); font-size: 8px; }
-.field textarea.weekly-review-note { min-height: 78px; }
+.weekly-note-card { padding: 15px; border: 1px solid var(--ink); background: var(--cream); box-shadow: 3px 3px 0 rgba(51, 46, 43, .13); display: grid; gap: 10px; }
+.weekly-note-heading { min-height: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.weekly-note-heading > strong { color: var(--coral); font-size: 11px; font-weight: 900; }
+.weekly-note-actions { display: flex; align-items: center; gap: 8px; }
+.weekly-note-actions button, .weekly-note-cancel { padding: 0; border: 0; background: transparent; color: var(--muted); font-family: inherit; font-size: 8px; font-weight: 800; line-height: 1.5; cursor: pointer; }
+.weekly-note-actions button + button { color: #a26259; }
+.weekly-note-content { min-height: 78px; margin: 0; white-space: pre-line; color: var(--ink); font-size: 10px; line-height: 1.75; }
 .weekly-note-editor { display: grid; gap: 10px; }
-.weekly-note-editor > div { display: flex; justify-content: flex-end; gap: 8px; }
-.weekly-note-editor .ghost-button { min-height: 42px; }
+.weekly-note-editor .clearable-field-control > textarea { width: 100%; max-width: 100%; min-width: 0; min-height: 78px; padding: 11px 42px 11px 12px; border: 1px solid #827568; background: white; color: var(--ink); box-shadow: 3px 3px 0 rgba(51, 46, 43, .12); font-size: 10px; line-height: 1.75; resize: vertical; }
+.weekly-note-editor > div { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+.weekly-note-save { min-height: 32px; padding: 0 10px; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); box-shadow: 2px 2px 0 var(--ink); font-family: inherit; font-size: 8px; font-weight: 850; cursor: pointer; }
 .weekly-note-save:disabled { opacity: .45; cursor: default; }
-.weekly-saved-note { padding: 15px; border: 1px solid var(--line); background: var(--cream); display: grid; gap: 10px; }
-.weekly-saved-note > span { color: var(--muted); font-size: 9px; font-weight: 850; }
-.weekly-saved-note > p { margin: 0; white-space: pre-line; color: var(--ink); font-size: 11px; line-height: 1.75; }
-.weekly-saved-note > div { display: flex; justify-content: flex-end; gap: 8px; }
-.weekly-saved-note .ghost-button, .weekly-saved-note .delete-button { min-height: 42px; }
+.field textarea.cycle-note-input { font-size: 10px; line-height: 1.75; }
 .weekly-review-next { display: flex; justify-content: flex-end; }
 .weekly-review-next .primary-button { min-height: 44px; }
 
@@ -1090,7 +1093,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .weekly-review-grid { grid-template-columns: minmax(0, 1fr); }
   .weekly-review-panel { min-height: 132px; }
   .weekly-review-nav strong { font-size: 9px; }
-  .weekly-note-editor > div, .weekly-saved-note > div { flex-wrap: wrap; }
+  .weekly-note-editor > div { flex-wrap: wrap; }
   .weekly-review-next .primary-button { width: 100%; }
   .cycle-history-heading { align-items: flex-start; flex-direction: column; }
   .cycle-history-actions { width: 100%; }
