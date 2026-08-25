@@ -21,6 +21,7 @@ import {
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
 type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail";
 type Consultation = AppState["consultations"][number];
+type WeeklyReview = NonNullable<AppState["weeklyReviews"]>[number];
 type BleedingState = Exclude<CycleEntry["state"], "없음">;
 type CycleRange = { id: string; start: string; end: string; states?: Record<string, BleedingState> };
 type CycleHistory = {
@@ -439,6 +440,7 @@ export function HealthApp() {
   const [cycleRangeDraft, setCycleRangeDraft] = useState<CycleRange>();
   const [selectedBodyRecord, setSelectedBodyRecord] = useState<BodyRecord>();
   const [selectedConsultation, setSelectedConsultation] = useState<Consultation>();
+  const [weeklyPlanStart, setWeeklyPlanStart] = useState<string>();
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "offline">("saved");
   const today = todayKey();
@@ -461,6 +463,7 @@ export function HealthApp() {
             travelEndDate: saved.profile?.travelEndDate ?? (legacyTravel ? saved.profile?.goalEndDate : undefined),
           },
           foodLibrary: (saved.foodLibrary ?? []).map(normalizeFoodLibraryItem),
+          weeklyReviews: saved.weeklyReviews ?? [],
         });
       })
       .catch(() => setSaveState("offline"))
@@ -887,6 +890,7 @@ export function HealthApp() {
       meals: [...current.meals.filter((item) => !(item.kind === "plan" && dates.has(item.date))), ...meals],
       workouts: [...current.workouts.filter((item) => !(item.kind === "plan" && dates.has(item.date))), ...workouts],
     }));
+    setWeeklyPlanStart(undefined);
     setModal(null);
   };
 
@@ -982,7 +986,7 @@ export function HealthApp() {
         {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openGoal={() => setModal("nutrition-goal")} updateTravelDayLevel={updateTravelDayLevel} />}
         {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} updateTravelDayLevel={updateTravelDayLevel} />}
         {tab === "menstrual" && <MenstrualView state={state} today={today} openRecord={(date) => { setCycleRangeDraft(undefined); setCycleDate(date); setModal("cycle"); }} editRange={(date) => { const range = cycleRangeAround(state.cycles, date); if (range) { setCycleRangeDraft(range); setCycleDate(date); setModal("cycle"); } }} deleteRange={deleteCycleRange} />}
-        {tab === "change" && <ChangeConsultView state={state} today={today} setModal={setModal} commit={commit} openWeeklyPlan={() => setModal("weekly-plan")} deleteConsultation={deleteConsultation} openBodyDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} openConsultationDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
+        {tab === "change" && <ChangeConsultView state={state} today={today} setModal={setModal} commit={commit} openWeeklyPlan={(start) => { setWeeklyPlanStart(start); setModal("weekly-plan"); }} deleteConsultation={deleteConsultation} openBodyDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} openConsultationDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
       </main>
 
       <button className="fab" onClick={() => setModal("quick")} aria-label="빠른 추가">+</button>
@@ -997,7 +1001,7 @@ export function HealthApp() {
       {modal === "profile-goal" && <ProfileGoalSheet profile={state.profile} today={today} close={() => setModal(null)} save={saveProfileGoal} />}
       {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={() => { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); setModal(null); }} save={saveWorkout} />}
       {modal === "workout-goal" && <WorkoutGoalSheet goal={state.workoutGoal ?? initialState.workoutGoal!} close={() => setModal(null)} save={saveWorkoutGoal} />}
-      {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} close={() => setModal(null)} save={saveWeeklyPlan} />}
+      {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} initialStart={weeklyPlanStart} close={() => { setWeeklyPlanStart(undefined); setModal(null); }} save={saveWeeklyPlan} />}
       {modal === "cycle" && <CycleSheet today={cycleDate ?? today} draft={state.cycles.find((item) => item.date === (cycleDate ?? today))} previous={state.cycles.find((item) => item.date === addDays(cycleDate ?? today, -1))} existing={state.cycles} initialRange={cycleRangeDraft} close={() => { setCycleDate(undefined); setCycleRangeDraft(undefined); setModal(null); }} save={saveCycle} saveRanges={saveCycleRanges} remove={deleteCycle} />}
       {modal === "consultation-detail" && selectedConsultation && <ConsultationDetailSheet consultation={selectedConsultation} close={() => { setSelectedConsultation(undefined); setModal(null); }} remove={() => deleteConsultation(selectedConsultation)} />}
     </div>
@@ -1221,7 +1225,7 @@ function MenstrualView({ state, today, openRecord, editRange, deleteRange }: { s
   </div>;
 }
 
-function ChangeConsultView({ state, today, setModal, commit, openWeeklyPlan, deleteConsultation, openBodyDetail, openConsultationDetail }: { state: AppState; today: string; setModal: (modal: Modal) => void; commit: (updater: (current: AppState) => AppState) => void; openWeeklyPlan: () => void; deleteConsultation: (consultation: Consultation) => void; openBodyDetail: (record: BodyRecord) => void; openConsultationDetail: (consultation: Consultation) => void }) {
+function ChangeConsultView({ state, today, setModal, commit, openWeeklyPlan, deleteConsultation, openBodyDetail, openConsultationDetail }: { state: AppState; today: string; setModal: (modal: Modal) => void; commit: (updater: (current: AppState) => AppState) => void; openWeeklyPlan: (start?: string) => void; deleteConsultation: (consultation: Consultation) => void; openBodyDetail: (record: BodyRecord) => void; openConsultationDetail: (consultation: Consultation) => void }) {
   const [view, setView] = useState<"change" | "consult">("change");
   return <><div className="combined-view-tabs" role="tablist" aria-label="변화와 상담 화면 선택"><button type="button" role="tab" aria-selected={view === "change"} className={view === "change" ? "active" : ""} onClick={() => setView("change")}>변화</button><button type="button" role="tab" aria-selected={view === "consult"} className={view === "consult" ? "active" : ""} onClick={() => setView("consult")}>상담</button></div>{view === "change" ? <ChangeView state={state} today={today} setModal={setModal} openDetail={openBodyDetail} /> : <ConsultView state={state} commit={commit} openWeeklyPlan={openWeeklyPlan} deleteConsultation={deleteConsultation} openDetail={openConsultationDetail} />}</>;
 }
@@ -1250,9 +1254,87 @@ function ChangeView({ state, today, setModal, openDetail }: { state: AppState; t
   </div>;
 }
 
-function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDetail }: { state: AppState; commit: (updater: (current: AppState) => AppState) => void; openWeeklyPlan: () => void; deleteConsultation: (consultation: Consultation) => void; openDetail: (consultation: Consultation) => void }) {
+function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDetail }: { state: AppState; commit: (updater: (current: AppState) => AppState) => void; openWeeklyPlan: (start?: string) => void; deleteConsultation: (consultation: Consultation) => void; openDetail: (consultation: Consultation) => void }) {
   const [loading, setLoading] = useState(false);
+  const [reviewStart, setReviewStart] = useState(weekStart(todayKey()));
+  const savedReview = (state.weeklyReviews ?? []).find((item) => item.weekStart === reviewStart);
+  const [reviewNote, setReviewNote] = useState(savedReview?.note ?? "");
   const latest = state.consultations[0];
+  const reviewEnd = addDays(reviewStart, 6);
+
+  useEffect(() => {
+    setReviewNote((state.weeklyReviews ?? []).find((item) => item.weekStart === reviewStart)?.note ?? "");
+  }, [reviewStart, state.weeklyReviews]);
+
+  const review = useMemo(() => {
+    const inWeek = (date: string) => date >= reviewStart && date <= reviewEnd;
+    const actualMeals = state.meals.filter((item) => inWeek(item.date) && item.kind === "actual" && !item.skipped);
+    const actualMealEntries = state.meals.filter((item) => inWeek(item.date) && item.kind === "actual");
+    const plannedMeals = state.meals.filter((item) => inWeek(item.date) && item.kind === "plan");
+    const nutrition = nutritionTotal(actualMeals);
+    const nutritionDays = new Set(actualMeals.map((item) => item.date)).size;
+    const average = (value: number) => nutritionDays ? roundNutrient(value / nutritionDays) : 0;
+    const plannedMealSlots = new Set(plannedMeals.map((item) => `${item.date}:${item.mealType}`));
+    const actualMealSlots = new Set(actualMealEntries.map((item) => `${item.date}:${item.mealType}`));
+    const completedMealPlans = [...plannedMealSlots].filter((slot) => actualMealSlots.has(slot)).length;
+
+    const actualWorkouts = state.workouts.filter((item) => inWeek(item.date) && item.kind === "actual");
+    const plannedWorkouts = state.workouts.filter((item) => inWeek(item.date) && item.kind === "plan");
+    const cardio = actualWorkouts.filter((item) => item.type === "유산소");
+    const pt = actualWorkouts.filter((item) => item.type === "PT");
+
+    const body = state.bodyRecords.filter((item) => inWeek(item.date)).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    const firstBody = body[0];
+    const lastBody = body.at(-1);
+    const conditions = state.cycles.filter((item) => inWeek(item.date) && (item.energy || item.appetite || item.symptoms?.length));
+    const averageCondition = (key: "energy" | "appetite") => {
+      const values = conditions.map((item) => item[key]).filter((value): value is number => Boolean(value));
+      return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+    };
+    const symptomCounts = new Map<string, number>();
+    conditions.flatMap((item) => item.symptoms ?? []).forEach((symptom) => symptomCounts.set(symptom, (symptomCounts.get(symptom) ?? 0) + 1));
+    const symptoms = [...symptomCounts.entries()].sort((a, b) => b[1] - a[1]).map(([symptom, count]) => `${symptom} ${count}일`).join(" · ");
+    const startPhase = menstrualPhase(state.cycles, reviewStart);
+    const endPhase = menstrualPhase(state.cycles, reviewEnd);
+    const phaseLabel = startPhase.label === endPhase.label ? startPhase.label : `${startPhase.label} → ${endPhase.label}`;
+    const travelDays = weekDates(reviewStart).filter((date) => isTravelDate(state.profile, date)).length;
+    const timing = goalTiming(state.profile, reviewEnd);
+
+    return {
+      nutritionDays,
+      averageNutrition: { calories: average(nutrition.calories), protein: average(nutrition.protein), sugar: average(nutrition.sugar), fiber: average(nutrition.fiber) },
+      plannedMealSlots: plannedMealSlots.size,
+      completedMealPlans,
+      recordedMeals: actualMealEntries.length,
+      actualWorkouts: actualWorkouts.length,
+      plannedWorkouts: plannedWorkouts.length,
+      cardioSessions: cardio.length,
+      cardioMinutes: cardio.reduce((sum, item) => sum + item.minutes, 0),
+      ptSessions: pt.length,
+      bodyCount: body.length,
+      bodyFatChange: body.length > 1 && firstBody && lastBody ? lastBody.bodyFatMass - firstBody.bodyFatMass : undefined,
+      muscleChange: body.length > 1 && firstBody && lastBody ? lastBody.skeletalMuscle - firstBody.skeletalMuscle : undefined,
+      bodyPhase: lastBody ? menstrualPhase(state.cycles, lastBody.date).label : phaseLabel,
+      energy: averageCondition("energy"),
+      appetite: averageCondition("appetite"),
+      conditionDays: conditions.length,
+      symptoms,
+      phaseLabel,
+      travelDays,
+      timing,
+    };
+  }, [reviewEnd, reviewStart, state]);
+
+  const conditionLabel = (value: number) => value ? conditionLabels[Math.min(4, Math.max(0, Math.round(value) - 1))] : "기록 없음";
+  const saveReview = () => {
+    const note = reviewNote.trim();
+    const weeklyReview: WeeklyReview = { id: savedReview?.id ?? id("weekly-review"), weekStart: reviewStart, note, updatedAt: todayKey() };
+    commit((current) => ({ ...current, weeklyReviews: [...(current.weeklyReviews ?? []).filter((item) => item.weekStart !== reviewStart), weeklyReview].sort((a, b) => b.weekStart.localeCompare(a.weekStart)) }));
+  };
+  const deleteReview = () => {
+    if (!savedReview || !window.confirm(`${reviewStart} 주간 메모를 삭제할까요?`)) return;
+    commit((current) => ({ ...current, weeklyReviews: (current.weeklyReviews ?? []).filter((item) => item.id !== savedReview.id) }));
+  };
   const requestReview = async () => {
     setLoading(true);
     try {
@@ -1261,8 +1343,23 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
       commit((current) => ({ ...current, consultations: [{ id: id("consult"), date: todayKey(), text: data.text, source: data.source }, ...current.consultations] }));
     } finally { setLoading(false); }
   };
-  return <div className="section-stack"><section className="section-hero consult-hero"><div><span className="eyebrow">일요일 주간 상담</span><h2>기록을 모아보고,<br />다음 한 주를 조정해요.</h2></div><button className="primary-button" onClick={requestReview} disabled={loading}>{loading ? "기록을 살펴보는 중…" : "✦ 상담 시작"}</button></section>
-    <section className="card consultation-card"><CardTitle title={latest ? "최근 상담" : "첫 상담을 준비했어요"} aside={latest ? latest.date : ""} />{latest ? <><span className={`source-badge ${latest.source}`}>{latest.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span><div className="consultation-text">{latest.text}</div><div className="consult-buttons"><button className="delete-text-button" onClick={() => deleteConsultation(latest)}>삭제</button><button className="ghost-button">대화 이어가기</button><button className="primary-button" onClick={openWeeklyPlan}>다음 주 계획하기</button></div></> : <EmptyState text="체성분·식사·운동 기록을 바탕으로 이번 주를 함께 정리해요." action="첫 상담 시작" onClick={requestReview} />}</section>
+  return <div className="section-stack">
+    <section className="card weekly-review-card">
+      <div className="weekly-review-heading"><div><span className="eyebrow">일요일 주간 정리</span><h2>이번 주를 한눈에 봐요</h2></div><button type="button" className="week-current-button" onClick={() => setReviewStart(weekStart(todayKey()))}>이번 주</button></div>
+      <div className="weekly-review-nav"><button type="button" onClick={() => setReviewStart(addDays(reviewStart, -7))} aria-label="이전 주">‹</button><strong>{reviewStart.replaceAll("-", ".")} – {reviewEnd.replaceAll("-", ".")}</strong><button type="button" onClick={() => setReviewStart(addDays(reviewStart, 7))} aria-label="다음 주">›</button></div>
+      <div className="weekly-review-context"><span>{state.profile.mode} {review.timing.week}주차</span><span>{review.phaseLabel}</span>{review.travelDays > 0 && <span>여행 {review.travelDays}일</span>}<span>목표일까지 {review.timing.daysLeft}일</span></div>
+      <div className="weekly-review-grid">
+        <article className="weekly-review-panel body"><div className="weekly-panel-title"><span>체성분</span><small>{review.bodyCount}회 측정</small></div>{review.bodyCount ? <><strong>체지방 {review.bodyFatChange === undefined ? "-" : `${signed(review.bodyFatChange)}kg`}</strong><b>골격근 {review.muscleChange === undefined ? "-" : `${signed(review.muscleChange)}kg`}</b><p>{review.bodyPhase}</p></> : <p className="weekly-panel-empty">측정 기록 없음</p>}</article>
+        <article className="weekly-review-panel nutrition"><div className="weekly-panel-title"><span>식단</span><small>{review.nutritionDays}일 기록</small></div><div className="weekly-nutrition-values"><span><b>{review.averageNutrition.calories}</b> kcal</span><span>단백질 <b>{review.averageNutrition.protein}g</b></span><span>당류 <b>{review.averageNutrition.sugar}g</b></span><span>식이섬유 <b>{review.averageNutrition.fiber}g</b></span></div><p>{review.plannedMealSlots ? `계획 ${review.completedMealPlans}/${review.plannedMealSlots}회 기록` : `실제 ${review.recordedMeals}끼 기록`}</p></article>
+        <article className="weekly-review-panel workout"><div className="weekly-panel-title"><span>운동</span><small>{review.actualWorkouts}회 수행</small></div><strong>유산소 {review.cardioSessions}회 · {review.cardioMinutes}분</strong><b>PT {review.ptSessions}회</b><p>{review.plannedWorkouts ? `계획 ${review.plannedWorkouts}회` : "운동 계획 없음"}</p></article>
+        <article className="weekly-review-panel condition"><div className="weekly-panel-title"><span>월경·컨디션</span><small>{review.conditionDays}일 기록</small></div><strong>에너지 {conditionLabel(review.energy)}</strong><b>식욕 {conditionLabel(review.appetite)}</b><p>{review.symptoms || review.phaseLabel}</p></article>
+      </div>
+      <div className="weekly-goal-progress"><div><span>목표 진행</span><strong>{Math.round(review.timing.progress)}%</strong></div><div><i style={{ width: `${review.timing.progress}%` }} /></div><p>체지방 {signed(state.profile.targetBodyFatChange)}kg · 골격근 {signed(state.profile.targetMuscleChange)}kg</p></div>
+      <Field label="이번 주 메모"><textarea className="weekly-review-note" value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="잘된 점, 힘들었던 점, 다음 주에 바꾸고 싶은 점" /></Field>
+      <div className="weekly-review-actions">{savedReview && <button type="button" className="delete-text-button" onClick={deleteReview}>메모 삭제</button>}<button type="button" className="ghost-button" onClick={saveReview}>{savedReview ? "메모 수정 저장" : "주간 메모 저장"}</button><button type="button" className="primary-button" onClick={() => openWeeklyPlan(addDays(reviewStart, 7))}>다음 주 계획하기</button></div>
+    </section>
+    <section className="section-hero consult-hero"><div><span className="eyebrow">주간 상담</span><h2>정리된 기록으로<br />함께 조정해요.</h2></div><button className="primary-button" onClick={requestReview} disabled={loading}>{loading ? "기록을 살펴보는 중…" : "✦ 상담 시작"}</button></section>
+    <section className="card consultation-card"><CardTitle title={latest ? "최근 상담" : "첫 상담을 준비했어요"} aside={latest ? latest.date : ""} />{latest ? <><span className={`source-badge ${latest.source}`}>{latest.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span><div className="consultation-text">{latest.text}</div><div className="consult-buttons"><button className="delete-text-button" onClick={() => deleteConsultation(latest)}>삭제</button><button className="ghost-button">대화 이어가기</button><button className="primary-button" onClick={() => openWeeklyPlan(addDays(reviewStart, 7))}>다음 주 계획하기</button></div></> : <EmptyState text="체성분·식사·운동 기록을 바탕으로 이번 주를 함께 정리해요." action="첫 상담 시작" onClick={requestReview} />}</section>
     <section className="card consultation-history"><CardTitle title="과거 상담" aside={`${Math.max(0, state.consultations.length - 1)}개`} />{state.consultations.length > 1 ? <div className="history-list">{state.consultations.slice(1).map((item) => <button key={item.id} onClick={() => openDetail(item)} aria-label={`${item.date} 상담 보기`}><strong>{item.date}</strong><b aria-hidden="true">›</b></button>)}</div> : <p className="history-empty">상담이 쌓이면 이전 내용을 여기에서 다시 볼 수 있어요.</p>}</section>
   </div>;
 }
@@ -1607,11 +1704,11 @@ function OfficialFoodSearch({ onChoose, title = "기본 영양정보 찾기", ac
   </section>;
 }
 
-function WeeklyPlanSheet({ state, today, close, save }: { state: AppState; today: string; close: () => void; save: (start: string, draft: WeeklyDraft) => void }) {
-  const initialStart = weekStart(today, 1);
-  const [start, setStart] = useState(initialStart);
+function WeeklyPlanSheet({ state, today, initialStart, close, save }: { state: AppState; today: string; initialStart?: string; close: () => void; save: (start: string, draft: WeeklyDraft) => void }) {
+  const firstStart = initialStart ?? weekStart(today, 1);
+  const [start, setStart] = useState(firstStart);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [draft, setDraft] = useState<WeeklyDraft>(() => createWeeklyDraft(state, initialStart));
+  const [draft, setDraft] = useState<WeeklyDraft>(() => createWeeklyDraft(state, firstStart));
   const dates = weekDates(start);
   const activeDate = dates[activeIndex];
   const day = draft[activeDate];

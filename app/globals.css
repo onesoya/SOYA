@@ -276,6 +276,37 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .consult-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 .consult-buttons .ghost-button { color: var(--ink); background: var(--cream); }
 
+.weekly-review-card { display: grid; gap: 18px; }
+.weekly-review-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.weekly-review-heading h2 { margin: 7px 0 0; font-size: clamp(20px, 3vw, 28px); }
+.week-current-button { min-height: 36px; padding: 0 12px; border: 1px solid var(--coral); background: var(--paper); color: var(--coral); font-family: inherit; font-size: 9px; font-weight: 850; cursor: pointer; }
+.weekly-review-nav { display: grid; grid-template-columns: 38px minmax(0, 1fr) 38px; align-items: center; gap: 8px; }
+.weekly-review-nav button { width: 38px; height: 38px; border: 1px solid var(--ink); background: var(--cream); color: var(--ink); font-family: inherit; font-size: 20px; cursor: pointer; }
+.weekly-review-nav strong { min-width: 0; text-align: center; font-size: 11px; }
+.weekly-review-context { display: flex; flex-wrap: wrap; gap: 6px; }
+.weekly-review-context span { padding: 6px 8px; border: 1px solid var(--line); background: var(--cream); color: var(--muted); font-size: 8px; font-weight: 800; }
+.weekly-review-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.weekly-review-panel { min-width: 0; min-height: 154px; padding: 16px; border: 1px solid var(--ink); background: var(--cream); box-shadow: 3px 3px 0 rgba(51, 46, 43, .13); display: grid; align-content: start; gap: 8px; }
+.weekly-panel-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.weekly-panel-title span { color: var(--coral); font-size: 11px; font-weight: 900; }
+.weekly-panel-title small { color: var(--muted); font-size: 8px; }
+.weekly-review-panel > strong { font-size: 13px; line-height: 1.45; }
+.weekly-review-panel > b { font-size: 10px; }
+.weekly-review-panel > p { margin: auto 0 0; color: var(--muted); font-size: 8px; line-height: 1.55; }
+.weekly-review-panel .weekly-panel-empty { margin: auto 0; text-align: center; }
+.weekly-nutrition-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.weekly-nutrition-values span { min-width: 0; color: var(--muted); font-size: 8px; }
+.weekly-nutrition-values b { display: block; margin-bottom: 2px; color: var(--ink); font-size: 12px; }
+.weekly-goal-progress { display: grid; gap: 7px; padding: 14px; border: 1px solid var(--line); background: var(--paper); }
+.weekly-goal-progress > div:first-child { display: flex; justify-content: space-between; font-size: 9px; font-weight: 850; }
+.weekly-goal-progress > div:nth-child(2) { height: 8px; border: 1px solid var(--ink); background: var(--cream); overflow: hidden; }
+.weekly-goal-progress i { display: block; height: 100%; background: var(--coral); }
+.weekly-goal-progress p { margin: 0; color: var(--muted); font-size: 8px; }
+.field textarea.weekly-review-note { min-height: 78px; }
+.weekly-review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; }
+.weekly-review-actions .delete-text-button { margin-right: auto; }
+.weekly-review-actions .ghost-button, .weekly-review-actions .primary-button { min-height: 44px; }
+
 .fab { position: fixed; z-index: 30; right: max(28px, calc((100vw - 1440px) / 2 + 28px)); bottom: 30px; width: 58px; height: 58px; border: 0; border-radius: 20px 20px 20px 7px; background: var(--coral); color: white; box-shadow: 0 18px 35px rgba(227, 111, 95, .34); font-size: 30px; font-weight: 300; cursor: pointer; }
 .mobile-nav { display: none; }
 
@@ -1047,6 +1078,13 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .body-phase-filter button { min-width: 0; padding-inline: 4px; font-size: 7px; }
   .data-table > button { grid-template-columns: minmax(0, 1fr) 58px 58px 8px; gap: 5px; }
   .history-list button { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .weekly-review-card { gap: 14px; }
+  .weekly-review-grid { grid-template-columns: minmax(0, 1fr); }
+  .weekly-review-panel { min-height: 132px; }
+  .weekly-review-nav strong { font-size: 9px; }
+  .weekly-review-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .weekly-review-actions .delete-text-button { grid-column: 1 / -1; justify-self: start; }
+  .weekly-review-actions .primary-button { grid-column: 1 / -1; }
   .cycle-history-heading { align-items: flex-start; flex-direction: column; }
   .cycle-history-actions { width: 100%; }
   .cycle-history-actions button { flex: 1; }

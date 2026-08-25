@@ -114,6 +114,13 @@ export type Consultation = {
   source: "openai" | "preview";
 };
 
+export type WeeklyReview = {
+  id: string;
+  weekStart: string;
+  note: string;
+  updatedAt: string;
+};
+
 export type TravelLevel = "가볍게 기록" | "균형 유지" | "목표 유지";
 
 export type AppState = {
@@ -152,6 +159,7 @@ export type AppState = {
   workouts: WorkoutEntry[];
   cycles: CycleEntry[];
   consultations: Consultation[];
+  weeklyReviews?: WeeklyReview[];
   skippedTasks: string[];
 };
 
@@ -206,5 +214,6 @@ export const initialState: AppState = {
   ],
   cycles: [],
   consultations: [],
+  weeklyReviews: [],
   skippedTasks: [],
 };
