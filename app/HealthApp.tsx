@@ -20,6 +20,15 @@ import {
   TravelLevel,
   WorkoutEntry,
 } from "./data";
+import {
+  disablePushNotifications,
+  enablePushNotifications,
+  getPushStatus,
+  observeForegroundNotifications,
+  syncPushSubscription,
+  type PushStatus,
+  type PushSyncPayload,
+} from "./firebase-notifications";
 
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
 type Modal = null | "quick" | "measurement-picker" | "movement-picker" | "body" | "body-bulk" | "body-detail" | "circumference" | "activity" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail" | "reminders" | "data-management";
@@ -398,6 +407,42 @@ function addDays(value: string, amount: number) {
   return dateKey(date);
 }
 
+function pushSyncPayload(state: AppState, today: string): PushSyncPayload {
+  const todayMeals = state.meals.filter((entry) => entry.date === today && entry.kind === "actual");
+  const todayWorkouts = state.workouts.filter((entry) => entry.date === today);
+  const nextWeekStart = weekStart(today, 1);
+  const nextWeekEnd = addDays(nextWeekStart, 6);
+  const prediction = menstrualPrediction(state.cycles, today);
+  let expectedPeriod = prediction.lastStart ? addDays(prediction.lastStart, prediction.cycleLength) : undefined;
+  while (expectedPeriod && addDays(expectedPeriod, 3) < today) expectedPeriod = addDays(expectedPeriod, prediction.cycleLength);
+
+  return {
+    settings: state.reminderSettings ?? defaultReminders,
+    completion: {
+      date: today,
+      body: state.bodyRecords.some((entry) => entry.date === today),
+      meals: {
+        breakfast: todayMeals.some((entry) => entry.mealType === "breakfast"),
+        lunch: todayMeals.some((entry) => entry.mealType === "lunch"),
+        dinner: todayMeals.some((entry) => entry.mealType === "dinner"),
+      },
+      workoutPlanned: todayWorkouts.some((entry) => entry.kind === "plan"),
+      workout: todayWorkouts.some((entry) => entry.kind === "actual"),
+      nextWeekPlanned: state.meals.some((entry) => entry.kind === "plan" && entry.date >= nextWeekStart && entry.date <= nextWeekEnd)
+        || state.workouts.some((entry) => entry.kind === "plan" && entry.date >= nextWeekStart && entry.date <= nextWeekEnd),
+    },
+    travel: {
+      active: Boolean(state.profile.travelActive),
+      startDate: state.profile.travelStartDate,
+      endDate: state.profile.travelEndDate,
+    },
+    cycle: {
+      nextPeriod: expectedPeriod,
+      nextOvulation: expectedPeriod ? addDays(expectedPeriod, -14) : undefined,
+    },
+  };
+}
+
 function cycleRangeDates(start: string, end: string) {
   const length = daysBetween(start, end);
   return length < 0 ? [] : Array.from({ length: length + 1 }, (_, index) => addDays(start, index));
@@ -663,16 +708,29 @@ export function HealthApp() {
   const [weeklyPlanStart, setWeeklyPlanStart] = useState<string>();
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "offline">("saved");
+  const [pushStatus, setPushStatus] = useState<PushStatus>("off");
+  const [pushMessage, setPushMessage] = useState("");
   const today = todayKey();
 
   useEffect(() => {
     fetch("/api/state")
       .then((response) => response.json() as Promise<{ state?: AppState }>)
       .then((data) => {
-        setState(normalizeAppState(data.state ?? initialState));
+        const next = normalizeAppState(data.state ?? initialState);
+        setState(next);
+        void getPushStatus().then((status) => {
+          setPushStatus(status);
+          if (status === "enabled") void syncPushSubscription(pushSyncPayload(next, today));
+        });
       })
       .catch(() => setSaveState("offline"))
       .finally(() => setLoaded(true));
+  }, [today]);
+
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    void observeForegroundNotifications().then((unsubscribe) => { stop = unsubscribe; });
+    return () => stop?.();
   }, []);
 
   useEffect(() => {
@@ -710,8 +768,36 @@ export function HealthApp() {
         body: JSON.stringify(next),
       });
       setSaveState(response.ok ? "saved" : "offline");
+      if (response.ok) void syncPushSubscription(pushSyncPayload(next, today));
     } catch {
       setSaveState("offline");
+    }
+  };
+
+  const enableActualNotifications = async () => {
+    setPushStatus("working");
+    setPushMessage("");
+    try {
+      await enablePushNotifications(pushSyncPayload(state, today));
+      setPushStatus("enabled");
+      setPushMessage("앱을 닫아도 설정한 시간에 알림이 와요.");
+    } catch (error) {
+      const status = await getPushStatus();
+      setPushStatus(status === "blocked" ? "blocked" : "error");
+      setPushMessage(error instanceof Error ? error.message : "알림 연결에 실패했습니다.");
+    }
+  };
+
+  const disableActualNotifications = async () => {
+    setPushStatus("working");
+    setPushMessage("");
+    try {
+      await disablePushNotifications(pushSyncPayload(state, today));
+      setPushStatus("off");
+      setPushMessage("실제 알림을 껐어요.");
+    } catch (error) {
+      setPushStatus("error");
+      setPushMessage(error instanceof Error ? error.message : "알림 해제에 실패했습니다.");
     }
   };
 
@@ -1315,7 +1401,7 @@ export function HealthApp() {
       {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} initialStart={weeklyPlanStart} close={() => { setWeeklyPlanStart(undefined); setModal(null); }} save={saveWeeklyPlan} />}
       {modal === "cycle" && <CycleSheet today={cycleDate ?? today} draft={state.cycles.find((item) => item.date === (cycleDate ?? today))} previous={state.cycles.find((item) => item.date === addDays(cycleDate ?? today, -1))} existing={state.cycles} initialRange={cycleRangeDraft} close={() => { setCycleDate(undefined); setCycleRangeDraft(undefined); setModal(null); }} save={saveCycle} saveRanges={saveCycleRanges} remove={deleteCycle} />}
       {modal === "consultation-detail" && selectedConsultation && <ConsultationDetailSheet consultation={selectedConsultation} close={() => { setSelectedConsultation(undefined); setModal(null); }} remove={() => deleteConsultation(selectedConsultation)} />}
-      {modal === "reminders" && <ReminderSettingsSheet settings={state.reminderSettings ?? defaultReminders} close={() => setModal(null)} save={saveReminders} />}
+      {modal === "reminders" && <ReminderSettingsSheet settings={state.reminderSettings ?? defaultReminders} pushStatus={pushStatus} pushMessage={pushMessage} enablePush={() => { void enableActualNotifications(); }} disablePush={() => { void disableActualNotifications(); }} close={() => setModal(null)} save={saveReminders} />}
       {modal === "data-management" && <DataManagementSheet state={state} today={today} close={() => setModal(null)} backup={backupData} exportCsv={(kind) => exportCsv(state, kind, today)} restore={restoreData} />}
     </div>
   );
@@ -2428,15 +2514,17 @@ function DataManagementSheet({ state, today, close, backup, exportCsv: downloadC
   </Sheet>;
 }
 
-function ReminderSettingsSheet({ settings, close, save }: { settings: ReminderSettings; close: () => void; save: (settings: ReminderSettings) => void }) {
+function ReminderSettingsSheet({ settings, pushStatus, pushMessage, enablePush, disablePush, close, save }: { settings: ReminderSettings; pushStatus: PushStatus; pushMessage: string; enablePush: () => void; disablePush: () => void; close: () => void; save: (settings: ReminderSettings) => void }) {
   const [draft, setDraft] = useState<ReminderSettings>(settings);
   const update = <K extends keyof ReminderSettings>(key: K, value: ReminderSettings[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const updateMealEnabled = (mealType: MealType, enabled: boolean) => setDraft((current) => ({ ...current, mealEnabled: { ...current.mealEnabled, [mealType]: enabled } }));
   const updateMealTime = (mealType: MealType, time: string) => setDraft((current) => ({ ...current, mealTimes: { ...current.mealTimes, [mealType]: time } }));
   const row = (label: string, enabled: boolean, toggle: (enabled: boolean) => void, time: string, changeTime: (time: string) => void) => <label className={`reminder-row ${enabled ? "active" : ""}`}><input className="reminder-check" type="checkbox" checked={enabled} onChange={(event) => toggle(event.target.checked)} /><span><strong>{label}</strong><small>{enabled ? time : "알림 끔"}</small></span><input className="reminder-time" type="time" value={time} disabled={!enabled} onChange={(event) => changeTime(event.target.value)} aria-label={`${label} 알림 시간`} /></label>;
   return <Sheet title="알림 설정" close={close}><form className="form-stack reminder-settings-form" onSubmit={(event) => { event.preventDefault(); save(draft); }}>
+    <section className={`reminder-section push-permission-section ${pushStatus}`}><div><strong>실제 알림</strong><span>{pushStatus === "enabled" ? "켜짐" : pushStatus === "working" ? "연결 중" : "꺼짐"}</span></div><p>{pushMessage || (pushStatus === "enabled" ? "앱을 닫아도 설정한 시간에 알림이 와요." : pushStatus === "blocked" ? "아이폰 설정에서 SOYA 알림을 허용해주세요." : pushStatus === "unsupported" ? "아이폰 홈 화면에 추가한 SOYA에서 켤 수 있어요." : "아이폰 홈 화면의 SOYA에서 한 번만 켜주세요.")}</p>{pushStatus === "enabled" ? <button type="button" className="push-toggle-button off" onClick={disablePush}>실제 알림 끄기</button> : pushStatus !== "unsupported" && pushStatus !== "blocked" ? <button type="button" className="push-toggle-button" onClick={enablePush} disabled={pushStatus === "working"}>{pushStatus === "working" ? "연결 중…" : "실제 알림 켜기"}</button> : null}</section>
     <section className="reminder-section"><strong>매일 기록</strong>{row("아침 인바디", draft.bodyEnabled, (enabled) => update("bodyEnabled", enabled), draft.bodyTime, (time) => update("bodyTime", time))}{(["breakfast", "lunch", "dinner"] as MealType[]).map((mealType) => <div key={mealType}>{row(`${mealLabels[mealType]} 기록`, draft.mealEnabled[mealType], (enabled) => updateMealEnabled(mealType, enabled), draft.mealTimes[mealType], (time) => updateMealTime(mealType, time))}</div>)}</section>
     <section className="reminder-section"><strong>운동과 계획</strong>{row("계획한 운동", draft.workoutEnabled, (enabled) => update("workoutEnabled", enabled), draft.workoutTime, (time) => update("workoutTime", time))}<div className={`reminder-row weekly ${draft.weeklyEnabled ? "active" : ""}`}><input className="reminder-check" type="checkbox" checked={draft.weeklyEnabled} onChange={(event) => update("weeklyEnabled", event.target.checked)} /><span><strong>주간 계획</strong><small>{draft.weeklyEnabled ? "다음 주 식단·운동" : "알림 끔"}</small></span><select value={draft.weeklyDay} disabled={!draft.weeklyEnabled} onChange={(event) => update("weeklyDay", Number(event.target.value))} aria-label="주간 계획 요일">{["일", "월", "화", "수", "목", "금", "토"].map((day, index) => <option value={index} key={day}>{day}요일</option>)}</select><input className="reminder-time" type="time" value={draft.weeklyTime} disabled={!draft.weeklyEnabled} onChange={(event) => update("weeklyTime", event.target.value)} aria-label="주간 계획 알림 시간" /></div></section>
+    <section className="reminder-section"><strong>월경</strong>{row("배란·월경 예상", draft.cycleEnabled, (enabled) => update("cycleEnabled", enabled), draft.cycleTime, (time) => update("cycleTime", time))}<p className="cycle-reminder-note">예상 배란일·월경일과 월경 예정일 3일 후에 알려줘요.</p></section>
     <section className="reminder-section travel-reminder-section"><div><strong>여행 중 알림</strong><small>여행 모드에만 적용</small></div><div className="travel-reminder-options">{(["기본 유지", "핵심만", "모두 끄기"] as ReminderSettings["travelBehavior"][]).map((behavior) => <button type="button" key={behavior} className={draft.travelBehavior === behavior ? "active" : ""} onClick={() => update("travelBehavior", behavior)}>{behavior}</button>)}</div><p>{draft.travelBehavior === "핵심만" ? "식사 기록만 남기고 인바디·운동·주간 계획 알림은 쉬어요." : draft.travelBehavior === "모두 끄기" ? "여행 기간에는 모든 알림을 쉬어요." : "평소 설정한 알림을 그대로 사용해요."}</p></section>
     <button className="primary-button submit-button" type="submit">알림 설정 저장</button>
   </form></Sheet>;

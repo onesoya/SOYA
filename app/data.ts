@@ -150,6 +150,8 @@ export type ReminderSettings = {
   weeklyEnabled: boolean;
   weeklyDay: number;
   weeklyTime: string;
+  cycleEnabled: boolean;
+  cycleTime: string;
   travelBehavior: "기본 유지" | "핵심만" | "모두 끄기";
 };
 
@@ -246,6 +248,8 @@ export const initialState: AppState = {
     weeklyEnabled: true,
     weeklyDay: 0,
     weeklyTime: "10:00",
+    cycleEnabled: true,
+    cycleTime: "09:00",
     travelBehavior: "핵심만",
   },
   bodyRecords: [

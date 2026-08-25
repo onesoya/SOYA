@@ -189,6 +189,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .reminder-row.weekly select { text-align-last: center; }
 .reminder-time:disabled, .reminder-row.weekly select:disabled { opacity: .4; }
 .reminder-row.weekly { grid-template-columns: 20px minmax(0, 1fr) 68px 86px; }
+.push-permission-section > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.push-permission-section > div > span { color: var(--muted); font-size: 8px; }
+.push-permission-section.enabled > div > span { color: var(--coral); }
+.push-permission-section p, .cycle-reminder-note { margin: 0; color: var(--muted); font-size: 7px; line-height: 1.55; }
+.push-toggle-button { justify-self: end; min-height: 34px; padding: 7px 11px; border: 1px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); background: var(--coral); color: white; font: inherit; font-size: 8px; cursor: pointer; }
+.push-toggle-button.off { background: var(--paper); color: var(--ink); }
+.push-toggle-button:disabled { opacity: .55; cursor: wait; }
 .data-button { display: grid; place-items: center; font-family: Galmuri9, Galmuri11, sans-serif; font-size: 17px; }
 .data-button span { transform: translateY(-1px); }
 .data-management-stack { display: grid; gap: 14px; }
