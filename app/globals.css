@@ -97,6 +97,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .nutrient-track i.coral { background: var(--coral); }
 .nutrient-track i.gold { background: var(--gold); }
 .nutrient-track i.sage, .progress-track i { background: var(--sage); }
+.daily-nutrition-card { display: grid; gap: 14px; }
+.nutrition-mode-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--ink); }
+.nutrition-mode-tabs button { min-height: 38px; border: 0; background: var(--paper); color: var(--muted); font: inherit; font-size: 9px; font-weight: 850; cursor: pointer; }
+.nutrition-mode-tabs button + button { border-left: 1px solid var(--ink); }
+.nutrition-mode-tabs button.active { background: var(--ink); color: white; }
+.nutrition-summary-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.nutrition-summary-heading .calorie-total { margin: 0; }
+.nutrition-status { flex: 0 0 auto; padding: 7px 9px; border: 1px solid var(--ink); background: var(--cream); font-size: 8px; font-weight: 850; }
+.nutrition-status.balanced { background: var(--sage-soft); color: #49624d; }
+.nutrition-status.partial { background: #fff0c8; color: #8a6426; }
+.nutrition-status.attention { background: #ffe0d8; color: #a84c3a; }
+.nutrition-status.none { color: var(--muted); }
+.calorie-guide { margin: -7px 0 0; color: var(--muted); font-size: 8px; }
+.daily-nutrient-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.daily-nutrient-grid .nutrient { margin: 0; }
+.nutrition-goal-form { gap: 16px; }
+.nutrition-goal-range { padding: 12px; border: 1px solid var(--line); background: var(--cream); display: grid; gap: 9px; }
+.nutrition-goal-range > strong { font-size: 10px; }
 .micro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 19px; }
 .micro-stat { padding: 13px; background: var(--cream); border-radius: 16px; display: grid; gap: 4px; }
 .micro-stat span, .micro-stat small { color: var(--muted); font-size: 9px; }
@@ -818,6 +836,8 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .calendar-day, .calendar-blank { min-height: 46px; }
   .calendar-day.today::before { display: none; }
   .calendar-legend { gap: 9px 12px; }
+  .daily-nutrient-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .nutrition-summary-heading { align-items: flex-end; }
   .change-overview { align-items: flex-start; flex-direction: column; }
   .change-overview .primary-button { align-self: stretch; }
   .change-metric-grid { grid-template-columns: 1fr 1fr; }

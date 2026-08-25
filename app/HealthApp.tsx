@@ -18,7 +18,7 @@ import {
 } from "./data";
 
 type Tab = "today" | "food" | "workout" | "change" | "consult";
-type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail";
+type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail";
 type Consultation = AppState["consultations"][number];
 type WeeklyWorkoutDraft = {
   id: string;
@@ -45,6 +45,7 @@ type OfficialFoodResult = {
   fiber: number;
   maker?: string;
 };
+type NutritionTotal = { calories: number; protein: number; carbs: number; fat: number; sugar: number; fiber: number };
 type NextAction =
   | { type: "body"; eyebrow: string; title: string; detail: string }
   | { type: "workout"; eyebrow: string; title: string; detail: string }
@@ -69,6 +70,23 @@ const navIcons: Record<Tab, string> = {
 
 const roundNutrient = (value: number) => Math.round(value * 10) / 10;
 const foodUnits: FoodUnit[] = ["g", "kg", "개", "인분"];
+const emptyNutrition = (): NutritionTotal => ({ calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0 });
+const mealNutrition = (meal: MealEntry): NutritionTotal => {
+  if (meal.kind === "actual" || !meal.components?.length) return { calories: meal.calories, protein: meal.protein, carbs: meal.carbs, fat: meal.fat, sugar: meal.sugar, fiber: meal.fiber };
+  return meal.components.reduce((sum, item) => ({
+    calories: roundNutrient(sum.calories + item.calories), protein: roundNutrient(sum.protein + item.protein),
+    carbs: roundNutrient(sum.carbs + item.carbs), fat: roundNutrient(sum.fat + item.fat),
+    sugar: roundNutrient(sum.sugar + item.sugar), fiber: roundNutrient(sum.fiber + item.fiber),
+  }), emptyNutrition());
+};
+const nutritionTotal = (meals: MealEntry[]) => meals.reduce((sum, meal) => {
+  const value = mealNutrition(meal);
+  return {
+    calories: roundNutrient(sum.calories + value.calories), protein: roundNutrient(sum.protein + value.protein),
+    carbs: roundNutrient(sum.carbs + value.carbs), fat: roundNutrient(sum.fat + value.fat),
+    sugar: roundNutrient(sum.sugar + value.sugar), fiber: roundNutrient(sum.fiber + value.fiber),
+  };
+}, emptyNutrition());
 
 function foodBasis(item: FoodLibraryItem): { amount: number; unit: FoodUnit } {
   if (item.baseAmount && item.unit) return { amount: item.baseAmount, unit: item.unit };
@@ -266,17 +284,7 @@ export function HealthApp() {
   const actualWorkouts = todayWorkouts.filter((entry) => entry.kind === "actual");
   const plannedWorkout = todayWorkouts.find((entry) => entry.kind === "plan");
 
-  const nutrition = actualMeals.reduce(
-    (sum, meal) => ({
-      calories: sum.calories + meal.calories,
-      protein: sum.protein + meal.protein,
-      carbs: sum.carbs + meal.carbs,
-      fat: sum.fat + meal.fat,
-      sugar: sum.sugar + meal.sugar,
-      fiber: sum.fiber + meal.fiber,
-    }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0 },
-  );
+  const nutrition = nutritionTotal(actualMeals);
 
   const mealActual = useCallback((type: MealType) => todayMeals.find((entry) => entry.kind === "actual" && entry.mealType === type), [todayMeals]);
   const mealPlan = useCallback((type: MealType) => todayMeals.find((entry) => entry.kind === "plan" && entry.mealType === type), [todayMeals]);
@@ -337,6 +345,29 @@ export function HealthApp() {
       workoutGoal: {
         cardioSessions: Math.max(1, number(data.get("cardioSessions"))),
         cardioMinutes: Math.max(1, number(data.get("cardioMinutes"))),
+      },
+    }));
+    setModal(null);
+  };
+
+  const saveNutritionGoal = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const range = (minName: string, maxName: string) => {
+      const min = Math.max(0, number(data.get(minName)));
+      const max = Math.max(min, number(data.get(maxName)));
+      return [min, max] as const;
+    };
+    const [caloriesMin, caloriesMax] = range("caloriesMin", "caloriesMax");
+    const [proteinMin, proteinMax] = range("proteinMin", "proteinMax");
+    const [carbsMin, carbsMax] = range("carbsMin", "carbsMax");
+    const [fatMin, fatMax] = range("fatMin", "fatMax");
+    commit((current) => ({
+      ...current,
+      nutritionGoal: {
+        caloriesMin, caloriesMax, proteinMin, proteinMax, carbsMin, carbsMax, fatMin, fatMax,
+        sugarMax: Math.max(0, number(data.get("sugarMax"))),
+        fiberMin: Math.max(0, number(data.get("fiberMin"))),
       },
     }));
     setModal(null);
@@ -587,7 +618,7 @@ export function HealthApp() {
         {tab === "today" && (
           <TodayView state={state} today={today} todayBody={todayBody} nutrition={nutrition} completedCount={completedCount} totalCount={completed.length} nextAction={nextAction} mealActual={mealActual} mealPlan={mealPlan} actualWorkouts={actualWorkouts} plannedWorkout={plannedWorkout} openNextAction={openNextAction} skipNextAction={skipNextAction} setModal={setModal} setTab={setTab} openMeal={openMeal} openWorkout={openWorkout} />
         )}
-        {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} />}
+        {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openGoal={() => setModal("nutrition-goal")} />}
         {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} />}
         {tab === "change" && <ChangeView state={state} setModal={setModal} openDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} />}
         {tab === "consult" && <ConsultView state={state} commit={commit} openWeeklyPlan={() => setModal("weekly-plan")} deleteConsultation={deleteConsultation} openDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
@@ -601,6 +632,7 @@ export function HealthApp() {
       {modal === "body-detail" && selectedBodyRecord && <BodyDetailSheet record={selectedBodyRecord} close={() => { setSelectedBodyRecord(undefined); setModal(null); }} edit={() => setModal("body")} remove={() => deleteBody(selectedBodyRecord)} />}
       {(modal === "meal-plan" || modal === "meal-actual") && <MealSheet today={mealDate ?? today} kind={modal === "meal-plan" ? "plan" : "actual"} library={state.foodLibrary ?? []} draft={mealDraft} presetType={mealPresetType} close={() => { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); setModal(null); }} save={saveMeal} />}
       {modal === "food-library" && <FoodLibrarySheet library={state.foodLibrary ?? []} close={() => setModal(null)} save={saveFoodLibraryItem} saveSet={saveFoodSet} remove={deleteFoodLibraryItem} />}
+      {modal === "nutrition-goal" && <NutritionGoalSheet goal={state.nutritionGoal} close={() => setModal(null)} save={saveNutritionGoal} />}
       {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={() => { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); setModal(null); }} save={saveWorkout} />}
       {modal === "workout-goal" && <WorkoutGoalSheet goal={state.workoutGoal ?? initialState.workoutGoal!} close={() => setModal(null)} save={saveWorkoutGoal} />}
       {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} close={() => setModal(null)} save={saveWeeklyPlan} />}
@@ -655,7 +687,7 @@ function TodayView(props: TodayViewProps) {
     </section>
 
     <section className="card nutrition-card">
-      <CardTitle title="오늘의 영양" aside={<span className="soft-badge">임시 목표</span>} />
+      <CardTitle title="오늘의 영양" aside={<button className="text-button" onClick={() => setModal("nutrition-goal")}>목표 설정</button>} />
       <div className="calorie-total"><strong>{nutrition.calories.toLocaleString()}</strong><span>kcal</span><small>/ {goal.caloriesMin.toLocaleString()}~{goal.caloriesMax.toLocaleString()}</small></div>
       <NutrientBar label="단백질" value={nutrition.protein} min={goal.proteinMin} max={goal.proteinMax} unit="g" tone="coral" />
       <NutrientBar label="탄수화물" value={nutrition.carbs} min={goal.carbsMin} max={goal.carbsMax} unit="g" tone="gold" />
@@ -677,9 +709,10 @@ function TodayView(props: TodayViewProps) {
   </div>;
 }
 
-function FoodView({ state, today, openMeal, deleteMeal }: { state: AppState; today: string; openMeal: (kind: EntryKind, presetType?: MealType, draft?: MealEntry, date?: string) => void; deleteMeal: (entry: MealEntry) => void }) {
+function FoodView({ state, today, openMeal, deleteMeal, openGoal }: { state: AppState; today: string; openMeal: (kind: EntryKind, presetType?: MealType, draft?: MealEntry, date?: string) => void; deleteMeal: (entry: MealEntry) => void; openGoal: () => void }) {
   const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(today);
+  const [nutritionMode, setNutritionMode] = useState<EntryKind>("actual");
   const cells = monthCells(`${selectedMonth}-01`);
   const mealStatus = (date: string) => {
     const meals = state.meals.filter((item) => item.date === date && item.kind === "actual" && !item.skipped);
@@ -699,7 +732,21 @@ function FoodView({ state, today, openMeal, deleteMeal }: { state: AppState; tod
     setSelectedMonth(today.slice(0, 7));
     setSelectedDate(today);
   };
+  const selectedNutritionMeals = state.meals.filter((item) => item.date === selectedDate && item.kind === nutritionMode && !item.skipped);
+  const selectedNutrition = nutritionTotal(selectedNutritionMeals);
+  const goal = state.nutritionGoal;
+  const nutritionTone = !selectedNutritionMeals.length ? "none" : selectedNutrition.sugar > goal.sugarMax * 1.25 || selectedNutrition.calories > goal.caloriesMax * 1.15 || selectedNutrition.protein < goal.proteinMin * 0.65 ? "attention" : selectedNutrition.calories >= goal.caloriesMin && selectedNutrition.calories <= goal.caloriesMax && selectedNutrition.protein >= goal.proteinMin && selectedNutrition.sugar <= goal.sugarMax && selectedNutrition.fiber >= goal.fiberMin ? "balanced" : "partial";
+  const nutritionLabel = nutritionTone === "balanced" ? "잘했어요" : nutritionTone === "attention" ? "아쉬워요" : nutritionTone === "partial" ? "괜찮아요" : nutritionMode === "plan" ? "계획 없음" : "기록 없음";
+  const calorieGuide = selectedNutrition.calories < goal.caloriesMin ? `목표 하한까지 ${Math.round(goal.caloriesMin - selectedNutrition.calories)} kcal` : selectedNutrition.calories <= goal.caloriesMax ? "칼로리 목표 범위 안" : `목표 상한보다 ${Math.round(selectedNutrition.calories - goal.caloriesMax)} kcal 많음`;
   return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading food-calendar-heading"><div><span className="eyebrow">식단 밸런스</span><div className="food-month-actions"><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /><button className="primary-button food-plan-button" onClick={() => openMeal("plan", undefined, undefined, selectedDate)}>식사 계획</button></div></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <button type="button" key={date} onClick={() => setSelectedDate(date)} className={`calendar-day ${mealStatus(date)} ${hasMealPlan(date) ? "meal-planned" : ""} ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b></button> : <span className="calendar-blank" key={`blank-${index}`} />)}</div><div className="calendar-legend"><span><i className="balanced" />잘했어요</span><span><i className="partial" />괜찮아요</span><span><i className="attention" />아쉬워요</span><span><b className="plan-heart">♥</b>계획</span></div></section>
+    <section className="card daily-nutrition-card">
+      <CardTitle title={`${dateLabel(selectedDate)} 영양`} aside={<button className="text-button" onClick={openGoal}>목표 설정</button>} />
+      <div className="nutrition-mode-tabs"><button type="button" className={nutritionMode === "actual" ? "active" : ""} onClick={() => setNutritionMode("actual")}>실제 섭취</button><button type="button" className={nutritionMode === "plan" ? "active" : ""} onClick={() => setNutritionMode("plan")}>계획 예상</button></div>
+      <div className="nutrition-summary-heading"><div className="calorie-total"><strong>{selectedNutrition.calories.toLocaleString()}</strong><span>kcal</span><small>/ {goal.caloriesMin.toLocaleString()}~{goal.caloriesMax.toLocaleString()}</small></div><span className={`nutrition-status ${nutritionTone}`}>{nutritionLabel}</span></div>
+      <p className="calorie-guide">{calorieGuide}</p>
+      <div className="daily-nutrient-grid"><NutrientBar label="단백질" value={selectedNutrition.protein} min={goal.proteinMin} max={goal.proteinMax} unit="g" tone="coral" /><NutrientBar label="탄수화물" value={selectedNutrition.carbs} min={goal.carbsMin} max={goal.carbsMax} unit="g" tone="gold" /><NutrientBar label="지방" value={selectedNutrition.fat} min={goal.fatMin} max={goal.fatMax} unit="g" tone="sage" /></div>
+      <div className="micro-grid"><MicroStat label="당류" value={`${selectedNutrition.sugar} / ${goal.sugarMax}g`} hint="상한 기준" /><MicroStat label="식이섬유" value={`${selectedNutrition.fiber} / ${goal.fiberMin}g`} hint="최소 목표" /></div>
+    </section>
     <section className="card"><CardTitle title={`${dateLabel(selectedDate)} 식단`} aside={<button className="text-button" onClick={() => openMeal("actual", undefined, undefined, selectedDate)}>먹은 식사 추가</button>} />
       <div className="meal-cards">{(["breakfast", "lunch", "dinner", "snack"] as MealType[]).map((type) => {
         const plans = state.meals.filter((m) => m.date === selectedDate && m.mealType === type && m.kind === "plan");
@@ -1130,6 +1177,18 @@ function WeeklyPlanSheet({ state, today, close, save }: { state: AppState; today
 
 function WorkoutGoalSheet({ goal, close, save }: { goal: NonNullable<AppState["workoutGoal"]>; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void }) {
   return <Sheet title="주간 운동 목표" close={close}><form className="form-stack" onSubmit={save}><Field label="개인 유산소 최소 횟수"><input type="number" name="cardioSessions" min="1" max="14" defaultValue={goal.cardioSessions} required /></Field><Field label="개인 유산소 누적시간 (분)"><input type="number" name="cardioMinutes" min="1" max="1000" defaultValue={goal.cardioMinutes} required /></Field><button className="primary-button submit-button" type="submit">목표 저장</button></form></Sheet>;
+}
+
+function NutritionGoalSheet({ goal, close, save }: { goal: AppState["nutritionGoal"]; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void }) {
+  const RangeFields = ({ label, minName, maxName, minValue, maxValue, unit }: { label: string; minName: string; maxName: string; minValue: number; maxValue: number; unit: string }) => <section className="nutrition-goal-range"><strong>{label}</strong><div className="two-fields"><Field label={`최소 (${unit})`}><input type="number" name={minName} min="0" step="0.1" defaultValue={minValue} required /></Field><Field label={`최대 (${unit})`}><input type="number" name={maxName} min="0" step="0.1" defaultValue={maxValue} required /></Field></div></section>;
+  return <Sheet title="하루 영양 목표" close={close}><form className="form-stack nutrition-goal-form" onSubmit={save}>
+    <RangeFields label="칼로리" minName="caloriesMin" maxName="caloriesMax" minValue={goal.caloriesMin} maxValue={goal.caloriesMax} unit="kcal" />
+    <RangeFields label="단백질" minName="proteinMin" maxName="proteinMax" minValue={goal.proteinMin} maxValue={goal.proteinMax} unit="g" />
+    <RangeFields label="탄수화물" minName="carbsMin" maxName="carbsMax" minValue={goal.carbsMin} maxValue={goal.carbsMax} unit="g" />
+    <RangeFields label="지방" minName="fatMin" maxName="fatMax" minValue={goal.fatMin} maxValue={goal.fatMax} unit="g" />
+    <div className="two-fields"><Field label="당류 상한 (g)"><input type="number" name="sugarMax" min="0" step="0.1" defaultValue={goal.sugarMax} required /></Field><Field label="식이섬유 하한 (g)"><input type="number" name="fiberMin" min="0" step="0.1" defaultValue={goal.fiberMin} required /></Field></div>
+    <button className="primary-button submit-button" type="submit">영양 목표 저장</button>
+  </form></Sheet>;
 }
 
 function WorkoutSheet({ today, kind, draft, presetType, close, save }: { today: string; kind: EntryKind; draft?: WorkoutEntry; presetType?: WorkoutEntry["type"]; close: () => void; save: (event: FormEvent<HTMLFormElement>, kind: EntryKind) => void }) {
