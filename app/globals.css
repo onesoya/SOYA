@@ -666,10 +666,19 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .month-options button.active { border-color: var(--ink); background: var(--coral); color: white; box-shadow: 2px 2px 0 var(--ink); }
 .calendar-actions { display: flex; gap: 8px; }
 .calendar-actions .ghost-button { color: var(--ink); background: var(--cream); }
-.calendar-heading.calendar-heading-stacked { display: grid; align-items: start; gap: 6px; }
-.calendar-heading.calendar-heading-stacked > .calendar-toolbar { width: 100%; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 8px; }
-.calendar-toolbar .month-navigator { min-width: 0; margin-top: 0; }
-.calendar-inline-actions { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex: 0 0 auto; }
+.calendar-heading.calendar-heading-stacked { width: 100%; display: grid; align-items: start; gap: 6px; }
+.calendar-heading.calendar-heading-stacked > .calendar-toolbar {
+  width: 100%;
+  min-width: 0;
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  justify-items: stretch;
+  gap: 8px;
+}
+.calendar-toolbar .month-navigator { min-width: 0; max-width: 100%; margin-top: 0; justify-self: start; }
+.calendar-inline-actions { margin-left: 0; justify-self: end; display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex: 0 0 auto; }
 .calendar-inline-actions button { min-width: 44px; min-height: 30px; padding: 0 8px; font-size: 8px; box-shadow: 2px 2px 0 var(--ink); }
 .calendar-inline-actions .ghost-button { color: var(--ink); background: var(--cream); }
 .calendar-weekdays, .month-grid {
