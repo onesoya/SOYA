@@ -352,8 +352,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .source-badge.openai { background: var(--sage-soft); color: #536d57; }
 .source-badge.preview { background: var(--gold-soft); color: #8a682f; }
 .consultation-text { white-space: pre-line; color: #514c45; font-size: 12px; line-height: 1.85; }
+.consultation-meta { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.consultation-meta small { color: var(--muted); font-size: 8px; }
+.consultation-error { margin: 0; padding: 11px 13px; border: 1px solid var(--coral); background: var(--coral-soft); color: #8e4939; font-size: 9px; line-height: 1.6; }
 .consult-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 .consult-buttons .ghost-button { color: var(--ink); background: var(--cream); }
+.consult-followup { margin-top: 14px; padding: 12px; border: 1px solid var(--line); background: var(--cream); display: grid; gap: 10px; }
+.consult-followup textarea { box-sizing: border-box; width: 100%; min-height: 104px; padding: 12px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 10px; line-height: 1.7; resize: vertical; }
+.consult-followup > div:last-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.consult-followup small { color: var(--muted); font-size: 7px; }
+.consult-followup .primary-button { min-height: 38px; padding: 9px 12px; font-size: 8px; }
 
 .weekly-review-card { display: grid; gap: 18px; }
 .weekly-review-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }

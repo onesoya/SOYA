@@ -128,8 +128,11 @@ export type CycleEntry = {
 export type Consultation = {
   id: string;
   date: string;
+  weekStart?: string;
+  weekEnd?: string;
   text: string;
   source: "openai" | "preview";
+  model?: string;
 };
 
 export type WeeklyReview = {
