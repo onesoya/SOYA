@@ -20,7 +20,7 @@ import {
 } from "./data";
 
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
-type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail" | "reminders" | "data-management";
+type Modal = null | "quick" | "body" | "body-bulk" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail" | "reminders" | "data-management";
 type Consultation = AppState["consultations"][number];
 type WeeklyReview = NonNullable<AppState["weeklyReviews"]>[number];
 type BleedingState = Exclude<CycleEntry["state"], "없음">;
@@ -60,6 +60,18 @@ type OfficialFoodResult = {
   maker?: string;
 };
 type NutritionTotal = { calories: number; protein: number; carbs: number; fat: number; sugar: number; fiber: number };
+type BulkBodyDraft = {
+  rowId: string;
+  date: string;
+  time: string;
+  weight: string;
+  skeletalMuscle: string;
+  bodyFatMass: string;
+  bodyFatRate: string;
+  visceralFat: string;
+  measurementTiming: string;
+  device: string;
+};
 type BackupEnvelope = { format: "SOYA_BACKUP"; version: 1; exportedAt: string; state: AppState };
 type RestoreMode = "merge" | "replace";
 type CsvKind = "body" | "meals" | "workouts" | "cycles";
@@ -808,6 +820,15 @@ export function HealthApp() {
     setModal(null);
   };
 
+  const saveBodyBulk = (records: BodyRecord[]) => {
+    commit((current) => ({
+      ...current,
+      bodyRecords: [...records, ...current.bodyRecords]
+        .sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`)),
+    }));
+    setModal(null);
+  };
+
   const saveMeal = (event: FormEvent<HTMLFormElement>, kind: EntryKind) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -1125,6 +1146,7 @@ export function HealthApp() {
 
       {modal === "quick" && <QuickSheet close={() => setModal(null)} select={(next) => { if (next === "body") setSelectedBodyRecord(undefined); if (next === "cycle") { setCycleDate(undefined); setCycleRangeDraft(undefined); } if (next === "workout-plan" || next === "workout-actual") { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); } if (next === "meal-plan" || next === "meal-actual") { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); } setModal(next); }} />}
       {modal === "body" && <BodySheet today={today} latest={state.bodyRecords.find((item) => item.id !== selectedBodyRecord?.id)} draft={selectedBodyRecord} close={() => { setSelectedBodyRecord(undefined); setModal(null); }} save={saveBody} />}
+      {modal === "body-bulk" && <BodyBulkSheet existing={state.bodyRecords} close={() => setModal(null)} save={saveBodyBulk} />}
       {modal === "body-detail" && selectedBodyRecord && <BodyDetailSheet record={selectedBodyRecord} close={() => { setSelectedBodyRecord(undefined); setModal(null); }} edit={() => setModal("body")} remove={() => deleteBody(selectedBodyRecord)} />}
       {(modal === "meal-plan" || modal === "meal-actual") && <MealSheet today={mealDate ?? today} kind={modal === "meal-plan" ? "plan" : "actual"} library={state.foodLibrary ?? []} draft={mealDraft} presetType={mealPresetType} close={() => { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); setModal(null); }} save={saveMeal} />}
       {modal === "food-library" && <FoodLibrarySheet library={state.foodLibrary ?? []} close={() => setModal(null)} save={saveFoodLibraryItem} saveSet={saveFoodSet} remove={deleteFoodLibraryItem} />}
@@ -1383,7 +1405,7 @@ function ChangeView({ state, today, setModal, openDetail }: { state: AppState; t
   return <div className="section-stack"><section className={`card change-overview ${travelToday ? "travel-change-overview" : ""}`}><div><span className="eyebrow">{state.profile.mode} {timing.week}주차{travelToday ? " · 여행 중" : ""}</span><h2>{travelToday ? "측정 공백도 여행 기록의 일부예요" : <>체지방 {oldest && latest ? `${signed(latest.bodyFatMass - oldest.bodyFatMass)}kg` : "-"} · 골격근 {oldest && latest ? `${signed(latest.skeletalMuscle - oldest.skeletalMuscle)}kg` : "-"}</>}</h2><p>{goalCopy}</p></div><div className="change-overview-actions"><button className="ghost-button" onClick={() => setModal("profile-goal")}>목표 수정</button><button className="primary-button" onClick={() => setModal("body")}>인바디 입력</button></div></section>
     <div className="metric-grid change-metric-grid"><MetricCard label="체지방량" value={String(latest?.bodyFatMass ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="골격근량" value={String(latest?.skeletalMuscle ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="체중" value={String(latest?.weight ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="내장지방" value={String(latest?.visceralFat ?? "-")} unit="Lv" hint={measuredAt} /></div>
     <section className="card chart-card cycle-aware-chart"><CardTitle title="최근 체지방량" aside={`kg · ${chartRecords.length}회`} /><div className="body-phase-filter" role="tablist" aria-label="월경 주기 구간으로 체성분 기록 보기"><button type="button" role="tab" aria-selected={phaseFilter === "all"} className={phaseFilter === "all" ? "active" : ""} onClick={() => setPhaseFilter("all")}>전체</button><button type="button" role="tab" aria-selected={phaseFilter === "focus"} className={phaseFilter === "focus" ? "active" : ""} onClick={() => setPhaseFilter("focus")}>월경 후 집중</button><button type="button" role="tab" aria-selected={phaseFilter === "influence"} className={phaseFilter === "influence" ? "active" : ""} onClick={() => setPhaseFilter("influence")}>월경 전·중</button></div><FatTrendChart records={chartRecords} emptyText={phaseFilter === "all" ? "체성분 기록을 입력하면 흐름이 보여요." : "이 주기 구간의 체성분 기록이 아직 없어요."} /></section>
-    <section className="card"><CardTitle title="측정 기록" aside={`${filteredRecords.length}개`} />{visibleRecords.length ? <div className="data-table">{visibleRecords.map(({ record, phase }) => <button type="button" key={record.id} onClick={() => openDetail(record)} aria-label={`${record.date} 인바디 상세 보기, ${phase.label}`}><span><strong>{record.date}</strong><i className={`record-phase-badge phase-${phase.key}`}>{phase.label}</i><small>{record.time} · {record.measurementTiming ?? record.condition.split(" · ")[0]} · {record.device ?? record.condition.split(" · ")[1]}</small></span><span>{record.bodyFatMass}<small>kg 지방</small></span><span>{record.skeletalMuscle}<small>kg 골격근</small></span><b aria-hidden="true">›</b></button>)}</div> : <div className="phase-record-empty">이 구간의 측정 기록이 아직 없어요.</div>}</section>
+    <section className="card"><CardTitle title="측정 기록" aside={<div className="body-record-heading-actions"><span>{filteredRecords.length}개</span><button type="button" onClick={() => setModal("body-bulk")}>과거 일괄 입력</button></div>} />{visibleRecords.length ? <div className="data-table">{visibleRecords.map(({ record, phase }) => <button type="button" key={record.id} onClick={() => openDetail(record)} aria-label={`${record.date} 인바디 상세 보기, ${phase.label}`}><span><strong>{record.date}</strong><i className={`record-phase-badge phase-${phase.key}`}>{phase.label}</i><small>{record.time} · {record.measurementTiming ?? record.condition.split(" · ")[0]} · {record.device ?? record.condition.split(" · ")[1]}</small></span><span>{record.bodyFatMass}<small>kg 지방</small></span><span>{record.skeletalMuscle}<small>kg 골격근</small></span><b aria-hidden="true">›</b></button>)}</div> : <div className="phase-record-empty">이 구간의 측정 기록이 아직 없어요.</div>}</section>
   </div>;
 }
 
@@ -1643,7 +1665,7 @@ function EntryItem({ label, title, detail, record, edit, remove }: { label: stri
 
 function Sheet({ title, subtitle, close, children }: { title: string; subtitle?: string; close: () => void; children: React.ReactNode }) { return <div className="sheet-backdrop"><section className="sheet" role="dialog" aria-modal="true"><div className="sheet-handle" /><header><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div><button onClick={close} aria-label="닫기">×</button></header>{children}</section></div>; }
 
-function QuickSheet({ close, select }: { close: () => void; select: (modal: Modal) => void }) { return <Sheet title="무엇을 추가할까요?" close={close}><h3 className="sheet-section-title">지금 기록하기</h3><div className="quick-grid"><QuickButton label="인바디" onClick={() => select("body")} /><QuickButton label="월경 상태" onClick={() => select("cycle")} /><QuickButton label="먹은 식사" onClick={() => select("meal-actual")} /><QuickButton label="한 운동" onClick={() => select("workout-actual")} /></div><h3 className="sheet-section-title">미리 계획하기</h3><div className="quick-grid three"><QuickButton label="식사 계획" onClick={() => select("meal-plan")} /><QuickButton label="운동 계획" onClick={() => select("workout-plan")} /><QuickButton label="주간 계획" onClick={() => select("weekly-plan")} /></div></Sheet>; }
+function QuickSheet({ close, select }: { close: () => void; select: (modal: Modal) => void }) { return <Sheet title="무엇을 추가할까요?" close={close}><h3 className="sheet-section-title">지금 기록하기</h3><div className="quick-grid"><QuickButton label="인바디" onClick={() => select("body")} /><QuickButton label="월경 상태" onClick={() => select("cycle")} /><QuickButton label="먹은 식사" onClick={() => select("meal-actual")} /><QuickButton label="한 운동" onClick={() => select("workout-actual")} /></div><button type="button" className="quick-bulk-button" onClick={() => select("body-bulk")}>인바디 과거 기록 여러 건 입력</button><h3 className="sheet-section-title">미리 계획하기</h3><div className="quick-grid three"><QuickButton label="식사 계획" onClick={() => select("meal-plan")} /><QuickButton label="운동 계획" onClick={() => select("workout-plan")} /><QuickButton label="주간 계획" onClick={() => select("weekly-plan")} /></div></Sheet>; }
 function QuickButton({ label, onClick }: { label: string; onClick: () => void }) { return <button className="quick-button" onClick={onClick}><strong>{label}</strong></button>; }
 
 function FatTrendChart({ records, emptyText = "체성분 기록을 입력하면 흐름이 보여요." }: { records: BodyRecord[]; emptyText?: string }) {
@@ -1671,6 +1693,89 @@ function FatTrendChart({ records, emptyText = "체성분 기록을 입력하면 
 }
 
 function BodySheet({ today, latest, draft, close, save }: { today: string; latest?: BodyRecord; draft?: BodyRecord; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void }) { const [legacyTiming = "아침 공복", legacyDevice = "InBody Dial H30"] = (draft?.condition ?? latest?.condition)?.split(" · ") ?? []; return <Sheet title={draft ? "인바디 기록 수정" : "인바디 기록"} close={close}><form className="form-stack" onSubmit={save}><input type="hidden" name="editingId" value={draft?.id ?? ""} /><div className="two-fields sheet-leading-fields"><Field label="측정일"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><Field label="측정시간"><input type="time" name="time" defaultValue={draft?.time ?? new Date().toTimeString().slice(0, 5)} required /></Field></div><MeasureField label="체중" name="weight" unit="kg" previous={latest?.weight} value={draft?.weight} /><MeasureField label="골격근량" name="skeletalMuscle" unit="kg" previous={latest?.skeletalMuscle} value={draft?.skeletalMuscle} /><MeasureField label="체지방량" name="bodyFatMass" unit="kg" previous={latest?.bodyFatMass} value={draft?.bodyFatMass} /><MeasureField label="체지방률" name="bodyFatRate" unit="%" previous={latest?.bodyFatRate} value={draft?.bodyFatRate} /><MeasureField label="내장지방레벨" name="visceralFat" unit="Lv" previous={latest?.visceralFat} value={draft?.visceralFat} step="1" /><div className="two-fields"><Field label="측정 시점"><select name="measurementTiming" defaultValue={draft?.measurementTiming ?? latest?.measurementTiming ?? legacyTiming}><option>아침 공복</option><option>평소와 다른 시간</option><option>식후</option><option>운동 후</option></select></Field><Field label="측정 기기"><select name="device" defaultValue={draft?.device ?? latest?.device ?? legacyDevice}><option>InBody Dial H30</option><option>헬스장 InBody</option><option>병원 InBody</option><option>다른 체성분 기기</option></select></Field></div><button className="primary-button submit-button" type="submit">{draft ? "수정 저장" : "저장하기"}</button></form></Sheet>; }
+
+function emptyBulkBodyDraft(): BulkBodyDraft {
+  return {
+    rowId: id("body-row"), date: "", time: "07:00", weight: "", skeletalMuscle: "",
+    bodyFatMass: "", bodyFatRate: "", visceralFat: "", measurementTiming: "아침 공복", device: "InBody Dial H30",
+  };
+}
+
+function BodyBulkSheet({ existing, close, save }: { existing: BodyRecord[]; close: () => void; save: (records: BodyRecord[]) => void }) {
+  const [rows, setRows] = useState<BulkBodyDraft[]>([emptyBulkBodyDraft()]);
+  const [reviewing, setReviewing] = useState(false);
+  const existingDates = useMemo(() => new Set(existing.map((record) => record.date)), [existing]);
+  const dateCounts = useMemo(() => rows.reduce<Record<string, number>>((counts, row) => {
+    if (row.date) counts[row.date] = (counts[row.date] ?? 0) + 1;
+    return counts;
+  }, {}), [rows]);
+  const rowError = (row: BulkBodyDraft) => {
+    if (!row.date || !row.time || !row.weight || !row.skeletalMuscle || !row.bodyFatMass || !row.bodyFatRate || !row.visceralFat) return "비어 있는 항목이 있어요.";
+    if ([row.weight, row.skeletalMuscle, row.bodyFatMass, row.bodyFatRate, row.visceralFat].some((value) => !Number.isFinite(Number(value)) || Number(value) <= 0)) return "측정값은 0보다 큰 숫자로 적어주세요.";
+    if ((dateCounts[row.date] ?? 0) > 1) return "입력 목록 안에 같은 날짜가 있어요.";
+    if (existingDates.has(row.date)) return "이 날짜의 인바디 기록이 이미 있어요.";
+    return "";
+  };
+  const errors = rows.map(rowError);
+  const valid = rows.length > 0 && errors.every((error) => !error);
+  const update = (rowId: string, key: keyof BulkBodyDraft, value: string) => {
+    setRows((current) => current.map((row) => row.rowId === rowId ? { ...row, [key]: value } : row));
+    setReviewing(false);
+  };
+  const addRow = () => {
+    setRows((current) => [...current, emptyBulkBodyDraft()]);
+    setReviewing(false);
+  };
+  const removeRow = (rowId: string) => {
+    setRows((current) => current.length === 1 ? [emptyBulkBodyDraft()] : current.filter((row) => row.rowId !== rowId));
+    setReviewing(false);
+  };
+  const copyValues = (index: number) => {
+    const source = index > 0 ? rows[index - 1] : existing[0] ? {
+      weight: String(existing[0].weight), skeletalMuscle: String(existing[0].skeletalMuscle), bodyFatMass: String(existing[0].bodyFatMass),
+      bodyFatRate: String(existing[0].bodyFatRate), visceralFat: String(existing[0].visceralFat),
+      measurementTiming: existing[0].measurementTiming ?? existing[0].condition.split(" · ")[0] ?? "아침 공복",
+      device: existing[0].device ?? existing[0].condition.split(" · ")[1] ?? "InBody Dial H30",
+    } : undefined;
+    if (!source) return;
+    setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ...source } : row));
+    setReviewing(false);
+  };
+  const records = () => rows.map((row): BodyRecord => ({
+    id: id("body"), date: row.date, time: row.time, weight: Number(row.weight), skeletalMuscle: Number(row.skeletalMuscle),
+    bodyFatMass: Number(row.bodyFatMass), bodyFatRate: Number(row.bodyFatRate), visceralFat: Number(row.visceralFat),
+    measurementTiming: row.measurementTiming, device: row.device, condition: `${row.measurementTiming} · ${row.device}`,
+  }));
+
+  return <Sheet title="인바디 과거 기록" subtitle="여러 측정값을 확인한 뒤 한 번에 저장해요." close={close}>
+    {!reviewing ? <div className="body-bulk-editor">
+      <div className="body-bulk-summary"><strong>{rows.length}개 기록 입력 중</strong><span>날짜가 같은 기록은 저장 전에 알려드려요.</span></div>
+      <div className="body-bulk-list">{rows.map((row, index) => <article className="body-bulk-row" key={row.rowId}>
+        <div className="body-bulk-row-heading"><strong>기록 {index + 1}</strong><div>{(index > 0 || existing.length > 0) && <button type="button" onClick={() => copyValues(index)}>{index > 0 ? "윗행 값 복사" : "최근값 복사"}</button>}<button type="button" className="delete" onClick={() => removeRow(row.rowId)}>삭제</button></div></div>
+        <div className="two-fields sheet-leading-fields"><Field label="측정일"><input type="date" value={row.date} onChange={(event) => update(row.rowId, "date", event.target.value)} /></Field><Field label="측정시간"><input type="time" value={row.time} onChange={(event) => update(row.rowId, "time", event.target.value)} /></Field></div>
+        <div className="body-bulk-metrics">
+          <BulkMetric label="체중" unit="kg" value={row.weight} onChange={(value) => update(row.rowId, "weight", value)} />
+          <BulkMetric label="골격근량" unit="kg" value={row.skeletalMuscle} onChange={(value) => update(row.rowId, "skeletalMuscle", value)} />
+          <BulkMetric label="체지방량" unit="kg" value={row.bodyFatMass} onChange={(value) => update(row.rowId, "bodyFatMass", value)} />
+          <BulkMetric label="체지방률" unit="%" value={row.bodyFatRate} onChange={(value) => update(row.rowId, "bodyFatRate", value)} />
+          <BulkMetric label="내장지방" unit="Lv" step="1" value={row.visceralFat} onChange={(value) => update(row.rowId, "visceralFat", value)} />
+        </div>
+        <div className="two-fields"><Field label="측정 시점"><select value={row.measurementTiming} onChange={(event) => update(row.rowId, "measurementTiming", event.target.value)}><option>아침 공복</option><option>평소와 다른 시간</option><option>식후</option><option>운동 후</option></select></Field><Field label="측정 기기"><select value={row.device} onChange={(event) => update(row.rowId, "device", event.target.value)}><option>InBody Dial H30</option><option>헬스장 InBody</option><option>병원 InBody</option><option>다른 체성분 기기</option></select></Field></div>
+        {errors[index] && <p className="body-bulk-error">{errors[index]}</p>}
+      </article>)}</div>
+      <button type="button" className="body-bulk-add" onClick={addRow}>+ 기록 한 줄 추가</button>
+      <button type="button" className="primary-button submit-button" disabled={!valid} onClick={() => setReviewing(true)}>저장 전 확인</button>
+    </div> : <div className="body-bulk-review">
+      <div className="body-bulk-review-heading"><span className="eyebrow">저장 전 확인</span><h3>{rows.length}개 기록을 저장할까요?</h3></div>
+      <div className="body-bulk-preview-list">{rows.slice().sort((a, b) => b.date.localeCompare(a.date)).map((row) => <article key={row.rowId}><div><strong>{row.date}</strong><span>{row.time} · {row.measurementTiming}</span></div><div><b>체지방 {row.bodyFatMass}kg</b><span>골격근 {row.skeletalMuscle}kg · 체중 {row.weight}kg</span></div></article>)}</div>
+      <div className="body-bulk-review-actions"><button type="button" className="ghost-button" onClick={() => setReviewing(false)}>입력 수정</button><button type="button" className="primary-button" onClick={() => save(records())}>{rows.length}개 한 번에 저장</button></div>
+    </div>}
+  </Sheet>;
+}
+
+function BulkMetric({ label, unit, value, step = "0.1", onChange }: { label: string; unit: string; value: string; step?: string; onChange: (value: string) => void }) {
+  return <label><span>{label}</span><div><input type="number" min="0" step={step} inputMode="decimal" value={value} onChange={(event) => onChange(event.target.value)} /><b>{unit}</b></div></label>;
+}
 function ClearableFieldControl({ children }: { children: React.ReactNode }) {
   const props = isValidElement(children) ? children.props as { value?: unknown; defaultValue?: unknown } : {};
   const [hasValue, setHasValue] = useState(Boolean(props.value ?? props.defaultValue ?? ""));
