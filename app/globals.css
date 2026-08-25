@@ -185,9 +185,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .reminder-row strong { font-size: 9px; }
 .reminder-row small { color: var(--muted); font-size: 7px; }
 .reminder-check { width: 18px; height: 18px; margin: 0; accent-color: var(--coral); }
-.reminder-time, .reminder-row.weekly select { justify-self: end; box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; height: 36px; padding-inline: 5px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 9px; line-height: 1; text-align: center; }
-.reminder-row.weekly select { text-align-last: center; }
-.reminder-time:disabled, .reminder-row.weekly select:disabled { opacity: .4; }
+.reminder-time, .reminder-row.weekly select, .reminder-lead-select { justify-self: end; box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; height: 36px; padding-inline: 5px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 9px; line-height: 1; text-align: center; }
+.reminder-row.weekly select, .reminder-lead-select { text-align-last: center; }
+.reminder-time:disabled, .reminder-row.weekly select:disabled, .reminder-lead-select:disabled { opacity: .4; }
 .reminder-row.weekly { grid-template-columns: 20px minmax(0, 1fr) 68px 86px; }
 .push-permission-section > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .push-permission-section > div > span { color: var(--muted); font-size: 8px; }
@@ -1338,7 +1338,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .reminder-row.weekly > span { grid-row: 1 / span 2; }
   .reminder-row.weekly > select { grid-column: 3; grid-row: 1; }
   .reminder-row.weekly > .reminder-time { grid-column: 3; grid-row: 2; }
-  .reminder-time, .reminder-row.weekly select { width: 84px; max-width: 84px; padding-inline: 3px; font-size: 10px; }
+  .reminder-time, .reminder-row.weekly select, .reminder-lead-select { width: 84px; max-width: 84px; padding-inline: 3px; font-size: 10px; }
   .daily-activity-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .daily-activity-stats > div { padding: 9px 7px; }
   .daily-activity-stats strong { font-size: 12px; }

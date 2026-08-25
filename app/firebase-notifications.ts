@@ -11,6 +11,13 @@ export type PushStatus = "unsupported" | "off" | "blocked" | "working" | "enable
 
 export type PushSyncPayload = {
   settings: ReminderSettings;
+  workoutPlans: Array<{
+    id: string;
+    date: string;
+    title: string;
+    startTime?: string;
+  }>;
+  workoutActualDates: string[];
   completion: {
     date: string;
     body: boolean;

@@ -55,6 +55,7 @@ type CycleHistory = {
 };
 type WeeklyWorkoutDraft = {
   id: string;
+  startTime: string;
   type: WorkoutEntry["type"];
   title: string;
   minutes: string;
@@ -415,6 +416,13 @@ function addDays(value: string, amount: number) {
   return dateKey(date);
 }
 
+function timeBefore(time: string, minutesBefore: number) {
+  const [hour, minute] = time.split(":").map(Number);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return time;
+  const minutes = (hour * 60 + minute - minutesBefore + 24 * 60) % (24 * 60);
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
 function pushSyncPayload(state: AppState, today: string): PushSyncPayload {
   const todayMeals = state.meals.filter((entry) => entry.date === today && entry.kind === "actual");
   const todayWorkouts = state.workouts.filter((entry) => entry.date === today);
@@ -426,6 +434,10 @@ function pushSyncPayload(state: AppState, today: string): PushSyncPayload {
 
   return {
     settings: state.reminderSettings ?? defaultReminders,
+    workoutPlans: state.workouts
+      .filter((entry) => entry.kind === "plan" && entry.date >= today && entry.date <= addDays(today, 30))
+      .map((entry) => ({ id: entry.id, date: entry.date, title: entry.title, startTime: entry.startTime })),
+    workoutActualDates: [...new Set(state.workouts.filter((entry) => entry.kind === "actual" && entry.date >= addDays(today, -1)).map((entry) => entry.date))],
     completion: {
       date: today,
       body: state.bodyRecords.some((entry) => entry.date === today),
@@ -544,7 +556,7 @@ function createWeeklyDraft(state: AppState, start: string): WeeklyDraft {
       return [mealType, titles.length ? titles : [""]];
     })) as Record<MealType, string[]>;
     const workouts = state.workouts.filter((item) => item.date === date && item.kind === "plan").map((item) => ({
-      id: item.id, type: item.type, title: item.title, minutes: String(item.minutes || ""), intensity: typeof item.intensity === "number" ? item.intensity : 5,
+      id: item.id, startTime: item.startTime ?? "", type: item.type, title: item.title, minutes: String(item.minutes || ""), intensity: typeof item.intensity === "number" ? item.intensity : 5,
       heartRate: item.heartRate ?? "", overlapsSteps: Boolean(item.overlapsSteps), details: item.details,
     }));
     return [date, { meals, workouts }];
@@ -882,7 +894,16 @@ export function HealthApp() {
       addTiming({ type: "meal", mealType, time: settings.mealTimes[mealType], eyebrow: `${mealLabels[mealType]} 기록`, title: `${mealLabels[mealType]} 식사를 기록할 시간이에요`, detail: plan ? `계획: ${plan.title}` : "계획은 없어요. 먹은 내용을 바로 남겨보세요." });
     });
     if (travelBehavior !== "핵심만" && settings.workoutEnabled && plannedWorkout && !actualWorkouts.length && !state.skippedTasks.includes(`${today}:workout`)) {
-      addTiming({ type: "workout", time: settings.workoutTime, eyebrow: "오늘의 운동", title: "계획한 운동을 마쳤나요?", detail: `${plannedWorkout.title} · ${plannedWorkout.minutes}분` });
+      const workoutReminderTime = plannedWorkout.startTime
+        ? timeBefore(plannedWorkout.startTime, settings.workoutLeadMinutes ?? defaultReminders.workoutLeadMinutes)
+        : settings.workoutTime;
+      addTiming({
+        type: "workout",
+        time: workoutReminderTime,
+        eyebrow: "오늘의 운동",
+        title: plannedWorkout.startTime ? "곧 운동을 시작할 시간이에요" : "계획한 운동을 마쳤나요?",
+        detail: `${plannedWorkout.title}${plannedWorkout.startTime ? ` · ${plannedWorkout.startTime} 시작` : ""} · ${plannedWorkout.minutes}분`,
+      });
     }
     const nextWeekStart = addDays(weekStart(today), 7);
     const nextWeekEnd = addDays(nextWeekStart, 6);
@@ -1151,6 +1172,7 @@ export function HealthApp() {
     const editingId = String(data.get("editingId") || "");
     const workout: WorkoutEntry = {
       id: editingId || id("workout"), date: String(data.get("date")), kind,
+      startTime: kind === "plan" ? String(data.get("startTime") || "") || undefined : workoutDraft?.startTime,
       type: String(data.get("type")) as WorkoutEntry["type"], title: String(data.get("title")),
       minutes: number(data.get("minutes")), intensity: number(data.get("intensity")),
       heartRate: String(data.get("heartRate") || ""), overlapsSteps: data.get("overlapsSteps") === "on",
@@ -1301,7 +1323,7 @@ export function HealthApp() {
       });
       day.workouts.forEach((item) => {
         if (!item.title.trim()) return;
-        workouts.push({ id: item.id || id("workout-plan"), date, kind: "plan", type: item.type, title: item.title.trim(), minutes: Math.max(1, Number(item.minutes) || 1), intensity: item.intensity, heartRate: item.heartRate.trim(), overlapsSteps: item.type === "유산소" && item.overlapsSteps, details: item.details.trim() });
+        workouts.push({ id: item.id || id("workout-plan"), date, startTime: item.startTime || undefined, kind: "plan", type: item.type, title: item.title.trim(), minutes: Math.max(1, Number(item.minutes) || 1), intensity: item.intensity, heartRate: item.heartRate.trim(), overlapsSteps: item.type === "유산소" && item.overlapsSteps, details: item.details.trim() });
       });
     }
     commit((current) => ({
@@ -1416,7 +1438,7 @@ export function HealthApp() {
 
       <main className="main-content">
         <header className="topbar">
-          <div className="topbar-heading"><button className="topbar-tiger-button" type="button" aria-label="계정 메뉴" aria-expanded={logoutPrompt} onClick={() => setLogoutPrompt((current) => !current)}><Image className="topbar-tiger" src="/mascot-top-transparent.png" width={76} height={76} alt="호랑이 마스코트" /></button><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? travelToday ? <>여행 중에도<br />내 리듬대로</> : "오늘도 가볍게 기록해요" : tabs.find((item) => item.id === tab)?.label}</h1></div>{logoutPrompt && <div className="account-popover" role="dialog" aria-label="로그아웃 확인"><p>로그아웃 할까요?</p><div><button type="button" onClick={() => setLogoutPrompt(false)}>아니요</button><button type="button" className="logout-button" onClick={() => { setLogoutPrompt(false); void signOutGoogleUser(); }}>로그아웃</button></div></div>}</div>
+          <div className="topbar-heading"><button className="topbar-tiger-button" type="button" aria-label="계정 메뉴" aria-expanded={logoutPrompt} onClick={() => setLogoutPrompt((current) => !current)}><Image className="topbar-tiger" src="/mascot-top-transparent.png" width={76} height={76} alt="호랑이 마스코트" /></button><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? travelToday ? <>여행 중에도<br />내 리듬대로</> : <>오늘도<br />가볍게 기록해요</> : tabs.find((item) => item.id === tab)?.label}</h1></div>{logoutPrompt && <div className="account-popover" role="dialog" aria-label="로그아웃 확인"><p>로그아웃 할까요?</p><div><button type="button" onClick={() => setLogoutPrompt(false)}>아니요</button><button type="button" className="logout-button" onClick={() => { setLogoutPrompt(false); void signOutGoogleUser(); }}>로그아웃</button></div></div>}</div>
           <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "저장 확인 필요" : "저장됨"}</span><button className="icon-button reminder-button" onClick={() => setModal("reminders")} aria-label="알림 설정"><span className="pixel-bell" aria-hidden="true" /></button><button className="icon-button data-button" onClick={() => setModal("data-management")} aria-label="데이터 관리"><span aria-hidden="true">↓</span></button></div>
         </header>
 
@@ -1622,7 +1644,7 @@ function WorkoutView({ state, today, openWorkout, deleteWorkout, openGoal, openA
     {selectedIsTravel && <section className="card travel-workout-control"><TravelDayControl date={selectedDate} level={selectedTravelLevel} defaultLevel={state.profile.travelLevel ?? "균형 유지"} onChange={updateTravelDayLevel} /></section>}
     <section className="card daily-activity-card"><CardTitle title={`${dateLabel(selectedDate)} 활동`} aside={<button className="text-button" onClick={() => openActivity(selectedDate)}>{energy.activity ? "수정" : "기록"}</button>} />{energy.activity ? <div className="daily-activity-stats"><div><span>걸음 수</span><strong>{energy.activity.steps.toLocaleString()}<small>걸음</small></strong></div><div><span>활동 칼로리</span><strong>{energy.activityCalories.toLocaleString()}<small>kcal</small></strong></div><div><span>총소모 추정</span><strong>{energy.expenditure.toLocaleString()}<small>kcal</small></strong></div></div> : <EmptyState text="하루 활동을 기록하면 걸음과 운동을 중복 없이 계산해요." action="활동 기록하기" onClick={() => openActivity(selectedDate)} showIcon={false} />}</section>
     <section className="workout-goal-block"><div className="workout-goal-heading"><h2>{selectedIsTravel && selectedTravelLevel !== "목표 유지" ? "여행 중 움직임" : "주간 목표"}</h2><button className="text-button" onClick={openGoal}>목표 설정</button></div><div className="metric-grid workout-metrics"><MetricCard label="개인 유산소" value={selectedIsTravel && selectedTravelLevel !== "목표 유지" ? `${cardio.sessions}` : `${cardio.sessions} / ${goal.cardioSessions}`} unit="회" hint={selectedIsTravel && selectedTravelLevel !== "목표 유지" ? "이번 주 기록" : "최소 주간 목표"} /><MetricCard label="누적시간" value={selectedIsTravel && selectedTravelLevel !== "목표 유지" ? `${cardio.minutes}` : `${cardio.minutes} / ${goal.cardioMinutes}`} unit="분" hint={selectedIsTravel && selectedTravelLevel !== "목표 유지" ? "이번 주 기록" : "이번 주 목표"} /></div></section>
-    <section className="card"><CardTitle title="운동 계획·기록" aside={dateLabel(selectedDate)} />{entries.length ? <div className="timeline">{entries.map((entry) => <article key={entry.id}><span className={`timeline-dot ${entry.kind}`} /><div><small>{entry.kind === "plan" ? "계획" : "완료"} · {entry.type}</small><h3>{entry.title}</h3><p>{entry.minutes}분 · 강도 {typeof entry.intensity === "number" ? `${entry.intensity}/10` : entry.intensity || "미기록"}{entry.heartRate ? ` · 심박 ${entry.heartRate}` : ""}</p>{entry.overlapsSteps && <span className="overlap-badge">걸음 수 중복</span>}{entry.details && <em>{entry.details}</em>}<div className="entry-button-row">{entry.kind === "plan" && <button className="timeline-action" onClick={() => openWorkout("actual", entry)}>계획대로 기록</button>}<button className="timeline-action" onClick={() => openWorkout(entry.kind, entry)}>수정</button><button className="delete-text-button" onClick={() => deleteWorkout(entry)}>삭제</button></div></div></article>)}</div> : <EmptyState text="이날 운동 계획이나 기록이 없어요." action="운동 계획하기" onClick={() => openForDate("plan")} showIcon={false} />}</section>
+    <section className="card"><CardTitle title="운동 계획·기록" aside={dateLabel(selectedDate)} />{entries.length ? <div className="timeline">{entries.map((entry) => <article key={entry.id}><span className={`timeline-dot ${entry.kind}`} /><div><small>{entry.kind === "plan" ? "계획" : "완료"} · {entry.type}{entry.startTime ? ` · ${entry.startTime}` : ""}</small><h3>{entry.title}</h3><p>{entry.minutes}분 · 강도 {typeof entry.intensity === "number" ? `${entry.intensity}/10` : entry.intensity || "미기록"}{entry.heartRate ? ` · 심박 ${entry.heartRate}` : ""}</p>{entry.overlapsSteps && <span className="overlap-badge">걸음 수 중복</span>}{entry.details && <em>{entry.details}</em>}<div className="entry-button-row">{entry.kind === "plan" && <button className="timeline-action" onClick={() => openWorkout("actual", entry)}>계획대로 기록</button>}<button className="timeline-action" onClick={() => openWorkout(entry.kind, entry)}>수정</button><button className="delete-text-button" onClick={() => deleteWorkout(entry)}>삭제</button></div></div></article>)}</div> : <EmptyState text="이날 운동 계획이나 기록이 없어요." action="운동 계획하기" onClick={() => openForDate("plan")} showIcon={false} />}</section>
     <section className="card"><CardTitle title="PT 빠른 기록" /><button className="secondary-button" onClick={() => openWorkout("actual", undefined, "PT")}>PT 내용 기록하기</button></section>
   </div>;
 }
@@ -2450,7 +2472,7 @@ function WeeklyPlanSheet({ state, today, initialStart, close, save }: { state: A
     return { ...current, [activeDate]: { ...current[activeDate], meals: { ...current[activeDate].meals, [mealType]: remaining.length ? remaining : [""] } } };
   });
   const updateWorkout = (workoutId: string, patch: Partial<WeeklyWorkoutDraft>) => setDraft((current) => ({ ...current, [activeDate]: { ...current[activeDate], workouts: current[activeDate].workouts.map((item) => item.id === workoutId ? { ...item, ...patch } : item) } }));
-  const addWorkout = () => setDraft((current) => ({ ...current, [activeDate]: { ...current[activeDate], workouts: [...current[activeDate].workouts, { id: id("weekly-workout"), type: "유산소", title: "", minutes: "35", intensity: 5, heartRate: "", overlapsSteps: false, details: "" }] } }));
+  const addWorkout = () => setDraft((current) => ({ ...current, [activeDate]: { ...current[activeDate], workouts: [...current[activeDate].workouts, { id: id("weekly-workout"), startTime: "", type: "유산소", title: "", minutes: "35", intensity: 5, heartRate: "", overlapsSteps: false, details: "" }] } }));
   const removeWorkout = (workoutId: string) => setDraft((current) => ({ ...current, [activeDate]: { ...current[activeDate], workouts: current[activeDate].workouts.filter((item) => item.id !== workoutId) } }));
   const hasPlan = (date: string) => Object.values(draft[date].meals).some((items) => items.some((item) => item.trim())) || draft[date].workouts.some((item) => item.title.trim());
 
@@ -2468,6 +2490,7 @@ function WeeklyPlanSheet({ state, today, initialStart, close, save }: { state: A
       <div className="weekly-workouts">{day.workouts.map((workout, index) => <article key={workout.id} className="weekly-workout-card">
         <div className="weekly-workout-card-title"><strong>운동 {index + 1}</strong><button type="button" className="delete-text-button" onClick={() => removeWorkout(workout.id)}>삭제</button></div>
         <div className="two-fields"><Field label="운동 종류"><select value={workout.type} onChange={(event) => updateWorkout(workout.id, { type: event.target.value as WorkoutEntry["type"], overlapsSteps: event.target.value === "유산소" && workout.overlapsSteps })}><option>PT</option><option>유산소</option></select></Field><Field label="운동 이름"><input value={workout.title} onChange={(event) => updateWorkout(workout.id, { title: event.target.value })} placeholder={workout.type === "PT" ? "필라테스 + 기능운동" : "인클라인 트레드밀"} /></Field></div>
+        <Field label="시작 시간 (선택)"><input type="time" value={workout.startTime} onChange={(event) => updateWorkout(workout.id, { startTime: event.target.value })} /></Field>
         <div className="two-fields"><Field label="시간 (분)"><input type="number" min="1" value={workout.minutes} onChange={(event) => updateWorkout(workout.id, { minutes: event.target.value })} /></Field><Field label="체감 강도 (1~10)"><select value={workout.intensity} onChange={(event) => updateWorkout(workout.id, { intensity: Number(event.target.value) })}>{[1,2,3,4,5,6,7,8,9,10].map((value) => <option value={value} key={value}>{value}</option>)}</select></Field></div>
         <Field label="평균 심박수 (선택)"><input value={workout.heartRate} onChange={(event) => updateWorkout(workout.id, { heartRate: event.target.value })} placeholder="예: 130~140" /></Field>
         {workout.type === "유산소" && <label className="check-field step-overlap-check"><input type="checkbox" checked={workout.overlapsSteps} onChange={(event) => updateWorkout(workout.id, { overlapsSteps: event.target.checked })} /><strong>일상 걸음 수와 중복되는 운동</strong></label>}
@@ -2568,10 +2591,11 @@ function ReminderSettingsSheet({ settings, pushStatus, pushMessage, enablePush, 
   const updateMealEnabled = (mealType: MealType, enabled: boolean) => setDraft((current) => ({ ...current, mealEnabled: { ...current.mealEnabled, [mealType]: enabled } }));
   const updateMealTime = (mealType: MealType, time: string) => setDraft((current) => ({ ...current, mealTimes: { ...current.mealTimes, [mealType]: time } }));
   const row = (label: string, enabled: boolean, toggle: (enabled: boolean) => void, time: string, changeTime: (time: string) => void) => <label className={`reminder-row ${enabled ? "active" : ""}`}><input className="reminder-check" type="checkbox" checked={enabled} onChange={(event) => toggle(event.target.checked)} /><span><strong>{label}</strong><small>{enabled ? time : "알림 끔"}</small></span><input className="reminder-time" type="time" value={time} disabled={!enabled} onChange={(event) => changeTime(event.target.value)} aria-label={`${label} 알림 시간`} /></label>;
+  const workoutLeadLabel = draft.workoutLeadMinutes === 0 ? "운동 시작 정시" : `운동 시작 ${draft.workoutLeadMinutes}분 전`;
   return <Sheet title="알림 설정" close={close}><form className="form-stack reminder-settings-form" onSubmit={(event) => { event.preventDefault(); save(draft); }}>
     <section className={`reminder-section push-permission-section ${pushStatus}`}><div><strong>실제 알림</strong><span>{pushStatus === "enabled" ? "켜짐" : pushStatus === "working" ? "연결 중" : "꺼짐"}</span></div><p>{pushMessage || (pushStatus === "enabled" ? "앱을 닫아도 설정한 시간에 알림이 와요." : pushStatus === "blocked" ? "아이폰 설정에서 SOYA 알림을 허용해주세요." : pushStatus === "unsupported" ? "아이폰 홈 화면에 추가한 SOYA에서 켤 수 있어요." : "아이폰 홈 화면의 SOYA에서 한 번만 켜주세요.")}</p>{pushStatus === "enabled" ? <button type="button" className="push-toggle-button off" onClick={disablePush}>실제 알림 끄기</button> : pushStatus !== "unsupported" && pushStatus !== "blocked" ? <button type="button" className="push-toggle-button" onClick={enablePush} disabled={pushStatus === "working"}>{pushStatus === "working" ? "연결 중…" : "실제 알림 켜기"}</button> : null}</section>
     <section className="reminder-section"><strong>매일 기록</strong>{row("아침 인바디", draft.bodyEnabled, (enabled) => update("bodyEnabled", enabled), draft.bodyTime, (time) => update("bodyTime", time))}{(["breakfast", "lunch", "dinner"] as MealType[]).map((mealType) => <div key={mealType}>{row(`${mealLabels[mealType]} 기록`, draft.mealEnabled[mealType], (enabled) => updateMealEnabled(mealType, enabled), draft.mealTimes[mealType], (time) => updateMealTime(mealType, time))}</div>)}</section>
-    <section className="reminder-section"><strong>운동과 계획</strong>{row("계획한 운동", draft.workoutEnabled, (enabled) => update("workoutEnabled", enabled), draft.workoutTime, (time) => update("workoutTime", time))}<div className={`reminder-row weekly ${draft.weeklyEnabled ? "active" : ""}`}><input className="reminder-check" type="checkbox" checked={draft.weeklyEnabled} onChange={(event) => update("weeklyEnabled", event.target.checked)} /><span><strong>주간 계획</strong><small>{draft.weeklyEnabled ? "다음 주 식단·운동" : "알림 끔"}</small></span><select value={draft.weeklyDay} disabled={!draft.weeklyEnabled} onChange={(event) => update("weeklyDay", Number(event.target.value))} aria-label="주간 계획 요일">{["일", "월", "화", "수", "목", "금", "토"].map((day, index) => <option value={index} key={day}>{day}요일</option>)}</select><input className="reminder-time" type="time" value={draft.weeklyTime} disabled={!draft.weeklyEnabled} onChange={(event) => update("weeklyTime", event.target.value)} aria-label="주간 계획 알림 시간" /></div></section>
+    <section className="reminder-section"><strong>운동과 계획</strong><label className={`reminder-row workout-relative ${draft.workoutEnabled ? "active" : ""}`}><input className="reminder-check" type="checkbox" checked={draft.workoutEnabled} onChange={(event) => update("workoutEnabled", event.target.checked)} /><span><strong>계획한 운동</strong><small>{draft.workoutEnabled ? workoutLeadLabel : "알림 끔"}</small></span><select className="reminder-lead-select" value={draft.workoutLeadMinutes} disabled={!draft.workoutEnabled} onChange={(event) => update("workoutLeadMinutes", Number(event.target.value))} aria-label="계획한 운동 알림 시점"><option value={0}>정시</option><option value={10}>10분 전</option><option value={30}>30분 전</option><option value={60}>1시간 전</option></select></label><div className={`reminder-row weekly ${draft.weeklyEnabled ? "active" : ""}`}><input className="reminder-check" type="checkbox" checked={draft.weeklyEnabled} onChange={(event) => update("weeklyEnabled", event.target.checked)} /><span><strong>주간 계획</strong><small>{draft.weeklyEnabled ? "다음 주 식단·운동" : "알림 끔"}</small></span><select value={draft.weeklyDay} disabled={!draft.weeklyEnabled} onChange={(event) => update("weeklyDay", Number(event.target.value))} aria-label="주간 계획 요일">{["일", "월", "화", "수", "목", "금", "토"].map((day, index) => <option value={index} key={day}>{day}요일</option>)}</select><input className="reminder-time" type="time" value={draft.weeklyTime} disabled={!draft.weeklyEnabled} onChange={(event) => update("weeklyTime", event.target.value)} aria-label="주간 계획 알림 시간" /></div></section>
     <section className="reminder-section"><strong>월경</strong>{row("배란·월경 예상", draft.cycleEnabled, (enabled) => update("cycleEnabled", enabled), draft.cycleTime, (time) => update("cycleTime", time))}<p className="cycle-reminder-note">예상 배란일·월경일과 월경 예정일 3일 후에 알려줘요.</p></section>
     <section className="reminder-section travel-reminder-section"><div><strong>여행 중 알림</strong><small>여행 모드에만 적용</small></div><div className="travel-reminder-options">{(["기본 유지", "핵심만", "모두 끄기"] as ReminderSettings["travelBehavior"][]).map((behavior) => <button type="button" key={behavior} className={draft.travelBehavior === behavior ? "active" : ""} onClick={() => update("travelBehavior", behavior)}>{behavior}</button>)}</div><p>{draft.travelBehavior === "핵심만" ? "식사 기록만 남기고 인바디·운동·주간 계획 알림은 쉬어요." : draft.travelBehavior === "모두 끄기" ? "여행 기간에는 모든 알림을 쉬어요." : "평소 설정한 알림을 그대로 사용해요."}</p></section>
     <button className="primary-button submit-button" type="submit">알림 설정 저장</button>
@@ -2625,7 +2649,7 @@ function WorkoutSheet({ today, kind, draft, presetType, close, save }: { today: 
   const [workoutType, setWorkoutType] = useState<WorkoutEntry["type"]>(initialType);
   const previousHeartRate = draft?.heartRate ?? (typeof draft?.intensity === "string" && draft.intensity.includes("심박수") ? draft.intensity.replace("심박수", "").trim() : "");
   const previousIntensity = typeof draft?.intensity === "number" ? draft.intensity : 5;
-  return <Sheet title={kind === "plan" ? "운동 계획" : editing ? "운동 기록 수정" : "한 운동 기록"} close={close}><form className="form-stack" onSubmit={(event) => save(event, kind)}><input type="hidden" name="editingId" value={editing ? draft.id : ""} /><div className="two-fields sheet-leading-fields"><Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><Field label="운동 종류"><select name="type" value={workoutType} onChange={(event) => setWorkoutType(event.target.value as WorkoutEntry["type"])}><option>PT</option><option>유산소</option></select></Field></div><Field label="운동 이름"><input name="title" defaultValue={draft?.title ?? ""} placeholder={workoutType === "PT" ? "예: 필라테스 + 기능운동" : "예: 인클라인 트레드밀"} required /></Field>{workoutType === "유산소" && <div className="check-field step-overlap-check"><input id="overlapsSteps" type="checkbox" name="overlapsSteps" defaultChecked={draft?.overlapsSteps} /><label htmlFor="overlapsSteps"><strong>일상 걸음 수와 중복되는 운동은 체크해주세요.</strong></label></div>}<div className="two-fields"><Field label="시간 (분)"><input type="number" name="minutes" defaultValue={draft?.minutes ?? ""} min="1" placeholder="예: 35" required /></Field><Field label="체감 강도 (1~10)"><select name="intensity" defaultValue={previousIntensity}>{[1,2,3,4,5,6,7,8,9,10].map((value) => <option value={value} key={value}>{value}</option>)}</select></Field></div><div className="rpe-scale"><span>1–2 아주 가벼움</span><span>3–4 가벼움</span><span>5–6 보통</span><span>7–8 힘듦</span><span>9–10 매우 힘듦</span></div><Field label="평균 심박수 (선택)"><input name="heartRate" defaultValue={previousHeartRate} placeholder="예: 130~140" /></Field><Field label="운동 내용"><textarea name="details" defaultValue={draft?.details ?? ""} placeholder="종목, 중량, 횟수, 세트 또는 컨디션을 적어주세요." /></Field><button className="primary-button submit-button" type="submit">{kind === "plan" ? "운동 계획 저장" : editing ? "수정 저장" : "운동 기록 저장"}</button></form></Sheet>;
+  return <Sheet title={kind === "plan" ? "운동 계획" : editing ? "운동 기록 수정" : "한 운동 기록"} close={close}><form className="form-stack" onSubmit={(event) => save(event, kind)}><input type="hidden" name="editingId" value={editing ? draft.id : ""} /><div className="two-fields sheet-leading-fields"><Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><Field label="운동 종류"><select name="type" value={workoutType} onChange={(event) => setWorkoutType(event.target.value as WorkoutEntry["type"])}><option>PT</option><option>유산소</option></select></Field></div>{kind === "plan" && <Field label="시작 시간 (선택)"><input type="time" name="startTime" defaultValue={draft?.startTime ?? ""} /></Field>}<Field label="운동 이름"><input name="title" defaultValue={draft?.title ?? ""} placeholder={workoutType === "PT" ? "예: 필라테스 + 기능운동" : "예: 인클라인 트레드밀"} required /></Field>{workoutType === "유산소" && <div className="check-field step-overlap-check"><input id="overlapsSteps" type="checkbox" name="overlapsSteps" defaultChecked={draft?.overlapsSteps} /><label htmlFor="overlapsSteps"><strong>일상 걸음 수와 중복되는 운동은 체크해주세요.</strong></label></div>}<div className="two-fields"><Field label="시간 (분)"><input type="number" name="minutes" defaultValue={draft?.minutes ?? ""} min="1" placeholder="예: 35" required /></Field><Field label="체감 강도 (1~10)"><select name="intensity" defaultValue={previousIntensity}>{[1,2,3,4,5,6,7,8,9,10].map((value) => <option value={value} key={value}>{value}</option>)}</select></Field></div><div className="rpe-scale"><span>1–2 아주 가벼움</span><span>3–4 가벼움</span><span>5–6 보통</span><span>7–8 힘듦</span><span>9–10 매우 힘듦</span></div><Field label="평균 심박수 (선택)"><input name="heartRate" defaultValue={previousHeartRate} placeholder="예: 130~140" /></Field><Field label="운동 내용"><textarea name="details" defaultValue={draft?.details ?? ""} placeholder="종목, 중량, 횟수, 세트 또는 컨디션을 적어주세요." /></Field><button className="primary-button submit-button" type="submit">{kind === "plan" ? "운동 계획 저장" : editing ? "수정 저장" : "운동 기록 저장"}</button></form></Sheet>;
 }
 
 function BodyDetailSheet({ record, close, edit, remove }: { record: BodyRecord; close: () => void; edit: () => void; remove: () => void }) {

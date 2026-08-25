@@ -28,6 +28,13 @@ function addDays(value, days) {
   return date.toISOString().slice(0, 10);
 }
 
+function timeBefore(time, minutesBefore) {
+  const [hour, minute] = String(time || "").split(":").map(Number);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return time;
+  const minutes = (hour * 60 + minute - Number(minutesBefore || 0) + 24 * 60) % (24 * 60);
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
 function inTravel(data, day) {
   return Boolean(data.travel?.active
     && (!data.travel.startDate || day >= data.travel.startDate)
@@ -60,8 +67,24 @@ function remindersFor(data, clock) {
     }
   }
 
-  if (travelBehavior !== "핵심만" && settings.workoutEnabled && completed.workoutPlanned && !completed.workout) {
-    add("workout", settings.workoutTime, "계획한 운동을 마쳤나요?", "오늘의 움직임을 기록해보세요.");
+  const workoutPlans = Array.isArray(data.workoutPlans) ? data.workoutPlans.filter((plan) => plan.date === clock.day) : [];
+  const workoutDone = Array.isArray(data.workoutActualDates) ? data.workoutActualDates.includes(clock.day) : Boolean(completed.workout);
+  if (travelBehavior !== "핵심만" && settings.workoutEnabled && !workoutDone) {
+    if (workoutPlans.length) {
+      for (const plan of workoutPlans) {
+        const reminderTime = plan.startTime
+          ? timeBefore(plan.startTime, settings.workoutLeadMinutes ?? 30)
+          : settings.workoutTime;
+        add(
+          `workout_${plan.id}`,
+          reminderTime,
+          plan.startTime ? "곧 운동을 시작할 시간이에요" : "계획한 운동을 마쳤나요?",
+          plan.startTime ? `${plan.title || "계획한 운동"} · ${plan.startTime} 시작` : "오늘의 움직임을 기록해보세요.",
+        );
+      }
+    } else if (completed.workoutPlanned) {
+      add("workout", settings.workoutTime, "계획한 운동을 마쳤나요?", "오늘의 움직임을 기록해보세요.");
+    }
   }
 
   if (travelBehavior !== "핵심만" && settings.weeklyEnabled && settings.weeklyDay === clock.weekday && !completed.nextWeekPlanned) {

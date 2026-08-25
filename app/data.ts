@@ -89,6 +89,7 @@ export type MealEntry = {
 export type WorkoutEntry = {
   id: string;
   date: string;
+  startTime?: string;
   kind: EntryKind;
   type: "PT" | "유산소";
   title: string;
@@ -147,6 +148,7 @@ export type ReminderSettings = {
   mealTimes: Record<MealType, string>;
   workoutEnabled: boolean;
   workoutTime: string;
+  workoutLeadMinutes: number;
   weeklyEnabled: boolean;
   weeklyDay: number;
   weeklyTime: string;
@@ -245,6 +247,7 @@ export const initialState: AppState = {
     mealTimes: { breakfast: "07:30", lunch: "12:00", dinner: "18:00", snack: "15:00" },
     workoutEnabled: true,
     workoutTime: "19:00",
+    workoutLeadMinutes: 30,
     weeklyEnabled: true,
     weeklyDay: 0,
     weeklyTime: "10:00",
