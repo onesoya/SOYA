@@ -728,8 +728,8 @@ html, body {
 .brand-mark { width: 46px; height: 46px; }
 .loading-mark { width: 64px; height: 64px; padding: 0; background: var(--paper); }
 .topbar-heading { position: relative; display: flex; align-items: center; gap: 13px; }
-.topbar-tiger-button { width: 48px; height: 48px; flex: none; padding: 0; border: 0; background: transparent; cursor: pointer; }
-.topbar-tiger { width: 48px; height: 48px; object-fit: cover; image-rendering: pixelated; border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--coral); }
+.topbar-tiger-button { width: 76px; height: 76px; flex: none; display: grid; place-items: center; padding: 0; border: 0; background: transparent; line-height: 0; cursor: pointer; }
+.topbar-tiger { width: 48px; height: 48px; display: block; object-fit: cover; image-rendering: pixelated; border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--coral); }
 .account-popover { position: absolute; z-index: 70; top: 60px; left: 0; width: 190px; padding: 14px; border: 2px solid var(--ink); background: var(--paper); box-shadow: 4px 4px 0 var(--ink); }
 .account-popover p { margin: 0 0 12px; font-size: 12px; font-weight: 850; }
 .account-popover > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
@@ -1259,6 +1259,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
 
 @media (max-width: 620px) {
   .topbar-heading { gap: 17px; }
+  .topbar-tiger-button { width: 84px; height: 84px; }
   .topbar-tiger { width: 84px; height: 84px; }
   .topbar h1 { font-size: 20px; line-height: 1.35; }
   .date-text { margin-bottom: 5px; font-size: 10px; }
