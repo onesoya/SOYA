@@ -105,6 +105,8 @@ export type Consultation = {
   source: "openai" | "preview";
 };
 
+export type TravelLevel = "가볍게 기록" | "균형 유지" | "목표 유지";
+
 export type AppState = {
   profile: {
     mode: "감량기" | "유지기" | "여행";
@@ -113,7 +115,8 @@ export type AppState = {
     goalEndDate: string;
     targetBodyFatChange: number;
     targetMuscleChange: number;
-    travelLevel?: "가볍게 기록" | "균형 유지" | "목표 유지";
+    travelLevel?: TravelLevel;
+    travelDailyLevels?: Record<string, TravelLevel>;
   };
   nutritionGoal: {
     caloriesMin: number;
@@ -155,6 +158,7 @@ export const initialState: AppState = {
     goalEndDate: "2026-10-25",
     targetBodyFatChange: -2.5,
     targetMuscleChange: 0.3,
+    travelDailyLevels: {},
   },
   nutritionGoal: {
     caloriesMin: 1650,

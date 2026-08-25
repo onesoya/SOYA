@@ -3,11 +3,11 @@ import "galmuri/dist/galmuri.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "나의 밸런스",
-  description: "체성분, 식사, 운동을 한 흐름으로 관리하는 나만의 건강 기록 앱",
+  title: "SOYA",
+  description: "체성분, 식사, 운동과 나만의 리듬을 한 흐름으로 기록하는 건강 앱",
   openGraph: {
-    title: "나의 밸런스",
-    description: "체성분, 식사, 운동을 한 흐름으로 관리하는 나만의 건강 기록 앱",
+    title: "SOYA",
+    description: "체성분, 식사, 운동과 나만의 리듬을 한 흐름으로 기록하는 건강 앱",
     images: ["/og-preview.png"],
   },
   icons: {

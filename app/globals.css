@@ -125,6 +125,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .goal-target-grid span, .travel-level span { color: var(--muted); font-size: 8px; }
 .goal-target-grid strong, .travel-level strong { font-size: 13px; }
 .travel-level { padding: 12px; border: 1px solid var(--line); background: var(--sage-soft); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.travel-day-control { padding: 12px; border: 1px solid var(--ink); background: var(--cream); display: grid; gap: 10px; }
+.travel-day-control > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.travel-day-control span { font-size: 9px; font-weight: 850; }
+.travel-day-control small { color: var(--muted); font-size: 7px; }
+.travel-day-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); }
+.travel-day-options button { min-width: 0; min-height: 36px; padding: 6px 3px; border: 0; background: var(--paper); color: var(--muted); font: inherit; font-size: 8px; font-weight: 850; cursor: pointer; }
+.travel-day-options button + button { border-left: 1px solid var(--line); }
+.travel-day-options button.active { background: var(--coral); color: white; }
+.travel-workout-control { padding: 16px; }
+.travel-change-overview { background: var(--sage-soft); }
 .goal-progress { display: grid; gap: 7px; }
 .goal-progress small { color: var(--muted); font-size: 7px; text-align: right; }
 .profile-mode-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--ink); }
@@ -864,6 +874,8 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .calendar-day.today::before { display: none; }
   .calendar-legend { gap: 9px 12px; }
   .daily-nutrient-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .travel-day-control { padding: 10px; }
+  .travel-day-options button { font-size: 7px; }
   .nutrition-summary-heading { align-items: flex-end; }
   .change-overview { align-items: flex-start; flex-direction: column; }
   .change-overview-actions { width: 100%; }

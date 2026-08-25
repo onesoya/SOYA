@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "나의 밸런스",
-    short_name: "밸런스",
-    description: "체성분, 식사, 운동을 한 흐름으로 관리하는 개인 건강 기록 앱",
+    name: "SOYA",
+    short_name: "SOYA",
+    description: "체성분, 식사, 운동과 나만의 리듬을 한 흐름으로 기록하는 건강 앱",
     start_url: "/",
     display: "standalone",
     background_color: "#f8f3ea",
