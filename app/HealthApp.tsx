@@ -158,6 +158,15 @@ const dateLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { month: "
 const monthLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(new Date(`${value.slice(0, 7)}-01T12:00:00`));
 const signed = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
 
+function normalizeCircumferenceRecord(value: unknown): CircumferenceRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Partial<CircumferenceRecord> & { waistCm?: number; hipCm?: number };
+  if (!record.id || !record.date) return null;
+  const waistIn = Number(record.waistIn ?? (record.waistCm === undefined ? 0 : (record.waistCm / 2.54).toFixed(1)));
+  const hipIn = Number(record.hipIn ?? (record.hipCm === undefined ? 0 : (record.hipCm / 2.54).toFixed(1)));
+  return { id: record.id, date: record.date, waistIn, hipIn, note: record.note };
+}
+
 function normalizeAppState(value: unknown): AppState {
   const saved = value && typeof value === "object" ? value as Partial<AppState> : {};
   const savedProfile = saved.profile && typeof saved.profile === "object" ? saved.profile : initialState.profile;
@@ -178,7 +187,7 @@ function normalizeAppState(value: unknown): AppState {
     nutritionGoal: { ...initialState.nutritionGoal, ...(saved.nutritionGoal ?? {}) },
     workoutGoal: { ...initialState.workoutGoal!, ...(saved.workoutGoal ?? {}) },
     bodyRecords: Array.isArray(saved.bodyRecords) ? saved.bodyRecords : [],
-    circumferenceRecords: Array.isArray(saved.circumferenceRecords) ? saved.circumferenceRecords : [],
+    circumferenceRecords: Array.isArray(saved.circumferenceRecords) ? saved.circumferenceRecords.map(normalizeCircumferenceRecord).filter((record): record is CircumferenceRecord => Boolean(record)) : [],
     foodLibrary: (Array.isArray(saved.foodLibrary) ? saved.foodLibrary : []).map(normalizeFoodLibraryItem),
     meals: Array.isArray(saved.meals) ? saved.meals : [],
     workouts: Array.isArray(saved.workouts) ? saved.workouts : [],
@@ -253,8 +262,8 @@ function exportCsv(state: AppState, kind: CsvKind, today: string) {
     ...state.bodyRecords.map((item) => [item.date, item.time, item.weight, item.skeletalMuscle, item.bodyFatMass, item.bodyFatRate, item.visceralFat, item.measurementTiming, item.device]),
   ];
   if (kind === "circumference") rows = [
-    ["날짜", "허리둘레(cm)", "엉덩이둘레(cm)", "메모"],
-    ...(state.circumferenceRecords ?? []).map((item) => [item.date, item.waistCm, item.hipCm, item.note]),
+    ["날짜", "허리둘레(inch)", "엉덩이둘레(inch)", "메모"],
+    ...(state.circumferenceRecords ?? []).map((item) => [item.date, item.waistIn, item.hipIn, item.note]),
   ];
   if (kind === "meals") rows = [
     ["날짜", "끼니", "구분", "음식", "섭취 없음", "칼로리(kcal)", "단백질(g)", "탄수화물(g)", "지방(g)", "당류(g)", "식이섬유(g)"],
@@ -926,8 +935,8 @@ export function HealthApp() {
     const record: CircumferenceRecord = {
       id: editingId || id("circumference"),
       date: String(data.get("date")),
-      waistCm: number(data.get("waistCm")),
-      hipCm: number(data.get("hipCm")),
+      waistIn: number(data.get("waistIn")),
+      hipIn: number(data.get("hipIn")),
       note: String(data.get("note") || "").trim() || undefined,
     };
     commit((current) => ({
@@ -1567,7 +1576,7 @@ function ChangeView({ state, today, setModal, openDetail, openCircumference }: {
     <div className="metric-grid change-metric-grid"><MetricCard label="체지방량" value={String(latest?.bodyFatMass ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="골격근량" value={String(latest?.skeletalMuscle ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="체중" value={String(latest?.weight ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="내장지방" value={String(latest?.visceralFat ?? "-")} unit="Lv" hint={measuredAt} /></div>
     <section className="card chart-card cycle-aware-chart"><CardTitle title="최근 체지방량" aside={`kg · ${chartRecords.length}회`} /><div className="body-phase-filter" role="tablist" aria-label="월경 주기 구간으로 체성분 기록 보기"><button type="button" role="tab" aria-selected={phaseFilter === "all"} className={phaseFilter === "all" ? "active" : ""} onClick={() => setPhaseFilter("all")}>전체</button><button type="button" role="tab" aria-selected={phaseFilter === "focus"} className={phaseFilter === "focus" ? "active" : ""} onClick={() => setPhaseFilter("focus")}>월경 후 집중</button><button type="button" role="tab" aria-selected={phaseFilter === "influence"} className={phaseFilter === "influence" ? "active" : ""} onClick={() => setPhaseFilter("influence")}>월경 전·중</button></div><FatTrendChart records={chartRecords} emptyText={phaseFilter === "all" ? "체성분 기록을 입력하면 흐름이 보여요." : "이 주기 구간의 체성분 기록이 아직 없어요."} /></section>
     <section className="card circumference-card"><CardTitle title="허리·엉덩이둘레" aside={<button type="button" className="text-button" onClick={() => openCircumference()}>기록하기</button>} />
-      {latestCircumference ? <><div className="circumference-latest"><MetricCard label="허리둘레" value={String(latestCircumference.waistCm)} unit="cm" hint={latestCircumference.date} /><MetricCard label="엉덩이둘레" value={String(latestCircumference.hipCm)} unit="cm" hint={latestCircumference.date} /></div><CircumferenceTrendChart records={circumferenceChartRecords} /><div className="circumference-history">{circumferenceRecords.slice(0, 5).map((record) => <button type="button" key={record.id} onClick={() => openCircumference(record)}><span>{record.date}</span><strong>허리 {record.waistCm}cm</strong><strong>엉덩이 {record.hipCm}cm</strong><b aria-hidden="true">›</b></button>)}</div></> : <EmptyState text="일요일 아침 측정값을 기록해보세요." action="둘레 기록하기" onClick={() => openCircumference()} showIcon={false} />}
+      {latestCircumference ? <><div className="circumference-latest"><MetricCard label="허리둘레" value={String(latestCircumference.waistIn)} unit="inch" hint={latestCircumference.date} /><MetricCard label="엉덩이둘레" value={String(latestCircumference.hipIn)} unit="inch" hint={latestCircumference.date} /></div><CircumferenceTrendChart records={circumferenceChartRecords} /><div className="circumference-history">{circumferenceRecords.slice(0, 5).map((record) => <button type="button" key={record.id} onClick={() => openCircumference(record)}><span>{record.date}</span><strong>허리 {record.waistIn}inch</strong><strong>엉덩이 {record.hipIn}inch</strong><b aria-hidden="true">›</b></button>)}</div></> : <EmptyState text="일요일 아침 측정값을 기록해보세요." action="둘레 기록하기" onClick={() => openCircumference()} showIcon={false} />}
     </section>
     <section className="card"><CardTitle title="측정 기록" aside={`${filteredRecords.length}개`} />{visibleRecords.length ? <div className="data-table">{visibleRecords.map(({ record, phase }) => <button type="button" key={record.id} onClick={() => openDetail(record)} aria-label={`${record.date} 인바디 상세 보기, ${phase.label}`}><span><strong>{record.date}</strong><i className={`record-phase-badge phase-${phase.key}`}>{phase.label}</i><small>{record.time} · {record.measurementTiming ?? record.condition.split(" · ")[0]} · {record.device ?? record.condition.split(" · ")[1]}</small></span><span>{record.bodyFatMass}<small>kg 지방</small></span><span>{record.skeletalMuscle}<small>kg 골격근</small></span><b aria-hidden="true">›</b></button>)}</div> : <div className="phase-record-empty">이 구간의 측정 기록이 아직 없어요.</div>}</section>
   </div>;
@@ -1866,7 +1875,7 @@ function CircumferenceTrendChart({ records }: { records: CircumferenceRecord[] }
   const right = 28;
   const top = 36;
   const bottom = 46;
-  const values = records.flatMap((item) => [item.waistCm, item.hipCm]);
+  const values = records.flatMap((item) => [item.waistIn, item.hipIn]);
   const min = Math.floor((Math.min(...values) - 1) * 10) / 10;
   const max = Math.ceil((Math.max(...values) + 1) * 10) / 10;
   const range = Math.max(max - min, 2);
@@ -1876,8 +1885,8 @@ function CircumferenceTrendChart({ records }: { records: CircumferenceRecord[] }
     y: top + ((max - value) / range) * (height - top - bottom),
     value,
   });
-  const waist = records.map((record, index) => point(record, index, record.waistCm));
-  const hip = records.map((record, index) => point(record, index, record.hipCm));
+  const waist = records.map((record, index) => point(record, index, record.waistIn));
+  const hip = records.map((record, index) => point(record, index, record.hipIn));
   return <div className="circumference-chart-wrap"><div className="circumference-legend"><span className="waist">허리</span><span className="hip">엉덩이</span></div><svg className="trend-chart circumference-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="허리둘레와 엉덩이둘레 변화 선 그래프">
     {[0, 0.5, 1].map((ratio) => { const y = top + ratio * (height - top - bottom); const value = max - ratio * range; return <g key={ratio}><line x1={left} x2={width - right} y1={y} y2={y} className="chart-grid-line" /><text x={left - 10} y={y + 4} textAnchor="end" className="chart-axis-value">{value.toFixed(1)}</text></g>; })}
     <polyline points={waist.map(({ x, y }) => `${x},${y}`).join(" ")} className="circumference-line waist" />
@@ -1891,8 +1900,8 @@ function CircumferenceSheet({ today, latest, draft, close, save, remove }: { tod
   return <Sheet title={draft ? "허리·엉덩이둘레 수정" : "허리·엉덩이둘레 기록"} close={close}><form className="form-stack" onSubmit={save}>
     <input type="hidden" name="editingId" value={draft?.id ?? ""} />
     <Field label="측정일"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field>
-    <MeasureField label="허리둘레" name="waistCm" unit="cm" previous={latest?.waistCm} value={draft?.waistCm} />
-    <MeasureField label="엉덩이둘레" name="hipCm" unit="cm" previous={latest?.hipCm} value={draft?.hipCm} />
+    <MeasureField label="허리둘레" name="waistIn" unit="inch" previous={latest?.waistIn} value={draft?.waistIn} />
+    <MeasureField label="엉덩이둘레" name="hipIn" unit="inch" previous={latest?.hipIn} value={draft?.hipIn} />
     <Field label="메모 (선택)"><textarea name="note" defaultValue={draft?.note ?? ""} placeholder="측정 조건이나 평소와 다른 점" /></Field>
     <button className="primary-button submit-button" type="submit">{draft ? "수정 저장" : "둘레 기록 저장"}</button>
     {draft && <button className="delete-button full-delete-button" type="button" onClick={() => remove(draft)}>둘레 기록 삭제</button>}

@@ -60,8 +60,8 @@ export type BodyRecord = {
 export type CircumferenceRecord = {
   id: string;
   date: string;
-  waistCm: number;
-  hipCm: number;
+  waistIn: number;
+  hipIn: number;
   note?: string;
 };
 
