@@ -19,7 +19,7 @@ import {
 } from "./data";
 
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
-type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "cycle-import" | "consultation-detail";
+type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail";
 type Consultation = AppState["consultations"][number];
 type CycleRange = { id: string; start: string; end: string };
 type WeeklyWorkoutDraft = {
@@ -195,21 +195,6 @@ function addDays(value: string, amount: number) {
   const date = new Date(`${value}T12:00:00`);
   date.setDate(date.getDate() + amount);
   return dateKey(date);
-}
-
-function normalizeDatePart(year: string, month: string, day: string) {
-  const value = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-  const date = new Date(`${value}T12:00:00`);
-  return Number.isNaN(date.getTime()) || dateKey(date) !== value ? undefined : value;
-}
-
-function parseCycleRangeLine(line: string): Omit<CycleRange, "id"> | undefined {
-  const dates = [...line.matchAll(/(\d{4})[.\-/년\s]+(\d{1,2})[.\-/월\s]+(\d{1,2})일?/g)];
-  if (dates.length !== 2) return undefined;
-  const start = normalizeDatePart(dates[0][1], dates[0][2], dates[0][3]);
-  const end = normalizeDatePart(dates[1][1], dates[1][2], dates[1][3]);
-  if (!start || !end || daysBetween(start, end) < 0) return undefined;
-  return { start, end };
 }
 
 function cycleRangeDates(start: string, end: string) {
@@ -785,16 +770,17 @@ export function HealthApp() {
     setModal(null);
   };
 
-  const importCycleRanges = (ranges: CycleRange[]) => {
+  const saveCycleRanges = (ranges: CycleRange[]) => {
     commit((current) => {
       const existingDates = new Set(current.cycles.map((item) => item.date));
       const dates = [...new Set(ranges.flatMap((range) => cycleRangeDates(range.start, range.end)))].filter((date) => !existingDates.has(date));
       const imported: CycleEntry[] = dates.map((date) => ({
-        id: id("cycle-import"), date, state: "본 출혈", flow: "없음", pain: "없음",
+        id: id("cycle-range"), date, state: "본 출혈", flow: "없음", pain: "없음",
         symptoms: [], sexCount: 0, contraception: "해당 없음", note: "",
       }));
       return { ...current, cycles: [...current.cycles, ...imported] };
     });
+    setCycleDate(undefined);
     setModal(null);
   };
 
@@ -829,7 +815,7 @@ export function HealthApp() {
         )}
         {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openGoal={() => setModal("nutrition-goal")} updateTravelDayLevel={updateTravelDayLevel} />}
         {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} updateTravelDayLevel={updateTravelDayLevel} />}
-        {tab === "menstrual" && <MenstrualView state={state} today={today} openRecord={(date) => { setCycleDate(date); setModal("cycle"); }} openImport={() => setModal("cycle-import")} />}
+        {tab === "menstrual" && <MenstrualView state={state} today={today} openRecord={(date) => { setCycleDate(date); setModal("cycle"); }} />}
         {tab === "change" && <ChangeConsultView state={state} today={today} setModal={setModal} commit={commit} openWeeklyPlan={() => setModal("weekly-plan")} deleteConsultation={deleteConsultation} openBodyDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} openConsultationDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
       </main>
 
@@ -846,8 +832,7 @@ export function HealthApp() {
       {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={() => { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); setModal(null); }} save={saveWorkout} />}
       {modal === "workout-goal" && <WorkoutGoalSheet goal={state.workoutGoal ?? initialState.workoutGoal!} close={() => setModal(null)} save={saveWorkoutGoal} />}
       {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} close={() => setModal(null)} save={saveWeeklyPlan} />}
-      {modal === "cycle" && <CycleSheet today={cycleDate ?? today} draft={state.cycles.find((item) => item.date === (cycleDate ?? today))} previous={state.cycles.find((item) => item.date === addDays(cycleDate ?? today, -1))} close={() => { setCycleDate(undefined); setModal(null); }} save={saveCycle} remove={deleteCycle} />}
-      {modal === "cycle-import" && <CycleImportSheet existing={state.cycles} close={() => setModal(null)} save={importCycleRanges} />}
+      {modal === "cycle" && <CycleSheet today={cycleDate ?? today} draft={state.cycles.find((item) => item.date === (cycleDate ?? today))} previous={state.cycles.find((item) => item.date === addDays(cycleDate ?? today, -1))} existing={state.cycles} close={() => { setCycleDate(undefined); setModal(null); }} save={saveCycle} saveRanges={saveCycleRanges} remove={deleteCycle} />}
       {modal === "consultation-detail" && selectedConsultation && <ConsultationDetailSheet consultation={selectedConsultation} close={() => { setSelectedConsultation(undefined); setModal(null); }} remove={() => deleteConsultation(selectedConsultation)} />}
     </div>
   );
@@ -957,7 +942,7 @@ function FoodView({ state, today, openMeal, deleteMeal, openGoal, updateTravelDa
   const nutritionTone = assessNutrition(selectedNutrition, selectedNutritionMeals.length, new Set(selectedNutritionMeals.map((item) => item.mealType)).size >= 3, state.profile, goal, selectedDate);
   const nutritionLabel = nutritionTone === "balanced" ? "잘했어요" : nutritionTone === "attention" ? "아쉬워요" : nutritionTone === "partial" ? "괜찮아요" : nutritionMode === "plan" ? "계획 없음" : "기록 없음";
   const calorieGuide = selectedIsTravel && selectedTravelLevel === "가볍게 기록" ? "이날은 기록을 남긴 것만으로 충분해요" : selectedIsTravel && selectedTravelLevel === "균형 유지" ? "이날은 단백질·당류·식이섬유 중심으로 살펴봐요" : selectedNutrition.calories < goal.caloriesMin ? `목표 하한까지 ${Math.round(goal.caloriesMin - selectedNutrition.calories)} kcal` : selectedNutrition.calories <= goal.caloriesMax ? "칼로리 목표 범위 안" : `목표 상한보다 ${Math.round(selectedNutrition.calories - goal.caloriesMax)} kcal 많음`;
-  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading food-calendar-heading"><div><span className="eyebrow">식단 밸런스</span><div className="food-month-actions"><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /><button className="primary-button food-plan-button" onClick={() => openMeal("plan", undefined, undefined, selectedDate)}>식사 계획</button></div></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <button type="button" key={date} onClick={() => setSelectedDate(date)} className={`calendar-day ${mealStatus(date)} ${hasMealPlan(date) ? "meal-planned" : ""} ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b></button> : <span className="calendar-blank" key={`blank-${index}`} />)}</div><div className="calendar-legend"><span><i className="balanced" />잘했어요</span><span><i className="partial" />괜찮아요</span><span><i className="attention" />아쉬워요</span><span><b className="plan-heart">♥</b>계획</span></div></section>
+  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading calendar-heading-stacked food-calendar-heading"><span className="eyebrow">식단 밸런스</span><div className="calendar-toolbar"><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /><div className="calendar-inline-actions"><button className="ghost-button" onClick={() => openMeal("plan", undefined, undefined, selectedDate)}>계획</button><button className="primary-button" onClick={() => openMeal("actual", undefined, undefined, selectedDate)}>기록</button></div></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <button type="button" key={date} onClick={() => setSelectedDate(date)} className={`calendar-day ${mealStatus(date)} ${hasMealPlan(date) ? "meal-planned" : ""} ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b></button> : <span className="calendar-blank" key={`blank-${index}`} />)}</div><div className="calendar-legend"><span><i className="balanced" />잘했어요</span><span><i className="partial" />괜찮아요</span><span><i className="attention" />아쉬워요</span><span><b className="plan-heart">♥</b>계획</span></div></section>
     <section className="card daily-nutrition-card">
       <CardTitle title={`${dateLabel(selectedDate)} 영양`} aside={<button className="text-button" onClick={openGoal}>목표 설정</button>} />
       {selectedIsTravel && <TravelDayControl date={selectedDate} level={selectedTravelLevel} defaultLevel={state.profile.travelLevel ?? "균형 유지"} onChange={updateTravelDayLevel} />}
@@ -1000,7 +985,7 @@ function WorkoutView({ state, today, openWorkout, deleteWorkout, openGoal, updat
     setSelectedMonth(today.slice(0, 7));
     setSelectedDate(today);
   };
-  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading"><div><span className="eyebrow">운동 해빗</span><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /></div><div className="calendar-actions"><button className="ghost-button" onClick={() => openForDate("plan")}>계획</button><button className="primary-button" onClick={() => openForDate("actual")}>기록</button></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => { if (!date) return <span className="calendar-blank" key={`blank-${index}`} />; const dayEntries = state.workouts.filter((item) => item.date === date); return <button type="button" onClick={() => setSelectedDate(date)} key={date} className={`calendar-day workout-day ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b><span className="workout-marks">{dayEntries.slice(0, 3).map((item) => <WorkoutMark key={item.id} type={item.type} kind={item.kind} />)}</span></button>; })}</div><div className="calendar-legend workout-legend"><span><WorkoutMark type="PT" kind="actual" />PT 완료</span><span><WorkoutMark type="유산소" kind="actual" />개인운동 완료</span><span><WorkoutMark type="PT" kind="plan" />PT 계획</span><span><WorkoutMark type="유산소" kind="plan" />개인운동 계획</span></div></section>
+  return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading calendar-heading-stacked"><span className="eyebrow">운동 해빗</span><div className="calendar-toolbar"><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /><div className="calendar-inline-actions"><button className="ghost-button" onClick={() => openForDate("plan")}>계획</button><button className="primary-button" onClick={() => openForDate("actual")}>기록</button></div></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => { if (!date) return <span className="calendar-blank" key={`blank-${index}`} />; const dayEntries = state.workouts.filter((item) => item.date === date); return <button type="button" onClick={() => setSelectedDate(date)} key={date} className={`calendar-day workout-day ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b><span className="workout-marks">{dayEntries.slice(0, 3).map((item) => <WorkoutMark key={item.id} type={item.type} kind={item.kind} />)}</span></button>; })}</div><div className="calendar-legend workout-legend"><span><WorkoutMark type="PT" kind="actual" />PT 완료</span><span><WorkoutMark type="유산소" kind="actual" />개인운동 완료</span><span><WorkoutMark type="PT" kind="plan" />PT 계획</span><span><WorkoutMark type="유산소" kind="plan" />개인운동 계획</span></div></section>
     {selectedIsTravel && <section className="card travel-workout-control"><TravelDayControl date={selectedDate} level={selectedTravelLevel} defaultLevel={state.profile.travelLevel ?? "균형 유지"} onChange={updateTravelDayLevel} /></section>}
     <section className="workout-goal-block"><div className="workout-goal-heading"><h2>{selectedIsTravel && selectedTravelLevel !== "목표 유지" ? "여행 중 움직임" : "주간 목표"}</h2><button className="text-button" onClick={openGoal}>목표 설정</button></div><div className="metric-grid workout-metrics"><MetricCard label="개인 유산소" value={selectedIsTravel && selectedTravelLevel !== "목표 유지" ? `${cardio.sessions}` : `${cardio.sessions} / ${goal.cardioSessions}`} unit="회" hint={selectedIsTravel && selectedTravelLevel !== "목표 유지" ? "이번 주 기록" : "최소 주간 목표"} /><MetricCard label="누적시간" value={selectedIsTravel && selectedTravelLevel !== "목표 유지" ? `${cardio.minutes}` : `${cardio.minutes} / ${goal.cardioMinutes}`} unit="분" hint={selectedIsTravel && selectedTravelLevel !== "목표 유지" ? "이번 주 기록" : "이번 주 목표"} /></div></section>
     <section className="card"><CardTitle title="운동 계획·기록" aside={dateLabel(selectedDate)} />{entries.length ? <div className="timeline">{entries.map((entry) => <article key={entry.id}><span className={`timeline-dot ${entry.kind}`} /><div><small>{entry.kind === "plan" ? "계획" : "완료"} · {entry.type}</small><h3>{entry.title}</h3><p>{entry.minutes}분 · 강도 {typeof entry.intensity === "number" ? `${entry.intensity}/10` : entry.intensity || "미기록"}{entry.heartRate ? ` · 심박 ${entry.heartRate}` : ""}</p>{entry.overlapsSteps && <span className="overlap-badge">걸음 수 중복</span>}{entry.details && <em>{entry.details}</em>}<div className="entry-button-row">{entry.kind === "plan" && <button className="timeline-action" onClick={() => openWorkout("actual", entry)}>계획대로 기록</button>}<button className="timeline-action" onClick={() => openWorkout(entry.kind, entry)}>수정</button><button className="delete-text-button" onClick={() => deleteWorkout(entry)}>삭제</button></div></div></article>)}</div> : <EmptyState text="이날 운동 계획이나 기록이 없어요." action="운동 계획하기" onClick={() => openForDate("plan")} showIcon={false} />}</section>
@@ -1008,7 +993,7 @@ function WorkoutView({ state, today, openWorkout, deleteWorkout, openGoal, updat
   </div>;
 }
 
-function MenstrualView({ state, today, openRecord, openImport }: { state: AppState; today: string; openRecord: (date: string) => void; openImport: () => void }) {
+function MenstrualView({ state, today, openRecord }: { state: AppState; today: string; openRecord: (date: string) => void }) {
   const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(today);
   const cells = monthCells(`${selectedMonth}-01`);
@@ -1024,7 +1009,7 @@ function MenstrualView({ state, today, openRecord, openImport }: { state: AppSta
   };
   return <div className="section-stack menstrual-view">
     <section className="card pixel-calendar-card menstrual-calendar-card">
-      <div className="calendar-heading menstrual-calendar-heading"><div><span className="eyebrow">월경 캘린더</span><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /></div><div className="calendar-actions"><button className="ghost-button" onClick={openImport}>과거 기록</button><button className="primary-button" onClick={() => openRecord(selectedDate)}>{selected ? "기록 수정" : "기록"}</button></div></div>
+      <div className="calendar-heading calendar-heading-stacked menstrual-calendar-heading"><span className="eyebrow">월경 캘린더</span><div className="calendar-toolbar"><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /><div className="calendar-inline-actions"><button className="primary-button" onClick={() => openRecord(selectedDate)}>기록</button></div></div></div>
       <div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div>
       <div className="month-grid">{cells.map((date, index) => {
         if (!date) return <span className="calendar-blank" key={`blank-${index}`} />;
@@ -1527,81 +1512,56 @@ function ConsultationDetailSheet({ consultation, close, remove }: { consultation
   return <Sheet title="상담 다시보기" close={close}><div className="detail-date"><strong>{consultation.date}</strong></div><span className={`source-badge ${consultation.source}`}>{consultation.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span><div className="consultation-text consultation-popup-text">{consultation.text}</div><button type="button" className="delete-button full-delete-button" onClick={remove}>상담 삭제</button></Sheet>;
 }
 
-function CycleImportSheet({ existing, close, save }: { existing: CycleEntry[]; close: () => void; save: (ranges: CycleRange[]) => void }) {
-  const [pasteValue, setPasteValue] = useState("");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
-  const [ranges, setRanges] = useState<CycleRange[]>([]);
-  const [invalidLines, setInvalidLines] = useState<string[]>([]);
-  const [manualError, setManualError] = useState("");
-  const existingDates = useMemo(() => new Set(existing.map((item) => item.date)), [existing]);
-  const allDates = useMemo(() => [...new Set(ranges.flatMap((range) => cycleRangeDates(range.start, range.end)))], [ranges]);
-  const skippedDates = allDates.filter((date) => existingDates.has(date));
-  const importCount = allDates.length - skippedDates.length;
-
-  const addPastedRanges = () => {
-    const lines = pasteValue.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const parsed: CycleRange[] = [];
-    const invalid: string[] = [];
-    lines.forEach((line) => {
-      const range = parseCycleRangeLine(line);
-      if (range) parsed.push({ id: id("cycle-range"), ...range });
-      else invalid.push(line);
-    });
-    setRanges((current) => [...current, ...parsed]);
-    setInvalidLines(invalid);
-    if (parsed.length) setPasteValue("");
-  };
-
-  const addManualRange = () => {
-    if (!start || !end) {
-      setManualError("시작일과 종료일을 모두 골라주세요.");
-      return;
-    }
-    if (daysBetween(start, end) < 0) {
-      setManualError("종료일은 시작일보다 빠를 수 없어요.");
-      return;
-    }
-    setRanges((current) => [...current, { id: id("cycle-range"), start, end }]);
-    setStart("");
-    setEnd("");
-    setManualError("");
-  };
-
-  return <Sheet title="과거 월경 기록 가져오기" close={close}><div className="cycle-import-stack">
-    <section className="cycle-import-block">
-      <strong>여러 주기 붙여넣기</strong>
-      <textarea value={pasteValue} onChange={(event) => setPasteValue(event.target.value)} placeholder={"2025.07.11 ~ 2025.07.19\n2025.06.14 ~ 2025.06.20"} />
-      <button type="button" className="secondary-button" onClick={addPastedRanges} disabled={!pasteValue.trim()}>목록에 추가</button>
-      {invalidLines.length > 0 && <div className="cycle-import-error"><b>확인할 줄 {invalidLines.length}개</b>{invalidLines.slice(0, 3).map((line) => <span key={line}>{line}</span>)}</div>}
-    </section>
-    <section className="cycle-import-block">
-      <strong>한 주기 추가</strong>
-      <div className="two-fields sheet-leading-fields"><Field label="시작일"><input type="date" value={start} onChange={(event) => setStart(event.target.value)} /></Field><Field label="종료일"><input type="date" value={end} onChange={(event) => setEnd(event.target.value)} /></Field></div>
-      {manualError && <p className="cycle-import-manual-error">{manualError}</p>}
-      <button type="button" className="secondary-button" onClick={addManualRange}>한 건 추가</button>
-    </section>
-    <section className="cycle-import-preview">
-      <div className="cycle-import-preview-heading"><strong>가져올 목록</strong><span>{ranges.length}주기 · {allDates.length}일</span></div>
-      {ranges.length ? <div className="cycle-range-list">{ranges.map((range) => <div key={range.id}><span><b>{range.start.replaceAll("-", ".")}</b> ~ <b>{range.end.replaceAll("-", ".")}</b><small>{daysBetween(range.start, range.end) + 1}일</small></span><button type="button" onClick={() => setRanges((current) => current.filter((item) => item.id !== range.id))}>삭제</button></div>)}</div> : <p className="cycle-import-empty">아직 추가된 주기가 없어요.</p>}
-      {skippedDates.length > 0 && <p className="cycle-import-skip">기존 기록 {skippedDates.length}일은 그대로 두고 건너뜁니다.</p>}
-    </section>
-    <button type="button" className="primary-button submit-button" onClick={() => save(ranges)} disabled={!importCount}>{importCount ? `${ranges.length}주기 · ${importCount}일 가져오기` : "가져올 새 기록 없음"}</button>
-  </div></Sheet>;
+function CycleSheet({ today, draft, previous, existing, close, save, saveRanges, remove }: { today: string; draft?: CycleEntry; previous?: CycleEntry; existing: CycleEntry[]; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void; saveRanges: (ranges: CycleRange[]) => void; remove: (entry: CycleEntry) => void }) {
+  const [mode, setMode] = useState<"day" | "range">("day");
+  const symptoms = ["졸림", "피로"];
+  return <Sheet title="월경·컨디션 기록" close={close}>
+    <div className="cycle-record-tabs" role="tablist" aria-label="월경 기록 방식"><button type="button" className={mode === "day" ? "active" : ""} onClick={() => setMode("day")}>하루 기록</button><button type="button" className={mode === "range" ? "active" : ""} onClick={() => setMode("range")}>기간 기록</button></div>
+    {mode === "day" ? <form className="form-stack" onSubmit={save}>
+      <input type="hidden" name="editingId" value={draft?.id ?? ""} />
+      <Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field>
+      <Field label="오늘 출혈 상태"><select name="state" defaultValue={draft?.state ?? previous?.state ?? "없음"}><option>없음</option><option>갈색 출혈</option><option>본 출혈</option><option>부정출혈</option></select></Field>
+      <div className="two-fields"><Field label="월경량"><select name="flow" defaultValue={draft?.flow ?? previous?.flow ?? "없음"}><option>없음</option><option>소량</option><option>보통</option><option>많음</option></select></Field><Field label="월경통"><select name="pain" defaultValue={draft?.pain ?? "없음"}><option>없음</option><option>약함</option><option>보통</option><option>심함</option></select></Field></div>
+      <div className="two-fields"><Field label="에너지"><select name="energy" defaultValue={draft?.energy ?? 3}>{conditionLabels.map((label, index) => <option value={index + 1} key={label}>{label}</option>)}</select></Field><Field label="식욕"><select name="appetite" defaultValue={draft?.appetite ?? 3}>{conditionLabels.map((label, index) => <option value={index + 1} key={label}>{label}</option>)}</select></Field></div>
+      <fieldset className="cycle-check-group"><legend>오늘 느낀 증상</legend><div>{symptoms.map((symptom) => <label key={symptom}><input type="checkbox" name="symptoms" value={symptom} defaultChecked={draft?.symptoms?.includes(symptom)} /><span>{symptom}</span></label>)}</div></fieldset>
+      <section className="cycle-love-section"><strong>사랑 기록</strong><div className="two-fields"><Field label="횟수"><input type="number" name="sexCount" min="0" max="20" defaultValue={draft?.sexCount ?? 0} /></Field><Field label="피임 여부"><select name="contraception" defaultValue={draft?.contraception ?? "해당 없음"}><option>해당 없음</option><option>피임함</option><option>피임하지 않음</option></select></Field></div></section>
+      <Field label="메모 (선택)"><textarea name="note" defaultValue={draft?.note ?? ""} placeholder="평소와 다른 점이 있다면 적어주세요." /></Field>
+      <button className="primary-button submit-button" type="submit">{draft ? "수정 저장" : "기록 저장"}</button>
+      {draft && <button className="delete-button full-delete-button" type="button" onClick={() => remove(draft)}>기록 삭제</button>}
+    </form> : <CyclePeriodRecorder today={today} existing={existing} save={saveRanges} />}
+  </Sheet>;
 }
 
-function CycleSheet({ today, draft, previous, close, save, remove }: { today: string; draft?: CycleEntry; previous?: CycleEntry; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void; remove: (entry: CycleEntry) => void }) {
-  const symptoms = ["졸림", "피로"];
-  return <Sheet title="월경·컨디션 기록" close={close}><form className="form-stack" onSubmit={save}>
-    <input type="hidden" name="editingId" value={draft?.id ?? ""} />
-    <Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field>
-    <Field label="오늘 출혈 상태"><select name="state" defaultValue={draft?.state ?? previous?.state ?? "없음"}><option>없음</option><option>갈색 출혈</option><option>본 출혈</option><option>부정출혈</option></select></Field>
-    <div className="two-fields"><Field label="월경량"><select name="flow" defaultValue={draft?.flow ?? previous?.flow ?? "없음"}><option>없음</option><option>소량</option><option>보통</option><option>많음</option></select></Field><Field label="월경통"><select name="pain" defaultValue={draft?.pain ?? "없음"}><option>없음</option><option>약함</option><option>보통</option><option>심함</option></select></Field></div>
-    <div className="two-fields"><Field label="에너지"><select name="energy" defaultValue={draft?.energy ?? 3}>{conditionLabels.map((label, index) => <option value={index + 1} key={label}>{label}</option>)}</select></Field><Field label="식욕"><select name="appetite" defaultValue={draft?.appetite ?? 3}>{conditionLabels.map((label, index) => <option value={index + 1} key={label}>{label}</option>)}</select></Field></div>
-    <fieldset className="cycle-check-group"><legend>오늘 느낀 증상</legend><div>{symptoms.map((symptom) => <label key={symptom}><input type="checkbox" name="symptoms" value={symptom} defaultChecked={draft?.symptoms?.includes(symptom)} /><span>{symptom}</span></label>)}</div></fieldset>
-    <section className="cycle-love-section"><strong>사랑 기록</strong><div className="two-fields"><Field label="횟수"><input type="number" name="sexCount" min="0" max="20" defaultValue={draft?.sexCount ?? 0} /></Field><Field label="피임 여부"><select name="contraception" defaultValue={draft?.contraception ?? "해당 없음"}><option>해당 없음</option><option>피임함</option><option>피임하지 않음</option></select></Field></div></section>
-    <Field label="메모 (선택)"><textarea name="note" defaultValue={draft?.note ?? ""} placeholder="평소와 다른 점이 있다면 적어주세요." /></Field>
-    <button className="primary-button submit-button" type="submit">{draft ? "수정 저장" : "기록 저장"}</button>
-    {draft && <button className="delete-button full-delete-button" type="button" onClick={() => remove(draft)}>기록 삭제</button>}
-  </form></Sheet>;
+function CyclePeriodRecorder({ today, existing, save }: { today: string; existing: CycleEntry[]; save: (ranges: CycleRange[]) => void }) {
+  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
+  const [rangeStart, setRangeStart] = useState<string>();
+  const [ranges, setRanges] = useState<CycleRange[]>([]);
+  const cells = monthCells(`${selectedMonth}-01`);
+  const existingDates = useMemo(() => new Set(existing.map((entry) => entry.date)), [existing]);
+  const chosenDates = useMemo(() => new Set(ranges.flatMap((range) => cycleRangeDates(range.start, range.end))), [ranges]);
+  const allDates = [...chosenDates];
+  const skippedCount = allDates.filter((date) => existingDates.has(date)).length;
+  const saveCount = allDates.length - skippedCount;
+
+  const chooseDate = (date: string) => {
+    if (!rangeStart || date < rangeStart) {
+      setRangeStart(date);
+      return;
+    }
+    setRanges((current) => [...current, { id: id("cycle-range"), start: rangeStart, end: date }]);
+    setRangeStart(undefined);
+  };
+
+  return <div className="cycle-period-recorder">
+    <div className="cycle-period-prompt"><strong>{rangeStart ? "마지막 날짜를 선택해주세요" : "시작 날짜를 선택해주세요"}</strong>{rangeStart && <span>{dateLabel(rangeStart)}부터</span>}</div>
+    <div className="cycle-period-calendar"><MonthNavigator value={selectedMonth} onChange={setSelectedMonth} onToday={() => setSelectedMonth(today.slice(0, 7))} /><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => {
+      if (!date) return <span className="calendar-blank" key={`blank-${index}`} />;
+      const existingEntry = existing.find((entry) => entry.date === date);
+      const stateClass = existingEntry?.state === "갈색 출혈" ? "brown-bleeding" : existingEntry?.state === "본 출혈" ? "main-bleeding" : existingEntry?.state === "부정출혈" ? "irregular-bleeding" : "";
+      return <button type="button" key={date} onClick={() => chooseDate(date)} className={`calendar-day menstrual-day ${stateClass} ${chosenDates.has(date) ? "range-selected" : ""} ${date === rangeStart ? "range-start" : ""} ${date === today ? "today" : ""}`}><b>{Number(date.slice(-2))}</b></button>;
+    })}</div></div>
+    {(rangeStart || ranges.length > 0) && <div className="cycle-period-list">{ranges.map((range) => <div key={range.id}><span><b>{range.start.replaceAll("-", ".")}</b> ~ <b>{range.end.replaceAll("-", ".")}</b><small>{daysBetween(range.start, range.end) + 1}일</small></span><button type="button" onClick={() => setRanges((current) => current.filter((item) => item.id !== range.id))}>삭제</button></div>)}{rangeStart && <div className="pending"><span><b>{rangeStart.replaceAll("-", ".")}</b><small>마지막 날짜 선택 전</small></span><button type="button" onClick={() => setRangeStart(undefined)}>취소</button></div>}</div>}
+    {skippedCount > 0 && <p className="cycle-period-skip">기존 기록 {skippedCount}일은 그대로 두고 건너뜁니다.</p>}
+    <button type="button" className="primary-button submit-button" onClick={() => save(ranges)} disabled={!saveCount || Boolean(rangeStart)}>{rangeStart ? "마지막 날짜를 선택해주세요" : saveCount ? `${ranges.length}주기 · ${saveCount}일 저장` : "저장할 기간 없음"}</button>
+  </div>;
 }

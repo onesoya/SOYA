@@ -666,10 +666,12 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .month-options button.active { border-color: var(--ink); background: var(--coral); color: white; box-shadow: 2px 2px 0 var(--ink); }
 .calendar-actions { display: flex; gap: 8px; }
 .calendar-actions .ghost-button { color: var(--ink); background: var(--cream); }
-.food-calendar-heading > div { width: 100%; }
-.food-month-actions { width: 100%; display: flex; align-items: flex-end; justify-content: space-between; gap: 9px; }
-.food-month-actions .month-navigator { min-width: 0; }
-.food-plan-button { min-height: 30px; padding: 0 11px; flex: 0 0 auto; font-size: 9px; box-shadow: 2px 2px 0 var(--ink); }
+.calendar-heading.calendar-heading-stacked { display: grid; align-items: start; gap: 6px; }
+.calendar-heading.calendar-heading-stacked > .calendar-toolbar { width: 100%; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.calendar-toolbar .month-navigator { min-width: 0; margin-top: 0; }
+.calendar-inline-actions { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; }
+.calendar-inline-actions button { min-width: 44px; min-height: 30px; padding: 0 8px; font-size: 8px; box-shadow: 2px 2px 0 var(--ink); }
+.calendar-inline-actions .ghost-button { color: var(--ink); background: var(--cream); }
 .calendar-weekdays, .month-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -749,26 +751,27 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .menstrual-detail-grid strong { font-size: 10px; }
 .menstrual-note { margin: 12px 0 0; padding: 12px; border-left: 3px solid var(--coral); background: var(--cream); color: var(--muted); font-size: 10px; line-height: 1.65; }
 .prediction-note { margin: -3px 2px 0; color: var(--muted); font-size: 8px; line-height: 1.65; }
-.cycle-import-stack { display: grid; gap: 14px; }
-.cycle-import-block, .cycle-import-preview { padding: 13px; border: 1px solid var(--ink); background: var(--cream); box-shadow: 3px 3px 0 rgba(51,46,43,.12); display: grid; gap: 10px; }
-.cycle-import-block > strong, .cycle-import-preview-heading strong { font-size: 11px; }
-.cycle-import-block textarea { width: 100%; min-height: 112px; padding: 12px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 10px; line-height: 1.7; resize: vertical; }
-.cycle-import-block .secondary-button { min-height: 42px; margin-top: 0; }
-.cycle-import-block .secondary-button:disabled { opacity: .45; cursor: default; }
-.cycle-import-error { padding: 9px; border-left: 3px solid #b65348; background: #fff5f2; display: grid; gap: 4px; }
-.cycle-import-error b, .cycle-import-error span, .cycle-import-manual-error { font-size: 8px; }
-.cycle-import-error span, .cycle-import-manual-error { color: #b65348; }
-.cycle-import-manual-error { margin: -2px 0 0; }
-.cycle-import-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.cycle-import-preview-heading span { color: var(--coral); font-size: 8px; font-weight: 850; }
-.cycle-range-list { max-height: 260px; overflow-y: auto; display: grid; }
-.cycle-range-list > div { min-width: 0; padding: 10px 0; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.cycle-range-list span { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 5px; color: var(--muted); font-size: 8px; }
-.cycle-range-list b { color: var(--ink); font-size: 9px; }
-.cycle-range-list small { padding: 3px 5px; background: white; color: var(--muted); font-size: 7px; }
-.cycle-range-list button { border: 0; background: transparent; color: #b65348; font-family: inherit; font-size: 8px; font-weight: 850; cursor: pointer; }
-.cycle-import-empty, .cycle-import-skip { margin: 0; padding: 10px; color: var(--muted); font-size: 8px; text-align: center; }
-.cycle-import-skip { background: #fff4df; color: #8f6a2e; }
+.cycle-record-tabs { margin: -4px 0 18px; padding: 4px; border: 2px solid var(--ink); border-radius: 999px; background: var(--cream); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.cycle-record-tabs button { min-height: 40px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-family: inherit; font-size: 10px; font-weight: 850; cursor: pointer; }
+.cycle-record-tabs button.active { background: var(--coral); color: white; }
+.cycle-period-recorder { display: grid; gap: 14px; }
+.cycle-period-prompt { min-height: 56px; padding: 11px 13px; border: 1px solid var(--ink); background: var(--cream); display: grid; align-content: center; gap: 4px; box-shadow: 3px 3px 0 rgba(51,46,43,.12); }
+.cycle-period-prompt strong { font-size: 11px; }
+.cycle-period-prompt span { color: var(--coral); font-size: 8px; }
+.cycle-period-calendar { padding: 14px; border: 1px solid var(--ink); background: var(--paper); box-shadow: 3px 3px 0 rgba(51,46,43,.12); }
+.cycle-period-calendar > .month-navigator { width: max-content; max-width: 100%; margin: 0 0 14px; }
+.cycle-period-calendar .calendar-day { min-height: 46px; }
+.cycle-period-calendar .menstrual-day.range-selected { background: #f7c5bf; color: #43201e; box-shadow: inset 0 0 0 2px #cf6659; }
+.cycle-period-calendar .menstrual-day.range-start { background: var(--coral); color: white; box-shadow: inset 0 0 0 3px var(--ink); }
+.cycle-period-list { border: 1px solid var(--line); background: white; display: grid; }
+.cycle-period-list > div { min-width: 0; padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cycle-period-list > div:last-child { border-bottom: 0; }
+.cycle-period-list > div.pending { background: #fff4df; }
+.cycle-period-list span { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 5px; color: var(--muted); font-size: 8px; }
+.cycle-period-list b { color: var(--ink); font-size: 9px; }
+.cycle-period-list small { padding: 3px 5px; background: var(--cream); color: var(--muted); font-size: 7px; }
+.cycle-period-list button { border: 0; padding: 4px; background: transparent; color: #b65348; font-family: inherit; font-size: 8px; font-weight: 850; cursor: pointer; }
+.cycle-period-skip { margin: 0; padding: 10px; background: #fff4df; color: #8f6a2e; font-size: 8px; text-align: center; }
 .combined-view-tabs { width: min(360px, 100%); margin: 0 auto 18px; padding: 4px; border: 2px solid var(--ink); border-radius: 999px; background: var(--paper); display: grid; grid-template-columns: 1fr 1fr; gap: 4px; box-shadow: 3px 3px 0 rgba(51,46,43,.16); }
 .combined-view-tabs button { min-height: 42px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-family: inherit; font-size: 11px; font-weight: 850; cursor: pointer; }
 .combined-view-tabs button.active { background: var(--coral); color: white; }
@@ -936,9 +939,13 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .month-navigator { grid-template-columns: 28px minmax(112px, auto) 28px auto; }
   .month-arrow { width: 28px; height: 28px; }
   .month-current { min-height: 28px; font-size: 15px; }
-  .food-month-actions { align-items: center; gap: 6px; }
-  .food-month-actions .month-navigator { grid-template-columns: 26px minmax(92px, auto) 26px auto; }
-  .food-plan-button { min-height: 28px; padding-inline: 8px; font-size: 8px; }
+  .calendar-heading.calendar-heading-stacked > .calendar-toolbar { gap: 5px; }
+  .calendar-toolbar .month-navigator { grid-template-columns: 26px minmax(72px, auto) 26px auto; gap: 3px; }
+  .calendar-toolbar .month-arrow { width: 26px; }
+  .calendar-toolbar .month-current { font-size: 13px; }
+  .calendar-toolbar .month-today { padding-inline: 5px; font-size: 7px; }
+  .calendar-inline-actions { gap: 4px; }
+  .calendar-inline-actions button { min-width: 39px; min-height: 28px; padding-inline: 6px; font-size: 7px; }
   .calendar-day, .calendar-blank { min-height: 46px; }
   .calendar-day.today::before { display: none; }
   .calendar-legend { gap: 9px 12px; }
@@ -963,4 +970,6 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .sheet-leading-fields .field select { display: block; width: 100%; min-width: 0; max-width: 100%; }
   .field input, .field select, .field textarea { font-size: 16px; }
   .rpe-scale span { font-size: 6px; padding-inline: 2px; }
+  .cycle-period-calendar { padding: 11px 9px; }
+  .cycle-period-calendar > .month-navigator { grid-template-columns: 26px minmax(104px, auto) 26px auto; }
 }
