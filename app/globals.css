@@ -641,7 +641,12 @@ h1, h2, h3, strong, b { font-weight: 700; }
   box-shadow: 3px 3px 0 rgba(51, 46, 43, .12);
 }
 
-.pixel-calendar-card { padding: 22px 24px 20px; }
+.pixel-calendar-card {
+  --calendar-action-top: 40px;
+  --calendar-side-padding: 24px;
+  position: relative;
+  padding: 22px 24px 20px;
+}
 .calendar-heading {
   display: flex;
   align-items: flex-end;
@@ -668,15 +673,23 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .calendar-actions .ghost-button { color: var(--ink); background: var(--cream); }
 .calendar-heading.calendar-heading-stacked { width: 100%; display: grid; align-items: start; gap: 6px; }
 .calendar-heading.calendar-heading-stacked > .calendar-toolbar {
-  position: relative;
   width: 100%;
   min-width: 0;
   min-height: 30px;
   align-self: stretch;
   display: block;
 }
-.calendar-toolbar .month-navigator { min-width: 0; max-width: calc(100% - 104px); margin-top: 0; }
-.calendar-toolbar-actions { position: absolute; right: 0; top: 0; display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+.calendar-toolbar .month-navigator { min-width: 0; max-width: 100%; margin-top: 0; }
+.calendar-toolbar-actions {
+  position: absolute;
+  z-index: 2;
+  right: var(--calendar-side-padding);
+  top: var(--calendar-action-top);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
 .calendar-toolbar-actions button { min-width: 44px; min-height: 30px; padding: 0 8px; font-size: 8px; box-shadow: 2px 2px 0 var(--ink); }
 .calendar-toolbar-actions .ghost-button { color: var(--ink); background: var(--cream); }
 .calendar-weekdays, .month-grid {
@@ -940,13 +953,17 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .topbar h1 { font-size: 20px; line-height: 1.35; }
   .date-text { margin-bottom: 5px; font-size: 10px; }
   .header-library-button { max-width: 82px; min-height: 40px; padding: 0 8px; font-size: 8px; line-height: 1.45; white-space: normal; }
-  .pixel-calendar-card { padding: 18px 14px 16px; }
+  .pixel-calendar-card {
+    --calendar-action-top: 34px;
+    --calendar-side-padding: 14px;
+    padding: 18px 14px 16px;
+  }
   .calendar-heading { align-items: center; flex-wrap: wrap; }
   .calendar-heading h2 { font-size: 18px; }
   .month-navigator { grid-template-columns: 28px minmax(112px, auto) 28px auto; }
   .month-arrow { width: 28px; height: 28px; }
   .month-current { min-height: 28px; font-size: 15px; }
-  .calendar-toolbar .month-navigator { max-width: calc(100% - 86px); grid-template-columns: 26px minmax(72px, auto) 26px auto; gap: 3px; }
+  .calendar-toolbar .month-navigator { max-width: 100%; grid-template-columns: 26px minmax(72px, auto) 26px auto; gap: 3px; }
   .calendar-toolbar .month-arrow { width: 26px; }
   .calendar-toolbar .month-current { font-size: 13px; }
   .calendar-toolbar .month-today { padding-inline: 5px; font-size: 7px; }
