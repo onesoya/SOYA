@@ -103,6 +103,8 @@ export type CycleEntry = {
   sexCount?: number;
   contraception?: "해당 없음" | "피임함" | "피임하지 않음";
   note: string;
+  source?: "period-fill";
+  periodId?: string;
 };
 
 export type Consultation = {
