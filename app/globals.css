@@ -409,7 +409,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .quick-button:hover { border-color: #dfb2a7; background: #fff9f7; }
 .quick-button span { font-size: 21px; color: var(--coral); }
 .quick-button strong { font-size: 11px; }
-.quick-bulk-button { width: 100%; min-height: 38px; margin-top: 9px; border: 1px solid var(--ink); background: var(--cream); color: var(--coral); font-family: inherit; font-size: 9px; font-weight: 850; cursor: pointer; }
 
 .form-stack { width: 100%; min-width: 0; display: grid; gap: 14px; }
 .field { display: grid; gap: 7px; min-width: 0; }
@@ -557,8 +556,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .body-bulk-summary { padding: 12px; border: 1px solid var(--line); background: var(--cream); display: grid; gap: 5px; }
 .body-bulk-summary strong { font-size: 10px; }
 .body-bulk-summary span { color: var(--muted); font-size: 8px; }
-.body-bulk-list { display: grid; gap: 14px; }
-.body-bulk-row { padding: 14px; border: 1px solid var(--ink); background: white; box-shadow: 3px 3px 0 rgba(51, 46, 43, .13); display: grid; gap: 12px; }
+.body-bulk-entry { padding: 14px; border: 1px solid var(--ink); background: white; box-shadow: 3px 3px 0 rgba(51, 46, 43, .13); display: grid; gap: 12px; }
 .body-bulk-row-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .body-bulk-row-heading > strong { color: var(--coral); font-size: 10px; }
 .body-bulk-row-heading > div { display: flex; align-items: center; gap: 9px; }
@@ -574,6 +572,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .body-bulk-error { margin: -2px 0 0; color: #b65348; font-size: 8px; line-height: 1.5; }
 .body-bulk-add { min-height: 42px; border: 1px dashed var(--ink); background: var(--cream); color: var(--ink); font-family: inherit; font-size: 9px; font-weight: 850; cursor: pointer; }
 .body-bulk-editor .submit-button:disabled { opacity: .42; cursor: default; }
+.body-bulk-queue { border: 1px solid var(--ink); background: var(--paper); }
+.body-bulk-queue-heading { min-height: 42px; padding: 0 11px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.body-bulk-queue-heading strong { color: var(--coral); font-size: 10px; }
+.body-bulk-queue-heading span { color: var(--muted); font-size: 8px; }
+.body-bulk-queue > div:last-child { display: grid; }
+.body-bulk-queue article { min-height: 58px; padding: 9px 11px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.body-bulk-queue article:last-child { border-bottom: 0; }
+.body-bulk-queue article > div:first-child { min-width: 0; display: grid; gap: 4px; }
+.body-bulk-queue article strong { font-size: 9px; }
+.body-bulk-queue article span { color: var(--muted); font-size: 8px; }
+.body-bulk-queue article > div:last-child { display: flex; gap: 8px; }
+.body-bulk-queue article button { padding: 0; border: 0; background: transparent; color: var(--muted); font-family: inherit; font-size: 8px; font-weight: 850; cursor: pointer; }
+.body-bulk-queue article button.delete { color: #b65348; }
+.body-bulk-queue > p { margin: 0; padding: 22px 12px; color: var(--muted); font-size: 8px; text-align: center; }
+.body-bulk-pending-note { margin: -4px 0 0; color: #a26259; font-size: 8px; text-align: center; }
 .body-bulk-review-heading { display: grid; gap: 6px; }
 .body-bulk-review-heading h3 { margin: 0; font-size: 17px; }
 .body-bulk-preview-list { display: grid; border-top: 1px solid var(--line); }
@@ -1249,7 +1262,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .sheet-leading-fields > .field { width: 100%; min-width: 0; overflow: hidden; }
   .sheet-leading-fields .field input,
   .sheet-leading-fields .field select { display: block; width: 100%; min-width: 0; max-width: 100%; }
-  .body-bulk-row { padding: 12px 10px; }
+  .body-bulk-entry { padding: 12px 10px; }
   .body-bulk-metrics input { font-size: 16px; }
   .body-bulk-preview-list article { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .field input, .field select, .field textarea { font-size: 16px; }
