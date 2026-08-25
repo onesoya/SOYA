@@ -19,8 +19,9 @@ import {
 } from "./data";
 
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
-type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail";
+type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "cycle-import" | "consultation-detail";
 type Consultation = AppState["consultations"][number];
+type CycleRange = { id: string; start: string; end: string };
 type WeeklyWorkoutDraft = {
   id: string;
   type: WorkoutEntry["type"];
@@ -194,6 +195,26 @@ function addDays(value: string, amount: number) {
   const date = new Date(`${value}T12:00:00`);
   date.setDate(date.getDate() + amount);
   return dateKey(date);
+}
+
+function normalizeDatePart(year: string, month: string, day: string) {
+  const value = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime()) || dateKey(date) !== value ? undefined : value;
+}
+
+function parseCycleRangeLine(line: string): Omit<CycleRange, "id"> | undefined {
+  const dates = [...line.matchAll(/(\d{4})[.\-/년\s]+(\d{1,2})[.\-/월\s]+(\d{1,2})일?/g)];
+  if (dates.length !== 2) return undefined;
+  const start = normalizeDatePart(dates[0][1], dates[0][2], dates[0][3]);
+  const end = normalizeDatePart(dates[1][1], dates[1][2], dates[1][3]);
+  if (!start || !end || daysBetween(start, end) < 0) return undefined;
+  return { start, end };
+}
+
+function cycleRangeDates(start: string, end: string) {
+  const length = daysBetween(start, end);
+  return length < 0 ? [] : Array.from({ length: length + 1 }, (_, index) => addDays(start, index));
 }
 
 function weekDates(start: string) {
@@ -764,6 +785,19 @@ export function HealthApp() {
     setModal(null);
   };
 
+  const importCycleRanges = (ranges: CycleRange[]) => {
+    commit((current) => {
+      const existingDates = new Set(current.cycles.map((item) => item.date));
+      const dates = [...new Set(ranges.flatMap((range) => cycleRangeDates(range.start, range.end)))].filter((date) => !existingDates.has(date));
+      const imported: CycleEntry[] = dates.map((date) => ({
+        id: id("cycle-import"), date, state: "본 출혈", flow: "없음", pain: "없음",
+        symptoms: [], sexCount: 0, contraception: "해당 없음", note: "",
+      }));
+      return { ...current, cycles: [...current.cycles, ...imported] };
+    });
+    setModal(null);
+  };
+
   const exportData = () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -795,7 +829,7 @@ export function HealthApp() {
         )}
         {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openGoal={() => setModal("nutrition-goal")} updateTravelDayLevel={updateTravelDayLevel} />}
         {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} updateTravelDayLevel={updateTravelDayLevel} />}
-        {tab === "menstrual" && <MenstrualView state={state} today={today} openRecord={(date) => { setCycleDate(date); setModal("cycle"); }} />}
+        {tab === "menstrual" && <MenstrualView state={state} today={today} openRecord={(date) => { setCycleDate(date); setModal("cycle"); }} openImport={() => setModal("cycle-import")} />}
         {tab === "change" && <ChangeConsultView state={state} today={today} setModal={setModal} commit={commit} openWeeklyPlan={() => setModal("weekly-plan")} deleteConsultation={deleteConsultation} openBodyDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} openConsultationDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
       </main>
 
@@ -813,6 +847,7 @@ export function HealthApp() {
       {modal === "workout-goal" && <WorkoutGoalSheet goal={state.workoutGoal ?? initialState.workoutGoal!} close={() => setModal(null)} save={saveWorkoutGoal} />}
       {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} close={() => setModal(null)} save={saveWeeklyPlan} />}
       {modal === "cycle" && <CycleSheet today={cycleDate ?? today} draft={state.cycles.find((item) => item.date === (cycleDate ?? today))} previous={state.cycles.find((item) => item.date === addDays(cycleDate ?? today, -1))} close={() => { setCycleDate(undefined); setModal(null); }} save={saveCycle} remove={deleteCycle} />}
+      {modal === "cycle-import" && <CycleImportSheet existing={state.cycles} close={() => setModal(null)} save={importCycleRanges} />}
       {modal === "consultation-detail" && selectedConsultation && <ConsultationDetailSheet consultation={selectedConsultation} close={() => { setSelectedConsultation(undefined); setModal(null); }} remove={() => deleteConsultation(selectedConsultation)} />}
     </div>
   );
@@ -973,7 +1008,7 @@ function WorkoutView({ state, today, openWorkout, deleteWorkout, openGoal, updat
   </div>;
 }
 
-function MenstrualView({ state, today, openRecord }: { state: AppState; today: string; openRecord: (date: string) => void }) {
+function MenstrualView({ state, today, openRecord, openImport }: { state: AppState; today: string; openRecord: (date: string) => void; openImport: () => void }) {
   const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(today);
   const cells = monthCells(`${selectedMonth}-01`);
@@ -989,7 +1024,7 @@ function MenstrualView({ state, today, openRecord }: { state: AppState; today: s
   };
   return <div className="section-stack menstrual-view">
     <section className="card pixel-calendar-card menstrual-calendar-card">
-      <div className="calendar-heading menstrual-calendar-heading"><div><span className="eyebrow">월경 캘린더</span><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /></div><button className="primary-button" onClick={() => openRecord(selectedDate)}>{selected ? "기록 수정" : "기록"}</button></div>
+      <div className="calendar-heading menstrual-calendar-heading"><div><span className="eyebrow">월경 캘린더</span><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /></div><div className="calendar-actions"><button className="ghost-button" onClick={openImport}>과거 기록</button><button className="primary-button" onClick={() => openRecord(selectedDate)}>{selected ? "기록 수정" : "기록"}</button></div></div>
       <div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div>
       <div className="month-grid">{cells.map((date, index) => {
         if (!date) return <span className="calendar-blank" key={`blank-${index}`} />;
@@ -1230,9 +1265,9 @@ function MealSheet({ today, kind, library, draft, presetType, close, save }: { t
       <input type="hidden" name="components" value={JSON.stringify(components)} />
       <input type="hidden" name="title" value={title} />
       <div className="two-fields sheet-leading-fields"><Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><Field label="끼니"><select name="mealType" defaultValue={defaultType}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field></div>
-      <section className="saved-food-picker"><div className="saved-food-picker-heading"><strong>음식 보관함에서 추가</strong><button type="button" onClick={addManual}>직접 추가</button></div>{library.length ? <><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="음식 또는 세트 검색" /><div className="saved-food-results">{results.map((food) => <button type="button" key={food.id} onClick={() => addFood(food)}><strong>{food.name}</strong><span>{foodBasisLabel(food)} · {food.calories}kcal</span><em>추가</em></button>)}</div></> : <p className="saved-food-empty">저장된 음식 없음 · 직접 추가를 이용해주세요.</p>}</section>
+      <section className="saved-food-picker"><div className="saved-food-picker-heading"><strong>음식 보관함에서 추가</strong></div>{library.length ? <><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="음식 또는 세트 검색" /><div className="saved-food-results">{results.map((food) => <button type="button" key={food.id} onClick={() => addFood(food)}><strong>{food.name}</strong><span>{foodBasisLabel(food)} · {food.calories}kcal</span><em>추가</em></button>)}</div></> : <p className="saved-food-empty">저장된 음식이 없어요.</p>}</section>
       <OfficialFoodSearch title="식약처에서 바로 추가" actionLabel="추가" onChoose={addOfficialFood} />
-      <section className="meal-component-box"><div className="meal-component-heading"><strong>{kind === "plan" ? "계획한 음식" : "먹은 음식"}</strong><span>{components.length}개</span></div>{components.length ? <div className="meal-component-list">{components.map((component) => {
+      <section className="meal-component-box"><div className="meal-component-heading"><strong>{kind === "plan" ? "먹고 싶은 음식" : "먹은 음식"}</strong><div><span>{components.length}개</span><button type="button" onClick={addManual}>직접 추가</button></div></div>{components.length ? <div className="meal-component-list">{components.map((component) => {
         const measured = Boolean(component.quantity && component.unit);
         return <article key={component.id} className={measured ? "measured-component" : "manual-component"}><div className="meal-component-main">{measured ? <strong>{component.name}</strong> : <input value={component.name} onChange={(event) => changeName(component.id, event.target.value)} placeholder="음식 이름" aria-label="음식 이름" />}{measured && <div className="component-quantity"><input type="number" min="0.1" step="0.1" value={component.quantity} onChange={(event) => changeQuantity(component, Number(event.target.value))} aria-label={`${component.name} 양`} /><b>{component.unit}</b></div>}</div><button type="button" className="delete-text-button" onClick={() => removeComponent(component.id)}>삭제</button></article>;
       })}</div> : <p className="meal-component-empty">음식을 추가해주세요.</p>}</section>
@@ -1490,6 +1525,69 @@ function BodyDetailSheet({ record, close, edit, remove }: { record: BodyRecord; 
 
 function ConsultationDetailSheet({ consultation, close, remove }: { consultation: Consultation; close: () => void; remove: () => void }) {
   return <Sheet title="상담 다시보기" close={close}><div className="detail-date"><strong>{consultation.date}</strong></div><span className={`source-badge ${consultation.source}`}>{consultation.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span><div className="consultation-text consultation-popup-text">{consultation.text}</div><button type="button" className="delete-button full-delete-button" onClick={remove}>상담 삭제</button></Sheet>;
+}
+
+function CycleImportSheet({ existing, close, save }: { existing: CycleEntry[]; close: () => void; save: (ranges: CycleRange[]) => void }) {
+  const [pasteValue, setPasteValue] = useState("");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [ranges, setRanges] = useState<CycleRange[]>([]);
+  const [invalidLines, setInvalidLines] = useState<string[]>([]);
+  const [manualError, setManualError] = useState("");
+  const existingDates = useMemo(() => new Set(existing.map((item) => item.date)), [existing]);
+  const allDates = useMemo(() => [...new Set(ranges.flatMap((range) => cycleRangeDates(range.start, range.end)))], [ranges]);
+  const skippedDates = allDates.filter((date) => existingDates.has(date));
+  const importCount = allDates.length - skippedDates.length;
+
+  const addPastedRanges = () => {
+    const lines = pasteValue.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const parsed: CycleRange[] = [];
+    const invalid: string[] = [];
+    lines.forEach((line) => {
+      const range = parseCycleRangeLine(line);
+      if (range) parsed.push({ id: id("cycle-range"), ...range });
+      else invalid.push(line);
+    });
+    setRanges((current) => [...current, ...parsed]);
+    setInvalidLines(invalid);
+    if (parsed.length) setPasteValue("");
+  };
+
+  const addManualRange = () => {
+    if (!start || !end) {
+      setManualError("시작일과 종료일을 모두 골라주세요.");
+      return;
+    }
+    if (daysBetween(start, end) < 0) {
+      setManualError("종료일은 시작일보다 빠를 수 없어요.");
+      return;
+    }
+    setRanges((current) => [...current, { id: id("cycle-range"), start, end }]);
+    setStart("");
+    setEnd("");
+    setManualError("");
+  };
+
+  return <Sheet title="과거 월경 기록 가져오기" close={close}><div className="cycle-import-stack">
+    <section className="cycle-import-block">
+      <strong>여러 주기 붙여넣기</strong>
+      <textarea value={pasteValue} onChange={(event) => setPasteValue(event.target.value)} placeholder={"2025.07.11 ~ 2025.07.19\n2025.06.14 ~ 2025.06.20"} />
+      <button type="button" className="secondary-button" onClick={addPastedRanges} disabled={!pasteValue.trim()}>목록에 추가</button>
+      {invalidLines.length > 0 && <div className="cycle-import-error"><b>확인할 줄 {invalidLines.length}개</b>{invalidLines.slice(0, 3).map((line) => <span key={line}>{line}</span>)}</div>}
+    </section>
+    <section className="cycle-import-block">
+      <strong>한 주기 추가</strong>
+      <div className="two-fields sheet-leading-fields"><Field label="시작일"><input type="date" value={start} onChange={(event) => setStart(event.target.value)} /></Field><Field label="종료일"><input type="date" value={end} onChange={(event) => setEnd(event.target.value)} /></Field></div>
+      {manualError && <p className="cycle-import-manual-error">{manualError}</p>}
+      <button type="button" className="secondary-button" onClick={addManualRange}>한 건 추가</button>
+    </section>
+    <section className="cycle-import-preview">
+      <div className="cycle-import-preview-heading"><strong>가져올 목록</strong><span>{ranges.length}주기 · {allDates.length}일</span></div>
+      {ranges.length ? <div className="cycle-range-list">{ranges.map((range) => <div key={range.id}><span><b>{range.start.replaceAll("-", ".")}</b> ~ <b>{range.end.replaceAll("-", ".")}</b><small>{daysBetween(range.start, range.end) + 1}일</small></span><button type="button" onClick={() => setRanges((current) => current.filter((item) => item.id !== range.id))}>삭제</button></div>)}</div> : <p className="cycle-import-empty">아직 추가된 주기가 없어요.</p>}
+      {skippedDates.length > 0 && <p className="cycle-import-skip">기존 기록 {skippedDates.length}일은 그대로 두고 건너뜁니다.</p>}
+    </section>
+    <button type="button" className="primary-button submit-button" onClick={() => save(ranges)} disabled={!importCount}>{importCount ? `${ranges.length}주기 · ${importCount}일 가져오기` : "가져올 새 기록 없음"}</button>
+  </div></Sheet>;
 }
 
 function CycleSheet({ today, draft, previous, close, save, remove }: { today: string; draft?: CycleEntry; previous?: CycleEntry; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void; remove: (entry: CycleEntry) => void }) {
