@@ -248,6 +248,33 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .activity-priority-note strong { color: var(--coral); font-size: 9px; }
 .activity-priority-note span { color: var(--muted); font-size: 7px; line-height: 1.55; }
 .activity-note-input { min-height: 84px !important; }
+.health-import-badge { padding: 8px 10px; border: 1px solid #9baa90; background: var(--sage-soft); color: #58664f; font-size: 8px; font-weight: 800; line-height: 1.55; }
+.health-connection-stack { display: grid; gap: 14px; }
+.health-connection-status { padding: 14px; border: 1px solid var(--ink); background: var(--cream); display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.health-connection-status > div { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.health-connection-status > div > div { min-width: 0; display: grid; gap: 4px; }
+.health-connection-status strong, .health-data-list > strong, .health-key-panel > strong, .health-shortcut-guide > strong { font-size: 10px; }
+.health-connection-status small { color: var(--muted); font-size: 8px; line-height: 1.45; }
+.health-connection-status > button { flex: 0 0 auto; min-height: 34px; padding: 0 10px; border: 1px solid var(--ink); background: var(--paper); color: var(--coral); box-shadow: 2px 2px 0 var(--ink); font: inherit; font-size: 8px; font-weight: 850; cursor: pointer; }
+.health-connection-status button:disabled, .health-connection-actions button:disabled { opacity: .5; cursor: default; }
+.health-status-dot { flex: 0 0 auto; width: 11px; height: 11px; border: 2px solid var(--muted); background: transparent; }
+.health-status-dot.connected { border-color: #62745a; background: var(--sage); }
+.health-data-list, .health-key-panel, .health-shortcut-guide { padding: 14px; border: 1px solid var(--line); background: white; display: grid; gap: 12px; }
+.health-data-list > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.health-data-list span { padding: 8px 9px; background: var(--cream); color: var(--muted); font-size: 8px; font-weight: 800; }
+.health-key-panel > p { margin: -5px 0 0; color: #a26259; font-size: 8px; line-height: 1.55; }
+.health-key-field { min-width: 0; display: grid; gap: 6px; }
+.health-key-field > span { color: var(--muted); font-size: 8px; font-weight: 800; }
+.health-key-field > div { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.health-key-panel code { min-width: 0; padding: 9px; border: 1px solid var(--line); background: var(--cream); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 8px; }
+.health-key-panel button { min-width: 48px; border: 1px solid var(--ink); background: var(--paper); color: var(--coral); font: inherit; font-size: 8px; font-weight: 850; cursor: pointer; }
+.health-shortcut-guide ol { margin: 0; padding-left: 20px; display: grid; gap: 8px; color: var(--muted); font-size: 8px; line-height: 1.55; }
+.health-shortcut-guide details { border-top: 1px solid var(--line); padding-top: 10px; }
+.health-shortcut-guide summary { color: var(--coral); font-size: 8px; font-weight: 850; cursor: pointer; }
+.health-shortcut-guide pre { margin: 9px 0 0; padding: 10px; background: var(--cream); color: var(--ink); font: 8px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.health-connection-message { margin: 0; padding: 9px 11px; background: var(--cream); color: var(--muted); font-size: 8px; line-height: 1.55; }
+.health-connection-actions { display: flex; justify-content: flex-end; gap: 9px; }
+.health-connection-actions .ghost-button, .health-connection-actions .delete-button { min-height: 36px; padding: 0 11px; font-size: 8px; }
 .micro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 19px; }
 .micro-stat { padding: 13px; background: var(--cream); border-radius: 16px; display: grid; gap: 4px; }
 .micro-stat span, .micro-stat small { color: var(--muted); font-size: 9px; }

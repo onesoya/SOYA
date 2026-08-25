@@ -1,9 +1,9 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { defineSecret } from "firebase-functions/params";
-import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 
 initializeApp();
@@ -182,6 +182,187 @@ function outputText(data) {
 function safeText(value, maxLength) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
+
+const appleHealthEndpoint = "https://asia-northeast3-soya-e12cd.cloudfunctions.net/importAppleHealth";
+
+function isoTimestamp(value) {
+  return value?.toDate instanceof Function ? value.toDate().toISOString() : undefined;
+}
+
+function healthTokenHash(token) {
+  return createHash("sha256").update(String(token || "")).digest("hex");
+}
+
+function validHealthDate(value) {
+  return /^20\d{2}-\d{2}-\d{2}$/.test(String(value || ""));
+}
+
+function boundedNumber(value, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+export const getAppleHealthConnectionStatus = onCall({
+  region: "asia-northeast3",
+  memory: "128MiB",
+  timeoutSeconds: 30,
+}, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Google 로그인 후 연결할 수 있어요.");
+  const snapshot = await db.collection("appleHealthConnections").doc(request.auth.uid).get();
+  if (!snapshot.exists || snapshot.data()?.revokedAt) return { connected: false };
+  const data = snapshot.data();
+  return {
+    connected: true,
+    createdAt: isoTimestamp(data.createdAt),
+    lastImportAt: isoTimestamp(data.lastImportAt),
+    lastImportDate: data.lastImportDate || undefined,
+  };
+});
+
+export const createAppleHealthConnectionKey = onCall({
+  region: "asia-northeast3",
+  memory: "128MiB",
+  timeoutSeconds: 30,
+}, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Google 로그인 후 연결할 수 있어요.");
+  const token = `soya_health_${randomBytes(32).toString("base64url")}`;
+  await db.collection("appleHealthConnections").doc(request.auth.uid).set({
+    uid: request.auth.uid,
+    tokenHash: healthTokenHash(token),
+    createdAt: FieldValue.serverTimestamp(),
+    revokedAt: FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return { token, endpoint: appleHealthEndpoint, createdAt: new Date().toISOString() };
+});
+
+export const revokeAppleHealthConnection = onCall({
+  region: "asia-northeast3",
+  memory: "128MiB",
+  timeoutSeconds: 30,
+}, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Google 로그인 후 연결을 해제할 수 있어요.");
+  await db.collection("appleHealthConnections").doc(request.auth.uid).set({
+    tokenHash: FieldValue.delete(),
+    revokedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return { revoked: true };
+});
+
+export const importAppleHealth = onRequest({
+  region: "asia-northeast3",
+  memory: "128MiB",
+  timeoutSeconds: 30,
+}, async (request, response) => {
+  if (request.method !== "POST") {
+    response.status(405).json({ ok: false, error: "POST 요청만 사용할 수 있어요." });
+    return;
+  }
+  const authorization = String(request.headers.authorization || "");
+  const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  if (!token) {
+    response.status(401).json({ ok: false, error: "SOYA 연결 키가 필요해요." });
+    return;
+  }
+  const connection = await db.collection("appleHealthConnections")
+    .where("tokenHash", "==", healthTokenHash(token)).limit(1).get();
+  if (connection.empty || connection.docs[0].data()?.revokedAt) {
+    response.status(401).json({ ok: false, error: "연결 키를 확인해주세요." });
+    return;
+  }
+
+  const connectionRef = connection.docs[0].ref;
+  const uid = connection.docs[0].id;
+  const suppliedDays = Array.isArray(request.body?.days) ? request.body.days : [request.body];
+  const days = suppliedDays.slice(0, 31).filter((day) => validHealthDate(day?.date));
+  if (!days.length) {
+    response.status(400).json({ ok: false, error: "가져올 날짜와 건강 데이터를 확인해주세요." });
+    return;
+  }
+
+  let importedActivities = 0;
+  let importedWorkouts = 0;
+  let protectedManualRecords = 0;
+  let lastImportDate = "";
+
+  for (const rawDay of days) {
+    const date = String(rawDay.date);
+    lastImportDate = date > lastImportDate ? date : lastImportDate;
+    const steps = Math.round(boundedNumber(rawDay.steps, 0, 200000) ?? 0);
+    const activeCalories = boundedNumber(rawDay.activeCalories, 0, 20000);
+    const watchWorn = typeof rawDay.watchWorn === "boolean" ? rawDay.watchWorn : Boolean(activeCalories && activeCalories > 0);
+    const activities = db.collection("users").doc(uid).collection("dailyActivities");
+    const existingActivities = await activities.where("date", "==", date).get();
+    const manualActivity = existingActivities.docs.find((entry) => entry.data().source !== "apple_health");
+    const importedActivity = existingActivities.docs.find((entry) => entry.data().source === "apple_health");
+    if (manualActivity) {
+      protectedManualRecords += 1;
+    } else {
+      const value = {
+        id: importedActivity?.id || `activity-health-${date.replaceAll("-", "")}`,
+        date,
+        watchWorn,
+        steps,
+        source: "apple_health",
+        importedAt: new Date().toISOString(),
+        ...(activeCalories && activeCalories > 0 ? { activeCalories: Math.round(activeCalories) } : {}),
+      };
+      await (importedActivity?.ref || activities.doc(value.id)).set(value);
+      importedActivities += 1;
+    }
+
+    const rawWorkouts = Array.isArray(rawDay.workouts) ? rawDay.workouts.slice(0, 50) : [];
+    const workouts = db.collection("users").doc(uid).collection("workouts");
+    for (const rawWorkout of rawWorkouts) {
+      const minutes = Math.round(boundedNumber(rawWorkout?.minutes, 1, 1440) ?? 0);
+      const title = safeText(rawWorkout?.title, 100);
+      if (!minutes || !title) continue;
+      const startTime = /^\d{2}:\d{2}$/.test(String(rawWorkout?.startTime || "")) ? String(rawWorkout.startTime) : undefined;
+      const externalId = safeText(rawWorkout?.id, 160) || createHash("sha256").update(`${date}|${startTime || ""}|${title}|${minutes}`).digest("hex").slice(0, 20);
+      const importedId = `workout-health-${createHash("sha256").update(externalId).digest("hex").slice(0, 24)}`;
+      const existingWorkout = await workouts.doc(importedId).get();
+      const sameDayWorkouts = await workouts.where("date", "==", date).get();
+      const matchingManualWorkout = sameDayWorkouts.docs.find((entry) => {
+        const value = entry.data();
+        return value.source !== "apple_health" && value.title === title && (value.startTime || "") === (startTime || "");
+      });
+      const workoutValue = {
+        id: importedId,
+        date,
+        kind: "actual",
+        type: rawWorkout?.type === "PT" ? "PT" : "유산소",
+        title,
+        minutes,
+        intensity: Math.round(boundedNumber(rawWorkout?.intensity, 1, 10) ?? 5),
+        heartRate: safeText(rawWorkout?.heartRate, 40),
+        overlapsSteps: Boolean(rawWorkout?.overlapsSteps),
+        details: safeText(rawWorkout?.details, 1000),
+        source: "apple_health",
+        externalId,
+        importedAt: new Date().toISOString(),
+        ...(startTime ? { startTime } : {}),
+      };
+      if (matchingManualWorkout) {
+        protectedManualRecords += 1;
+      } else if (!existingWorkout.exists || existingWorkout.data()?.source === "apple_health") {
+        await workouts.doc(importedId).set(workoutValue);
+        importedWorkouts += 1;
+      } else {
+        protectedManualRecords += 1;
+      }
+    }
+  }
+
+  await connectionRef.set({
+    lastImportAt: FieldValue.serverTimestamp(),
+    lastImportDate,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await db.collection("users").doc(uid).set({ updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  response.status(200).json({ ok: true, importedActivities, importedWorkouts, protectedManualRecords, lastImportDate });
+});
 
 export const getAiUsageSummary = onCall({
   region: "asia-northeast3",

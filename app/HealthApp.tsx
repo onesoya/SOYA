@@ -30,6 +30,13 @@ import {
 import { loadUserState, saveUserState } from "./firebase-state";
 import { requestAiConsultation, requestAiUsageSummary, type AiUsageSummary } from "./firebase-ai";
 import {
+  createAppleHealthConnectionKey,
+  getAppleHealthConnectionStatus,
+  revokeAppleHealthConnection,
+  type AppleHealthConnectionKey,
+  type AppleHealthConnectionStatus,
+} from "./firebase-health";
+import {
   disablePushNotifications,
   enablePushNotifications,
   getPushStatus,
@@ -40,7 +47,7 @@ import {
 } from "./firebase-notifications";
 
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
-type Modal = null | "quick" | "measurement-picker" | "movement-picker" | "body" | "body-bulk" | "body-detail" | "circumference" | "activity" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail" | "reminders" | "data-management";
+type Modal = null | "quick" | "measurement-picker" | "movement-picker" | "body" | "body-bulk" | "body-detail" | "circumference" | "activity" | "apple-health" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail" | "reminders" | "data-management";
 type Consultation = AppState["consultations"][number];
 type WeeklyReview = NonNullable<AppState["weeklyReviews"]>[number];
 type BleedingState = Exclude<CycleEntry["state"], "없음">;
@@ -853,6 +860,14 @@ export function HealthApp() {
     });
   };
 
+  const refreshFromCloud = async () => {
+    if (!authUser) return;
+    await saveQueue.current;
+    const saved = await loadUserState(authUser.uid);
+    setState(normalizeAppState(saved));
+    setSaveState("saved");
+  };
+
   const todayBody = state.bodyRecords.find((entry) => entry.date === today);
   const todayMeals = state.meals.filter((entry) => entry.date === today);
   const actualMeals = todayMeals.filter((entry) => entry.kind === "actual" && !entry.skipped);
@@ -1099,6 +1114,7 @@ export function HealthApp() {
       steps: Math.max(0, number(data.get("steps"))),
       activeCalories: activeCalories > 0 ? activeCalories : undefined,
       note: String(data.get("note") || "").trim() || undefined,
+      source: "manual",
     };
     commit((current) => ({
       ...current,
@@ -1178,6 +1194,7 @@ export function HealthApp() {
       minutes: number(data.get("minutes")), intensity: number(data.get("intensity")),
       heartRate: String(data.get("heartRate") || ""), overlapsSteps: data.get("overlapsSteps") === "on",
       details: String(data.get("details")),
+      source: "manual",
     };
     commit((current) => ({ ...current, workouts: [...current.workouts.filter((item) => item.id !== editingId), workout] }));
     setWorkoutDraft(undefined);
@@ -1462,7 +1479,8 @@ export function HealthApp() {
       {modal === "body-bulk" && <BodyBulkSheet existing={state.bodyRecords} close={() => setModal(null)} save={saveBodyBulk} />}
       {modal === "body-detail" && selectedBodyRecord && <BodyDetailSheet record={selectedBodyRecord} close={() => { setSelectedBodyRecord(undefined); setModal(null); }} edit={() => setModal("body")} remove={() => deleteBody(selectedBodyRecord)} />}
       {modal === "circumference" && <CircumferenceSheet today={today} latest={(state.circumferenceRecords ?? []).find((item) => item.id !== selectedCircumferenceRecord?.id)} draft={selectedCircumferenceRecord} close={() => { setSelectedCircumferenceRecord(undefined); setModal(null); }} save={saveCircumference} remove={deleteCircumference} />}
-      {modal === "activity" && <ActivitySheet today={activityDate ?? today} draft={(state.dailyActivities ?? []).find((item) => item.date === (activityDate ?? today))} close={() => { setActivityDate(undefined); setModal(null); }} save={saveActivity} remove={deleteActivity} />}
+      {modal === "activity" && <ActivitySheet today={activityDate ?? today} draft={(state.dailyActivities ?? []).find((item) => item.date === (activityDate ?? today))} openAppleHealth={() => setModal("apple-health")} close={() => { setActivityDate(undefined); setModal(null); }} save={saveActivity} remove={deleteActivity} />}
+      {modal === "apple-health" && <AppleHealthSheet close={() => setModal(null)} refresh={refreshFromCloud} />}
       {(modal === "meal-plan" || modal === "meal-actual") && <MealSheet today={mealDate ?? today} kind={modal === "meal-plan" ? "plan" : "actual"} library={state.foodLibrary ?? []} draft={mealDraft} presetType={mealPresetType} close={() => { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); setModal(null); }} save={saveMeal} />}
       {modal === "food-library" && <FoodLibrarySheet library={state.foodLibrary ?? []} close={() => setModal(null)} save={saveFoodLibraryItem} saveSet={saveFoodSet} remove={deleteFoodLibraryItem} />}
       {modal === "nutrition-goal" && <NutritionGoalSheet goal={state.nutritionGoal} close={() => setModal(null)} save={saveNutritionGoal} />}
@@ -2713,8 +2731,9 @@ function ProfileGoalSheet({ profile, today, close, save }: { profile: AppState["
   </form></Sheet>;
 }
 
-function ActivitySheet({ today, draft, close, save, remove }: { today: string; draft?: DailyActivity; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void; remove: (entry: DailyActivity) => void }) {
-  return <Sheet title={draft ? "하루 활동 수정" : "하루 활동 기록"} close={close}><form className="form-stack" onSubmit={save}>
+function ActivitySheet({ today, draft, openAppleHealth, close, save, remove }: { today: string; draft?: DailyActivity; openAppleHealth: () => void; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void; remove: (entry: DailyActivity) => void }) {
+  return <Sheet title={draft ? "하루 활동 수정" : "하루 활동 기록"} titleAction={<button type="button" className="sheet-title-action" onClick={openAppleHealth}>Apple 건강 연결</button>} close={close}><form className="form-stack" onSubmit={save}>
+    {draft?.source === "apple_health" && <div className="health-import-badge">Apple 건강에서 가져온 기록 · 수정하면 직접 기록으로 전환돼요</div>}
     <input type="hidden" name="editingId" value={draft?.id ?? ""} />
     <div className="two-fields sheet-leading-fields"><Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><Field label="애플워치"><select name="watchWorn" defaultValue={String(draft?.watchWorn ?? true)}><option value="true">착용함</option><option value="false">착용하지 않음</option></select></Field></div>
     <div className="two-fields"><Field label="걸음 수"><input type="number" name="steps" min="0" step="1" defaultValue={draft?.steps ?? ""} placeholder="예: 8500" required /></Field><Field label="활동에너지 (선택)"><input type="number" name="activeCalories" min="0" step="1" defaultValue={draft?.activeCalories ?? ""} placeholder="예: 420" /></Field></div>
@@ -2723,6 +2742,109 @@ function ActivitySheet({ today, draft, close, save, remove }: { today: string; d
     <button className="primary-button submit-button" type="submit">{draft ? "수정 저장" : "활동 기록 저장"}</button>
     {draft && <button className="delete-button full-delete-button" type="button" onClick={() => remove(draft)}>활동 기록 삭제</button>}
   </form></Sheet>;
+}
+
+function AppleHealthSheet({ close, refresh }: { close: () => void; refresh: () => Promise<void> }) {
+  const [status, setStatus] = useState<AppleHealthConnectionStatus>();
+  const [credentials, setCredentials] = useState<AppleHealthConnectionKey>();
+  const [working, setWorking] = useState(true);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void getAppleHealthConnectionStatus()
+      .then((next) => { if (active) setStatus(next); })
+      .catch(() => { if (active) setMessage("연결 상태를 확인하지 못했어요."); })
+      .finally(() => { if (active) setWorking(false); });
+    return () => { active = false; };
+  }, []);
+
+  const createKey = async () => {
+    if (status?.connected && !window.confirm("새 연결 키를 만들면 이전 키는 더 이상 사용할 수 없어요. 계속할까요?")) return;
+    setWorking(true);
+    setMessage("");
+    try {
+      const next = await createAppleHealthConnectionKey();
+      setCredentials(next);
+      setStatus({ connected: true, createdAt: next.createdAt });
+      setMessage("새 연결 키를 만들었어요. 이 화면을 닫기 전에 단축어에 넣어주세요.");
+    } catch {
+      setMessage("연결 키를 만들지 못했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const revoke = async () => {
+    if (!window.confirm("Apple 건강 연결을 해제할까요? 이미 가져온 기록은 그대로 남아요.")) return;
+    setWorking(true);
+    setMessage("");
+    try {
+      await revokeAppleHealthConnection();
+      setStatus({ connected: false });
+      setCredentials(undefined);
+      setMessage("연결을 해제했어요.");
+    } catch {
+      setMessage("연결을 해제하지 못했어요.");
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const copy = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setMessage(`${label}을 복사했어요.`);
+    } catch {
+      setMessage("복사하지 못했어요. 값을 길게 눌러 복사해주세요.");
+    }
+  };
+
+  const reload = async () => {
+    setWorking(true);
+    setMessage("");
+    try {
+      await refresh();
+      const next = await getAppleHealthConnectionStatus();
+      setStatus(next);
+      setMessage("Apple 건강에서 들어온 최신 기록을 확인했어요.");
+    } catch {
+      setMessage("최신 기록을 확인하지 못했어요.");
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const lastImport = status?.lastImportAt
+    ? new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(status.lastImportAt))
+    : "아직 가져온 기록이 없어요";
+
+  return <Sheet title="Apple 건강 연결" close={close}>
+    <div className="health-connection-stack">
+      <section className="health-connection-status">
+        <div><span className={`health-status-dot ${status?.connected ? "connected" : ""}`} /><div><strong>{working && !status ? "연결 확인 중" : status?.connected ? "연결됨" : "연결되지 않음"}</strong><small>{status?.connected ? `최근 가져오기 · ${lastImport}` : "아이폰 단축어를 통해 안전하게 가져와요"}</small></div></div>
+        <button type="button" disabled={working} onClick={() => void createKey()}>{status?.connected ? "연결 키 다시 만들기" : "연결 시작"}</button>
+      </section>
+
+      <section className="health-data-list"><strong>가져올 수 있는 기록</strong><div><span>걸음 수</span><span>활동 에너지</span><span>Apple Watch 운동</span><span>평균 심박수</span></div></section>
+
+      {credentials && <section className="health-key-panel">
+        <strong>단축어 연결 정보</strong>
+        <p>연결 키는 지금만 보여요. 다른 사람에게 보내지 마세요.</p>
+        <div className="health-key-field"><span>받는 주소</span><div><code>{credentials.endpoint}</code><button type="button" onClick={() => void copy(credentials.endpoint, "받는 주소")}>복사</button></div></div>
+        <div className="health-key-field"><span>연결 키</span><div><code>{credentials.token}</code><button type="button" onClick={() => void copy(credentials.token, "연결 키")}>복사</button></div></div>
+      </section>}
+
+      <section className="health-shortcut-guide">
+        <strong>아이폰 단축어에서 한 번만 설정해요</strong>
+        <ol><li>건강 앱에서 오늘의 걸음 수와 활동 에너지를 가져와요.</li><li>현재 날짜를 <b>yyyy-MM-dd</b> 형식으로 만들어요.</li><li>‘URL 콘텐츠 가져오기’에서 POST·JSON을 선택하고 위 주소와 연결 키를 넣어요.</li><li>개인용 자동화에서 매일 저녁 실행하도록 정해요.</li></ol>
+        <details><summary>보낼 항목 이름 보기</summary><pre>{`date\nsteps\nactiveCalories\nwatchWorn\nworkouts (선택)`}</pre></details>
+      </section>
+
+      {message && <p className="health-connection-message" role="status">{message}</p>}
+      <div className="health-connection-actions"><button type="button" className="ghost-button" disabled={working} onClick={() => void reload()}>새 기록 확인</button>{status?.connected && <button type="button" className="delete-button" disabled={working} onClick={() => void revoke()}>연결 해제</button>}</div>
+    </div>
+  </Sheet>;
 }
 
 function WorkoutSheet({ today, kind, draft, presetType, close, save }: { today: string; kind: EntryKind; draft?: WorkoutEntry; presetType?: WorkoutEntry["type"]; close: () => void; save: (event: FormEvent<HTMLFormElement>, kind: EntryKind) => void }) {

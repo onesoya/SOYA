@@ -98,6 +98,9 @@ export type WorkoutEntry = {
   heartRate?: string;
   overlapsSteps?: boolean;
   details: string;
+  source?: "manual" | "apple_health";
+  externalId?: string;
+  importedAt?: string;
 };
 
 export type DailyActivity = {
@@ -107,6 +110,8 @@ export type DailyActivity = {
   steps: number;
   activeCalories?: number;
   note?: string;
+  source?: "manual" | "apple_health";
+  importedAt?: string;
 };
 
 export type CycleEntry = {
