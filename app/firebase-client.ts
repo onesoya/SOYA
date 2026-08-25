@@ -5,7 +5,7 @@ import {
   getAuth,
   GoogleAuthProvider,
   onAuthStateChanged,
-  signInWithRedirect,
+  signInWithPopup,
   signOut,
   type User,
 } from "firebase/auth";
@@ -32,7 +32,7 @@ export function observeGoogleUser(callback: (user: User | null) => void) {
 export async function signInWithGoogle() {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
-  await signInWithRedirect(firebaseAuth(), provider);
+  await signInWithPopup(firebaseAuth(), provider);
 }
 
 export async function signOutGoogleUser() {
