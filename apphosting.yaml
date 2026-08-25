@@ -1,0 +1,9 @@
+runConfig:
+  minInstances: 0
+  maxInstances: 1
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+# MFDS_API_KEY and OPENAI_API_KEY will be added as Firebase secrets only when
+# their integrations are activated. They are intentionally not stored in Git.

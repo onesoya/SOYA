@@ -3,12 +3,14 @@ import "galmuri/dist/galmuri.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
   title: "SOYA",
-  description: "체성분, 식사, 운동과 나만의 리듬을 한 흐름으로 기록하는 건강 앱",
+  applicationName: "SOYA",
   openGraph: {
     title: "SOYA",
-    description: "체성분, 식사, 운동과 나만의 리듬을 한 흐름으로 기록하는 건강 앱",
-    images: ["/og-preview.png"],
+    siteName: "SOYA",
+    type: "website",
+    images: [{ url: "/tiger-icon-512.png", width: 512, height: 512, alt: "SOYA 호랑이" }],
   },
   icons: {
     icon: [
