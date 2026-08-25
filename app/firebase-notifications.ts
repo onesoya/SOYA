@@ -1,20 +1,9 @@
 "use client";
 
-import { getApp, getApps, initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously } from "firebase/auth";
 import { doc, getFirestore, serverTimestamp, setDoc } from "firebase/firestore";
 import { deleteToken, getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
 import type { ReminderSettings } from "./data";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyCVkyfh8kNeoiqIuFp3rZu4wl01L6R_os0",
-  authDomain: "soya-e12cd.firebaseapp.com",
-  projectId: "soya-e12cd",
-  storageBucket: "soya-e12cd.firebasestorage.app",
-  messagingSenderId: "641439217344",
-  appId: "1:641439217344:web:5f16c3cab445dbe2c8df25",
-  measurementId: "G-42P9BCZPQL",
-};
+import { firebaseApp, firebaseAuth } from "./firebase-client";
 
 const vapidKey = "BHn6dE3c8zTwK_bAJ6hLB9cCy7VNkevK9xwr-yh8u-itzjNVRM24ICs-usqthDmE-G03uWJdAvdj0IfKLJrjYeg";
 
@@ -41,8 +30,6 @@ export type PushSyncPayload = {
   };
 };
 
-const app = () => getApps().length ? getApp() : initializeApp(firebaseConfig);
-
 async function supported() {
   return typeof window !== "undefined"
     && "serviceWorker" in navigator
@@ -55,13 +42,13 @@ async function registration() {
 }
 
 async function signedInUser() {
-  const auth = getAuth(app());
-  if (auth.currentUser) return auth.currentUser;
-  return (await signInAnonymously(auth)).user;
+  const user = firebaseAuth().currentUser;
+  if (!user) throw new Error("Google 로그인 후 알림을 켜주세요.");
+  return user;
 }
 
 async function tokenForDevice() {
-  const messaging = getMessaging(app());
+  const messaging = getMessaging(firebaseApp());
   const serviceWorkerRegistration = await registration();
   const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration });
   if (!token) throw new Error("이 기기의 알림 토큰을 만들지 못했습니다.");
@@ -72,7 +59,7 @@ async function writeSubscription(payload: PushSyncPayload, enabled: boolean) {
   const user = await signedInUser();
   const { token } = await tokenForDevice();
   const cleanPayload = JSON.parse(JSON.stringify(payload)) as PushSyncPayload;
-  await setDoc(doc(getFirestore(app()), "pushSubscriptions", user.uid), {
+  await setDoc(doc(getFirestore(firebaseApp()), "pushSubscriptions", user.uid), {
     enabled,
     token,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Seoul",
@@ -103,11 +90,11 @@ export async function syncPushSubscription(payload: PushSyncPayload) {
 export async function disablePushNotifications(payload: PushSyncPayload) {
   if (!await supported()) return;
   const user = await signedInUser();
-  const messaging = getMessaging(app());
+  const messaging = getMessaging(firebaseApp());
   const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: await registration() });
   if (token) {
     const cleanPayload = JSON.parse(JSON.stringify(payload)) as PushSyncPayload;
-    await setDoc(doc(getFirestore(app()), "pushSubscriptions", user.uid), {
+    await setDoc(doc(getFirestore(firebaseApp()), "pushSubscriptions", user.uid), {
       enabled: false,
       token,
       ...cleanPayload,
@@ -119,7 +106,7 @@ export async function disablePushNotifications(payload: PushSyncPayload) {
 
 export async function observeForegroundNotifications() {
   if (!await supported()) return () => undefined;
-  const messaging = getMessaging(app());
+  const messaging = getMessaging(firebaseApp());
   return onMessage(messaging, async (payload) => {
     if (Notification.permission !== "granted") return;
     const serviceWorkerRegistration = await registration();

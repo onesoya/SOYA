@@ -274,3 +274,34 @@ export const initialState: AppState = {
   weeklyReviews: [],
   skippedTasks: [],
 };
+
+/**
+ * A new Firebase account starts with the user's defaults, but never with the
+ * sample records used while the SOYA interface was being designed.
+ */
+export function createFreshState(): AppState {
+  return {
+    ...initialState,
+    profile: { ...initialState.profile, travelDailyLevels: {} },
+    nutritionGoal: { ...initialState.nutritionGoal },
+    workoutGoal: initialState.workoutGoal ? { ...initialState.workoutGoal } : undefined,
+    reminderSettings: initialState.reminderSettings
+      ? {
+          ...initialState.reminderSettings,
+          mealEnabled: { ...initialState.reminderSettings.mealEnabled },
+          mealTimes: { ...initialState.reminderSettings.mealTimes },
+        }
+      : undefined,
+    bodyRecords: [],
+    circumferenceRecords: [],
+    foodLibrary: [],
+    meals: [],
+    workouts: [],
+    dailyActivities: [],
+    cycles: [],
+    consultations: [],
+    weeklyReviews: [],
+    skippedTasks: [],
+    lastBackupAt: undefined,
+  };
+}

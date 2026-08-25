@@ -1,11 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, isValidElement, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AppState,
   BodyRecord,
   CircumferenceRecord,
+  createFreshState,
   CycleEntry,
   DailyActivity,
   EntryKind,
@@ -20,6 +21,13 @@ import {
   TravelLevel,
   WorkoutEntry,
 } from "./data";
+import {
+  observeGoogleUser,
+  signInWithGoogle,
+  signOutGoogleUser,
+  type User,
+} from "./firebase-client";
+import { loadUserState, saveUserState } from "./firebase-state";
 import {
   disablePushNotifications,
   enablePushNotifications,
@@ -691,7 +699,7 @@ function assessNutrition(total: NutritionTotal, mealCount: number, complete: boo
 }
 
 export function HealthApp() {
-  const [state, setState] = useState<AppState>(initialState);
+  const [state, setState] = useState<AppState>(() => createFreshState());
   const [tab, setTab] = useState<Tab>("today");
   const [modal, setModal] = useState<Modal>(null);
   const [mealPresetType, setMealPresetType] = useState<MealType>();
@@ -707,24 +715,47 @@ export function HealthApp() {
   const [selectedConsultation, setSelectedConsultation] = useState<Consultation>();
   const [weeklyPlanStart, setWeeklyPlanStart] = useState<string>();
   const [loaded, setLoaded] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authMessage, setAuthMessage] = useState("");
   const [saveState, setSaveState] = useState<"saved" | "saving" | "offline">("saved");
   const [pushStatus, setPushStatus] = useState<PushStatus>("off");
   const [pushMessage, setPushMessage] = useState("");
+  const saveQueue = useRef(Promise.resolve());
   const today = todayKey();
 
   useEffect(() => {
-    fetch("/api/state")
-      .then((response) => response.json() as Promise<{ state?: AppState }>)
-      .then((data) => {
-        const next = normalizeAppState(data.state ?? initialState);
-        setState(next);
-        void getPushStatus().then((status) => {
-          setPushStatus(status);
-          if (status === "enabled") void syncPushSubscription(pushSyncPayload(next, today));
+    let active = true;
+    const stop = observeGoogleUser((user) => {
+      if (!active) return;
+      setAuthUser(user);
+      setAuthReady(true);
+      setAuthMessage("");
+      if (!user) {
+        setState(createFreshState());
+        setLoaded(false);
+        return;
+      }
+      setLoaded(false);
+      void loadUserState(user.uid)
+        .then((saved) => {
+          if (!active) return;
+          const next = normalizeAppState(saved);
+          setState(next);
+          setSaveState("saved");
+          void getPushStatus().then((status) => {
+            setPushStatus(status);
+            if (status === "enabled") void syncPushSubscription(pushSyncPayload(next, today));
+          });
+        })
+        .catch(() => {
+          if (active) setSaveState("offline");
+        })
+        .finally(() => {
+          if (active) setLoaded(true);
         });
-      })
-      .catch(() => setSaveState("offline"))
-      .finally(() => setLoaded(true));
+    });
+    return () => { active = false; stop(); };
   }, [today]);
 
   useEffect(() => {
@@ -759,19 +790,16 @@ export function HealthApp() {
     };
   }, [modal]);
 
-  const persist = async (next: AppState) => {
+  const persist = (next: AppState, previous: AppState) => {
+    if (!authUser) return;
     setSaveState("saving");
-    try {
-      const response = await fetch("/api/state", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(next),
-      });
-      setSaveState(response.ok ? "saved" : "offline");
-      if (response.ok) void syncPushSubscription(pushSyncPayload(next, today));
-    } catch {
-      setSaveState("offline");
-    }
+    saveQueue.current = saveQueue.current
+      .then(() => saveUserState(authUser.uid, next, previous))
+      .then(() => {
+        setSaveState("saved");
+        void syncPushSubscription(pushSyncPayload(next, today));
+      })
+      .catch(() => setSaveState("offline"));
   };
 
   const enableActualNotifications = async () => {
@@ -804,7 +832,7 @@ export function HealthApp() {
   const commit = (updater: (current: AppState) => AppState) => {
     setState((current) => {
       const next = updater(current);
-      void persist(next);
+      void persist(next, current);
       return next;
     });
   };
@@ -1356,6 +1384,10 @@ export function HealthApp() {
     setModal(null);
   };
 
+  if (!authReady) return <div className="loading-screen"><Image className="loading-mark" src="/tiger-icon-192.png" width={64} height={64} alt="" /><p>SOYA를 여는 중이에요</p></div>;
+
+  if (!authUser) return <main className="login-screen"><section className="login-card"><Image className="login-tiger" src="/tiger-icon-192.png" width={112} height={112} alt="SOYA 호랑이" /><span className="eyebrow">나만의 건강 기록</span><h1>SOYA</h1><p>내 기록은 내 Google 계정에만<br />안전하게 저장돼요.</p><button type="button" className="google-login-button" onClick={() => { setAuthMessage(""); void signInWithGoogle().catch(() => setAuthMessage("Google 로그인을 시작하지 못했어요.")); }}><span aria-hidden="true">G</span>Google로 로그인</button>{authMessage && <small className="login-error">{authMessage}</small>}</section></main>;
+
   if (!loaded) return <div className="loading-screen"><Image className="loading-mark" src="/tiger-icon-192.png" width={64} height={64} alt="" /><p>오늘의 기록을 준비하고 있어요</p></div>;
 
   return (
@@ -1369,7 +1401,7 @@ export function HealthApp() {
       <main className="main-content">
         <header className="topbar">
           <div className="topbar-heading"><Image className="topbar-tiger" src="/mascot-top-transparent.png" width={76} height={76} alt="호랑이 마스코트" /><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? travelToday ? <>여행 중에도<br />내 리듬대로</> : "오늘도 가볍게 기록해요" : tabs.find((item) => item.id === tab)?.label}</h1></div></div>
-          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "임시 저장" : "저장됨"}</span><button className="icon-button reminder-button" onClick={() => setModal("reminders")} aria-label="알림 설정"><span className="pixel-bell" aria-hidden="true" /></button><button className="icon-button data-button" onClick={() => setModal("data-management")} aria-label="데이터 관리"><span aria-hidden="true">↓</span></button></div>
+          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "저장 확인 필요" : "저장됨"}</span><button className="account-button" type="button" title={`${authUser.email ?? "Google 계정"}에서 로그아웃`} aria-label="Google 계정에서 로그아웃" onClick={() => void signOutGoogleUser()}>{(authUser.displayName ?? authUser.email ?? "나").slice(0, 1)}</button><button className="icon-button reminder-button" onClick={() => setModal("reminders")} aria-label="알림 설정"><span className="pixel-bell" aria-hidden="true" /></button><button className="icon-button data-button" onClick={() => setModal("data-management")} aria-label="데이터 관리"><span aria-hidden="true">↓</span></button></div>
         </header>
 
         {tab === "today" && (
@@ -1919,7 +1951,7 @@ function RecordRow({ label, detail, done, onClick }: { label: string; detail: st
 function NutrientBar({ label, value, min, max, unit, tone }: { label: string; value: number; min: number; max: number; unit: string; tone: string }) { const width = Math.min(100, (value / max) * 100); return <div className="nutrient"><div><span>{label}</span><strong>{value} / {min}~{max}{unit}</strong></div><div className="nutrient-track"><i className={tone} style={{ width: `${width}%` }} /></div></div>; }
 function MicroStat({ label, value, hint }: { label: string; value: string; hint: string }) { return <div className="micro-stat"><span>{label}</span><strong>{value}</strong><small>{hint}</small></div>; }
 function MetricCard({ label, value, unit, hint }: { label: string; value: string; unit: string; hint: string }) { return <article className="metric-card"><span>{label}</span><strong>{value}<small>{unit}</small></strong><p>{hint}</p></article>; }
-function EmptyState({ text, action, onClick, showIcon = true }: { text: string; action: string; onClick: () => void; showIcon?: boolean }) { return <div className={`empty-state ${showIcon ? "" : "without-icon"}`}>{showIcon && <span>○</span>}<p>{text}</p><button onClick={onClick}>{action}</button></div>; }
+function EmptyState({ text, action, onClick, showIcon = true }: { text: string; action?: string; onClick?: () => void; showIcon?: boolean }) { return <div className={`empty-state ${showIcon ? "" : "without-icon"}`}>{showIcon && <span>○</span>}<p>{text}</p>{action && onClick && <button onClick={onClick}>{action}</button>}</div>; }
 function EntryItem({ label, title, detail, record, edit, remove }: { label: string; title: string; detail?: string; record?: () => void; edit: () => void; remove: () => void }) { return <div className="entry-item"><div><small>{label}</small><strong>{title}</strong>{detail && <span>{detail}</span>}</div><div>{record && <button onClick={record}>기록</button>}<button onClick={edit}>수정</button><button className="delete-text-button" onClick={remove}>삭제</button></div></div>; }
 
 function Sheet({ title, subtitle, titleAction, close, children }: { title: string; subtitle?: string; titleAction?: React.ReactNode; close: () => void; children: React.ReactNode }) { return <div className="sheet-backdrop"><section className="sheet" role="dialog" aria-modal="true"><div className="sheet-handle" /><header><div className="sheet-heading"><div className="sheet-title-row"><h2>{title}</h2>{titleAction}</div>{subtitle && <p>{subtitle}</p>}</div><button className="sheet-close-button" onClick={close} aria-label="닫기">×</button></header>{children}</section></div>; }
