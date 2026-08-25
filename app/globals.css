@@ -901,6 +901,16 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .change-overview h2 { margin: 8px 0 5px; font-size: clamp(18px, 3vw, 25px); }
 .change-overview p { margin: 0; color: var(--muted); font-size: 10px; }
 .change-overview-actions { flex: 0 0 auto; display: flex; gap: 9px; }
+.body-phase-filter { width: fit-content; max-width: 100%; margin: 2px 0 18px; border: 1px solid var(--ink); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.body-phase-filter button { min-width: 92px; min-height: 36px; padding: 7px 10px; border: 0; background: var(--paper); color: var(--muted); font-family: inherit; font-size: 8px; font-weight: 850; cursor: pointer; }
+.body-phase-filter button + button { border-left: 1px solid var(--ink); }
+.body-phase-filter button.active { background: var(--coral); color: white; }
+.record-phase-badge { width: fit-content; padding: 3px 5px; border: 1px solid var(--line); background: var(--cream); color: var(--muted); font-size: 7px; font-style: normal; font-weight: 800; }
+.record-phase-badge.phase-focus { background: #edf3e7; color: #557151; }
+.record-phase-badge.phase-bleeding { background: #f8dedb; color: #9d4c45; }
+.record-phase-badge.phase-premenstrual { background: #fff0dc; color: #8f6427; }
+.record-phase-badge.phase-ovulation { background: #f0e7f1; color: #755578; }
+.phase-record-empty { min-height: 120px; display: grid; place-items: center; color: var(--muted); font-size: 9px; text-align: center; }
 .trend-chart-wrap { width: 100%; overflow-x: auto; }
 .trend-chart { display: block; width: 100%; min-width: 520px; height: auto; overflow: visible; }
 .chart-grid-line { stroke: #ded5ca; stroke-width: 1; stroke-dasharray: 4 5; }
@@ -997,6 +1007,8 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .change-metric-grid .metric-card:last-child { grid-column: auto; }
   .workout-metrics { grid-template-columns: 1fr 1fr; }
   .trend-chart { min-width: 0; width: 100%; }
+  .body-phase-filter { width: 100%; }
+  .body-phase-filter button { min-width: 0; padding-inline: 4px; font-size: 7px; }
   .data-table > button { grid-template-columns: minmax(0, 1fr) 58px 58px 8px; gap: 5px; }
   .history-list button { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .weekly-meal-grid { grid-template-columns: minmax(0, 1fr); }

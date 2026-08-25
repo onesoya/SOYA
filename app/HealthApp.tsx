@@ -1090,17 +1090,26 @@ function ChangeConsultView({ state, today, setModal, commit, openWeeklyPlan, del
 }
 
 function ChangeView({ state, today, setModal, openDetail }: { state: AppState; today: string; setModal: (modal: Modal) => void; openDetail: (record: BodyRecord) => void }) {
+  const [phaseFilter, setPhaseFilter] = useState<"all" | "focus" | "influence">("all");
   const latest = state.bodyRecords[0];
-  const records = state.bodyRecords.slice(0, 7).reverse();
-  const oldest = records[0];
+  const recentRecords = state.bodyRecords.slice(0, 7).reverse();
+  const oldest = recentRecords[0];
+  const recordsWithPhase = state.bodyRecords.map((record) => ({ record, phase: menstrualPhase(state.cycles, record.date) }));
+  const filteredRecords = recordsWithPhase.filter(({ phase }) => {
+    if (phaseFilter === "all") return true;
+    if (phaseFilter === "focus") return phase.key === "focus";
+    return phase.key === "premenstrual" || phase.key === "bleeding";
+  });
+  const chartRecords = filteredRecords.slice(0, 7).map(({ record }) => record).reverse();
+  const visibleRecords = filteredRecords.slice(0, 8);
   const measuredAt = latest ? `${latest.date.replaceAll("-", ".")} · ${latest.time}` : "기록 없음";
   const timing = goalTiming(state.profile, today);
   const travelToday = isTravelDate(state.profile, today);
   const goalCopy = `체지방 ${signed(state.profile.targetBodyFatChange)}kg · 골격근 ${signed(state.profile.targetMuscleChange)}kg${travelToday ? ` · 여행 기본 ${state.profile.travelLevel ?? "균형 유지"}` : ""}`;
   return <div className="section-stack"><section className={`card change-overview ${travelToday ? "travel-change-overview" : ""}`}><div><span className="eyebrow">{state.profile.mode} {timing.week}주차{travelToday ? " · 여행 중" : ""}</span><h2>{travelToday ? "측정 공백도 여행 기록의 일부예요" : <>체지방 {oldest && latest ? `${signed(latest.bodyFatMass - oldest.bodyFatMass)}kg` : "-"} · 골격근 {oldest && latest ? `${signed(latest.skeletalMuscle - oldest.skeletalMuscle)}kg` : "-"}</>}</h2><p>{goalCopy}</p></div><div className="change-overview-actions"><button className="ghost-button" onClick={() => setModal("profile-goal")}>목표 수정</button><button className="primary-button" onClick={() => setModal("body")}>인바디 입력</button></div></section>
     <div className="metric-grid change-metric-grid"><MetricCard label="체지방량" value={String(latest?.bodyFatMass ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="골격근량" value={String(latest?.skeletalMuscle ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="체중" value={String(latest?.weight ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="내장지방" value={String(latest?.visceralFat ?? "-")} unit="Lv" hint={measuredAt} /></div>
-    <section className="card chart-card"><CardTitle title="최근 체지방량" aside="kg · 최근 7회" /><FatTrendChart records={records} /></section>
-    <section className="card"><CardTitle title="측정 기록" aside={`${state.bodyRecords.length}개`} /><div className="data-table">{state.bodyRecords.slice(0, 8).map((record) => <button type="button" key={record.id} onClick={() => openDetail(record)} aria-label={`${record.date} 인바디 상세 보기`}><span><strong>{record.date}</strong><small>{record.time} · {record.measurementTiming ?? record.condition.split(" · ")[0]} · {record.device ?? record.condition.split(" · ")[1]}</small></span><span>{record.bodyFatMass}<small>kg 지방</small></span><span>{record.skeletalMuscle}<small>kg 골격근</small></span><b aria-hidden="true">›</b></button>)}</div></section>
+    <section className="card chart-card cycle-aware-chart"><CardTitle title="최근 체지방량" aside={`kg · ${chartRecords.length}회`} /><div className="body-phase-filter" role="tablist" aria-label="월경 주기 구간으로 체성분 기록 보기"><button type="button" role="tab" aria-selected={phaseFilter === "all"} className={phaseFilter === "all" ? "active" : ""} onClick={() => setPhaseFilter("all")}>전체</button><button type="button" role="tab" aria-selected={phaseFilter === "focus"} className={phaseFilter === "focus" ? "active" : ""} onClick={() => setPhaseFilter("focus")}>월경 후 집중</button><button type="button" role="tab" aria-selected={phaseFilter === "influence"} className={phaseFilter === "influence" ? "active" : ""} onClick={() => setPhaseFilter("influence")}>월경 전·중</button></div><FatTrendChart records={chartRecords} emptyText={phaseFilter === "all" ? "체성분 기록을 입력하면 흐름이 보여요." : "이 주기 구간의 체성분 기록이 아직 없어요."} /></section>
+    <section className="card"><CardTitle title="측정 기록" aside={`${filteredRecords.length}개`} />{visibleRecords.length ? <div className="data-table">{visibleRecords.map(({ record, phase }) => <button type="button" key={record.id} onClick={() => openDetail(record)} aria-label={`${record.date} 인바디 상세 보기, ${phase.label}`}><span><strong>{record.date}</strong><i className={`record-phase-badge phase-${phase.key}`}>{phase.label}</i><small>{record.time} · {record.measurementTiming ?? record.condition.split(" · ")[0]} · {record.device ?? record.condition.split(" · ")[1]}</small></span><span>{record.bodyFatMass}<small>kg 지방</small></span><span>{record.skeletalMuscle}<small>kg 골격근</small></span><b aria-hidden="true">›</b></button>)}</div> : <div className="phase-record-empty">이 구간의 측정 기록이 아직 없어요.</div>}</section>
   </div>;
 }
 
@@ -1149,8 +1158,8 @@ function Sheet({ title, subtitle, close, children }: { title: string; subtitle?:
 function QuickSheet({ close, select }: { close: () => void; select: (modal: Modal) => void }) { return <Sheet title="무엇을 추가할까요?" close={close}><h3 className="sheet-section-title">지금 기록하기</h3><div className="quick-grid"><QuickButton label="인바디" onClick={() => select("body")} /><QuickButton label="월경 상태" onClick={() => select("cycle")} /><QuickButton label="먹은 식사" onClick={() => select("meal-actual")} /><QuickButton label="한 운동" onClick={() => select("workout-actual")} /></div><h3 className="sheet-section-title">미리 계획하기</h3><div className="quick-grid three"><QuickButton label="식사 계획" onClick={() => select("meal-plan")} /><QuickButton label="운동 계획" onClick={() => select("workout-plan")} /><QuickButton label="주간 계획" onClick={() => select("weekly-plan")} /></div></Sheet>; }
 function QuickButton({ label, onClick }: { label: string; onClick: () => void }) { return <button className="quick-button" onClick={onClick}><strong>{label}</strong></button>; }
 
-function FatTrendChart({ records }: { records: BodyRecord[] }) {
-  if (!records.length) return <div className="empty-chart">체성분 기록을 입력하면 흐름이 보여요.</div>;
+function FatTrendChart({ records, emptyText = "체성분 기록을 입력하면 흐름이 보여요." }: { records: BodyRecord[]; emptyText?: string }) {
+  if (!records.length) return <div className="empty-chart">{emptyText}</div>;
   const width = 700;
   const height = 250;
   const left = 52;
