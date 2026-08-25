@@ -175,16 +175,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .travel-toggle small { color: var(--muted); font-size: 7px; line-height: 1.5; }
 .travel-toggle input { width: 22px; height: 22px; accent-color: var(--coral); }
 .travel-layer-fields { display: grid; gap: 11px; }
-.reminder-settings-form { gap: 14px; }
-.reminder-section { padding: 12px; border: 1px solid var(--ink); background: var(--cream); display: grid; gap: 8px; }
+.reminder-settings-form { width: 100%; max-width: 100%; box-sizing: border-box; gap: 14px; }
+.reminder-section { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; padding: 12px; border: 1px solid var(--ink); background: var(--cream); display: grid; gap: 8px; }
+.reminder-section > div { width: 100%; max-width: 100%; min-width: 0; }
 .reminder-section > strong, .travel-reminder-section > div:first-child > strong { color: var(--coral); font-size: 10px; }
-.reminder-row { min-width: 0; min-height: 54px; padding: 8px 9px; border: 1px solid var(--line); background: var(--paper); display: grid; grid-template-columns: 20px minmax(0, 1fr) 96px; align-items: center; gap: 9px; cursor: pointer; }
+.reminder-row { width: 100%; max-width: 100%; min-width: 0; min-height: 54px; box-sizing: border-box; padding: 8px 12px 8px 9px; border: 1px solid var(--line); background: var(--paper); display: grid; grid-template-columns: 20px minmax(0, 1fr) 96px; align-items: center; gap: 9px; cursor: pointer; }
 .reminder-row.active { border-color: var(--ink); }
 .reminder-row > span { min-width: 0; display: grid; gap: 3px; }
 .reminder-row strong { font-size: 9px; }
 .reminder-row small { color: var(--muted); font-size: 7px; }
 .reminder-check { width: 18px; height: 18px; margin: 0; accent-color: var(--coral); }
-.reminder-time, .reminder-row.weekly select { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; height: 36px; padding-inline: 5px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 9px; line-height: 1; text-align: center; }
+.reminder-time, .reminder-row.weekly select { justify-self: end; box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; height: 36px; padding-inline: 5px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 9px; line-height: 1; text-align: center; }
 .reminder-row.weekly select { text-align-last: center; }
 .reminder-time:disabled, .reminder-row.weekly select:disabled { opacity: .4; }
 .reminder-row.weekly { grid-template-columns: 20px minmax(0, 1fr) 68px 86px; }
@@ -224,6 +225,22 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .travel-reminder-options button + button { border-left: 1px solid var(--ink); }
 .travel-reminder-options button.active { background: var(--coral); color: white; }
 .travel-reminder-section p { margin: 0; color: var(--muted); font-size: 7px; line-height: 1.6; }
+.energy-guide-mini { margin: -2px 0 10px; padding: 8px 10px; border: 1px solid var(--line); background: var(--cream); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.energy-guide-mini span { color: var(--muted); font-size: 7px; line-height: 1.5; }
+.energy-guide-mini button, .activity-energy-panel button { flex: 0 0 auto; min-height: 28px; padding: 0 8px; border: 1px solid var(--ink); background: var(--paper); color: var(--coral); font: inherit; font-size: 7px; font-weight: 850; cursor: pointer; }
+.activity-energy-panel { padding: 10px 12px; border: 1px solid var(--line); background: var(--cream); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.activity-energy-panel > div { min-width: 0; display: grid; gap: 4px; }
+.activity-energy-panel span, .daily-activity-stats span { color: var(--muted); font-size: 7px; }
+.activity-energy-panel strong { font-size: 10px; }
+.activity-energy-panel small { color: var(--muted); font-size: 7px; line-height: 1.45; }
+.daily-activity-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.daily-activity-stats > div { min-width: 0; min-height: 78px; padding: 11px; border: 1px solid var(--line); background: var(--cream); display: grid; align-content: space-between; gap: 8px; }
+.daily-activity-stats strong { min-width: 0; font-size: 15px; line-height: 1.1; }
+.daily-activity-stats strong small { margin-left: 3px; color: var(--muted); font-size: 7px; }
+.activity-priority-note { padding: 11px 12px; border: 1px solid var(--line); background: var(--sage-soft); display: grid; gap: 5px; }
+.activity-priority-note strong { color: var(--coral); font-size: 9px; }
+.activity-priority-note span { color: var(--muted); font-size: 7px; line-height: 1.55; }
+.activity-note-input { min-height: 84px !important; }
 .micro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 19px; }
 .micro-stat { padding: 13px; background: var(--cream); border-radius: 16px; display: grid; gap: 4px; }
 .micro-stat span, .micro-stat small { color: var(--muted); font-size: 9px; }
@@ -1264,9 +1281,17 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .body-bulk-metrics input { font-size: 16px; }
   .body-bulk-preview-list article { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .field input, .field select, .field textarea { font-size: 16px; }
-  .reminder-row { grid-template-columns: 20px minmax(0, 1fr) 88px; padding-inline: 8px; }
-  .reminder-row.weekly { grid-template-columns: 20px minmax(0, 1fr) 62px 82px; gap: 6px; }
-  .reminder-time, .reminder-row.weekly select { padding-inline: 3px; font-size: 10px; }
+  .reminder-section { padding: 11px; }
+  .reminder-row { grid-template-columns: 20px minmax(0, 1fr) 84px; padding: 8px 11px 8px 8px; }
+  .reminder-row.weekly { grid-template-columns: 20px minmax(0, 1fr) 84px; grid-template-rows: auto auto; gap: 6px 8px; }
+  .reminder-row.weekly > .reminder-check { grid-row: 1 / span 2; }
+  .reminder-row.weekly > span { grid-row: 1 / span 2; }
+  .reminder-row.weekly > select { grid-column: 3; grid-row: 1; }
+  .reminder-row.weekly > .reminder-time { grid-column: 3; grid-row: 2; }
+  .reminder-time, .reminder-row.weekly select { width: 84px; max-width: 84px; padding-inline: 3px; font-size: 10px; }
+  .daily-activity-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .daily-activity-stats > div { padding: 9px 7px; }
+  .daily-activity-stats strong { font-size: 12px; }
   .rpe-scale span { font-size: 6px; padding-inline: 2px; }
   .cycle-period-calendar { padding: 11px 9px; }
   .cycle-period-calendar > .month-navigator { grid-template-columns: 26px minmax(104px, auto) 26px auto; }

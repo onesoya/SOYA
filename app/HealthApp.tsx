@@ -6,6 +6,7 @@ import {
   AppState,
   BodyRecord,
   CycleEntry,
+  DailyActivity,
   EntryKind,
   FoodLibraryItem,
   FoodUnit,
@@ -20,7 +21,7 @@ import {
 } from "./data";
 
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
-type Modal = null | "quick" | "body" | "body-bulk" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail" | "reminders" | "data-management";
+type Modal = null | "quick" | "body" | "body-bulk" | "body-detail" | "activity" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail" | "reminders" | "data-management";
 type Consultation = AppState["consultations"][number];
 type WeeklyReview = NonNullable<AppState["weeklyReviews"]>[number];
 type BleedingState = Exclude<CycleEntry["state"], "없음">;
@@ -74,7 +75,7 @@ type BulkBodyDraft = {
 };
 type BackupEnvelope = { format: "SOYA_BACKUP"; version: 1; exportedAt: string; state: AppState };
 type RestoreMode = "merge" | "replace";
-type CsvKind = "body" | "meals" | "workouts" | "cycles";
+type CsvKind = "body" | "meals" | "workouts" | "activity" | "cycles";
 type NextAction =
   | { type: "body"; eyebrow: string; title: string; detail: string; time: string; due: boolean }
   | { type: "workout"; eyebrow: string; title: string; detail: string; time: string; due: boolean }
@@ -179,6 +180,7 @@ function normalizeAppState(value: unknown): AppState {
     foodLibrary: (Array.isArray(saved.foodLibrary) ? saved.foodLibrary : []).map(normalizeFoodLibraryItem),
     meals: Array.isArray(saved.meals) ? saved.meals : [],
     workouts: Array.isArray(saved.workouts) ? saved.workouts : [],
+    dailyActivities: Array.isArray(saved.dailyActivities) ? saved.dailyActivities : [],
     cycles: Array.isArray(saved.cycles) ? saved.cycles : [],
     consultations: Array.isArray(saved.consultations) ? saved.consultations : [],
     weeklyReviews: Array.isArray(saved.weeklyReviews) ? saved.weeklyReviews : [],
@@ -214,6 +216,7 @@ function mergeAppState(current: AppState, imported: AppState): AppState {
     foodLibrary: mergeById(current.foodLibrary ?? [], imported.foodLibrary ?? []),
     meals: mergeById(current.meals, imported.meals),
     workouts: mergeById(current.workouts, imported.workouts),
+    dailyActivities: mergeById(current.dailyActivities ?? [], imported.dailyActivities ?? []),
     cycles: mergeById(current.cycles, imported.cycles),
     consultations: mergeById(current.consultations, imported.consultations),
     weeklyReviews: mergeById(current.weeklyReviews ?? [], imported.weeklyReviews ?? []),
@@ -240,7 +243,7 @@ function csvCell(value: string | number | boolean | undefined) {
 }
 
 function exportCsv(state: AppState, kind: CsvKind, today: string) {
-  const labels: Record<CsvKind, string> = { body: "체성분", meals: "식단", workouts: "운동", cycles: "월경" };
+  const labels: Record<CsvKind, string> = { body: "체성분", meals: "식단", workouts: "운동", activity: "하루활동", cycles: "월경" };
   let rows: (string | number | boolean | undefined)[][] = [];
   if (kind === "body") rows = [
     ["날짜", "시간", "체중(kg)", "골격근량(kg)", "체지방량(kg)", "체지방률(%)", "내장지방레벨", "측정 시점", "측정 기기"],
@@ -253,6 +256,10 @@ function exportCsv(state: AppState, kind: CsvKind, today: string) {
   if (kind === "workouts") rows = [
     ["날짜", "구분", "운동 종류", "운동 이름", "시간(분)", "체감 강도", "평균 심박수", "걸음 수 중복", "운동 내용"],
     ...state.workouts.map((item) => [item.date, item.kind === "plan" ? "계획" : "기록", item.type, item.title, item.minutes, item.intensity, item.heartRate, Boolean(item.overlapsSteps), item.details]),
+  ];
+  if (kind === "activity") rows = [
+    ["날짜", "애플워치 착용", "걸음 수", "활동에너지(kcal)", "메모"],
+    ...(state.dailyActivities ?? []).map((item) => [item.date, item.watchWorn, item.steps, item.activeCalories, item.note]),
   ];
   if (kind === "cycles") rows = [
     ["날짜", "출혈 상태", "양", "통증", "에너지", "식욕", "증상", "사랑 기록 횟수", "피임", "메모"],
@@ -537,7 +544,75 @@ function isTravelDate(profile: AppState["profile"], date: string) {
   return true;
 }
 
-function assessNutrition(total: NutritionTotal, mealCount: number, complete: boolean, profile: AppState["profile"], goal: AppState["nutritionGoal"], date: string): "none" | "balanced" | "partial" | "attention" {
+type DailyEnergyGuide = {
+  activity?: DailyActivity;
+  restingCalories: number;
+  activityCalories: number;
+  expenditure: number;
+  intakeMin: number;
+  intakeMax: number;
+  source: "health" | "estimate" | "default";
+};
+
+function ageOnDate(birthDate: string | undefined, date: string) {
+  if (!birthDate) return undefined;
+  const birth = new Date(`${birthDate}T12:00:00`);
+  const target = new Date(`${date}T12:00:00`);
+  let age = target.getFullYear() - birth.getFullYear();
+  if (target.getMonth() < birth.getMonth() || (target.getMonth() === birth.getMonth() && target.getDate() < birth.getDate())) age -= 1;
+  return age > 0 ? age : undefined;
+}
+
+function dailyEnergyGuide(state: AppState, date: string): DailyEnergyGuide {
+  const activity = (state.dailyActivities ?? []).find((item) => item.date === date);
+  const body = [...state.bodyRecords].sort((a, b) => b.date.localeCompare(a.date)).find((item) => item.date <= date) ?? state.bodyRecords[0];
+  const weight = body?.weight || 60;
+  const height = state.profile.heightCm || 165;
+  const age = ageOnDate(state.profile.birthDate, date);
+  const leanMass = body ? Math.max(30, body.weight - body.bodyFatMass) : undefined;
+  const resting = age
+    ? 10 * weight + 6.25 * height - 5 * age + (state.profile.sex === "남성" ? 5 : -161)
+    : leanMass ? 370 + 21.6 * leanMass : 1300;
+  let activeCalories = 0;
+  let source: DailyEnergyGuide["source"] = "default";
+  if (activity?.activeCalories && activity.activeCalories > 0) {
+    activeCalories = activity.activeCalories;
+    source = "health";
+  } else if (activity) {
+    const walkingKm = Math.max(0, activity.steps) * (height * 0.413 / 100) / 1000;
+    const walkingCalories = 0.5 * weight * walkingKm;
+    const workouts = state.workouts.filter((item) => item.date === date && item.kind === "actual" && (!item.overlapsSteps || activity.steps <= 0));
+    const workoutCalories = workouts.reduce((sum, item) => {
+      const rpe = typeof item.intensity === "number" ? item.intensity : 5;
+      const met = 2.5 + 0.45 * Math.max(1, Math.min(10, rpe));
+      return sum + Math.max(0, (met - 1) * 3.5 * weight / 200 * item.minutes);
+    }, 0);
+    activeCalories = walkingCalories + workoutCalories;
+    source = "estimate";
+  }
+  const restingCalories = Math.round(resting);
+  const roundedActivity = Math.round(activeCalories);
+  const expenditure = Math.round(resting + activeCalories);
+  if (!activity) return { activity, restingCalories, activityCalories: 0, expenditure: restingCalories, intakeMin: state.nutritionGoal.caloriesMin, intakeMax: state.nutritionGoal.caloriesMax, source };
+  const maintenance = state.profile.mode === "유지기" || (isTravelDate(state.profile, date) && travelLevelForDate(state.profile, date) === "균형 유지");
+  const start = new Date(`${state.profile.goalStartDate ?? date}T12:00:00`).getTime();
+  const end = new Date(`${state.profile.goalEndDate}T12:00:00`).getTime();
+  const days = Math.max(7, Math.round((end - start) / 86_400_000) + 1);
+  const requestedDeficit = state.profile.targetBodyFatChange < 0 ? Math.abs(state.profile.targetBodyFatChange) * 7700 / days : 300;
+  const deficit = maintenance ? 0 : Math.max(200, Math.min(500, requestedDeficit));
+  const center = Math.max(restingCalories, expenditure - deficit);
+  return {
+    activity,
+    restingCalories,
+    activityCalories: roundedActivity,
+    expenditure,
+    intakeMin: Math.max(0, Math.floor((center - 100) / 50) * 50),
+    intakeMax: Math.ceil((center + 100) / 50) * 50,
+    source,
+  };
+}
+
+function assessNutrition(total: NutritionTotal, mealCount: number, complete: boolean, profile: AppState["profile"], goal: AppState["nutritionGoal"], date: string, calorieRange?: { min: number; max: number }): "none" | "balanced" | "partial" | "attention" {
   if (!mealCount) return "none";
   const travelLevel = travelLevelForDate(profile, date);
   if (isTravelDate(profile, date) && travelLevel === "가볍게 기록") return complete ? "balanced" : "partial";
@@ -547,8 +622,10 @@ function assessNutrition(total: NutritionTotal, mealCount: number, complete: boo
     if (total.protein >= goal.proteinMin * 0.8 && total.sugar <= goal.sugarMax * 1.15 && total.fiber >= goal.fiberMin * 0.7) return "balanced";
     return "partial";
   }
-  if (total.sugar > goal.sugarMax * 1.25 || total.calories > goal.caloriesMax * 1.15 || total.protein < goal.proteinMin * 0.65) return "attention";
-  if (total.calories >= goal.caloriesMin && total.calories <= goal.caloriesMax && total.protein >= goal.proteinMin && total.sugar <= goal.sugarMax && total.fiber >= goal.fiberMin) return "balanced";
+  const calorieMin = calorieRange?.min ?? goal.caloriesMin;
+  const calorieMax = calorieRange?.max ?? goal.caloriesMax;
+  if (total.sugar > goal.sugarMax * 1.25 || total.calories > calorieMax * 1.15 || total.protein < goal.proteinMin * 0.65) return "attention";
+  if (total.calories >= calorieMin && total.calories <= calorieMax && total.protein >= goal.proteinMin && total.sugar <= goal.sugarMax && total.fiber >= goal.fiberMin) return "balanced";
   return "partial";
 }
 
@@ -561,6 +638,7 @@ export function HealthApp() {
   const [mealDate, setMealDate] = useState<string>();
   const [workoutDraft, setWorkoutDraft] = useState<WorkoutEntry>();
   const [workoutPresetType, setWorkoutPresetType] = useState<WorkoutEntry["type"]>();
+  const [activityDate, setActivityDate] = useState<string>();
   const [cycleDate, setCycleDate] = useState<string>();
   const [cycleRangeDraft, setCycleRangeDraft] = useState<CycleRange>();
   const [selectedBodyRecord, setSelectedBodyRecord] = useState<BodyRecord>();
@@ -632,6 +710,7 @@ export function HealthApp() {
   const todayMeals = state.meals.filter((entry) => entry.date === today);
   const actualMeals = todayMeals.filter((entry) => entry.kind === "actual" && !entry.skipped);
   const todayWorkouts = state.workouts.filter((entry) => entry.date === today);
+  const todayActivity = (state.dailyActivities ?? []).find((entry) => entry.date === today);
   const actualWorkouts = todayWorkouts.filter((entry) => entry.kind === "actual");
   const plannedWorkout = todayWorkouts.find((entry) => entry.kind === "plan");
   const goalClock = goalTiming(state.profile, today);
@@ -642,7 +721,7 @@ export function HealthApp() {
   const mealActual = useCallback((type: MealType) => todayMeals.find((entry) => entry.kind === "actual" && entry.mealType === type), [todayMeals]);
   const mealPlan = useCallback((type: MealType) => todayMeals.find((entry) => entry.kind === "plan" && entry.mealType === type), [todayMeals]);
   const workoutExpected = Boolean(plannedWorkout || actualWorkouts.length);
-  const completed = [...(travelToday ? [] : [Boolean(todayBody)]), ...(["breakfast", "lunch", "dinner"] as MealType[]).map((type) => Boolean(mealActual(type))), ...(workoutExpected ? [actualWorkouts.length > 0] : [])];
+  const completed = [...(travelToday ? [] : [Boolean(todayBody)]), Boolean(todayActivity), ...(["breakfast", "lunch", "dinner"] as MealType[]).map((type) => Boolean(mealActual(type))), ...(workoutExpected ? [actualWorkouts.length > 0] : [])];
   const completedCount = completed.filter(Boolean).length;
 
   const nextAction = useMemo(() => {
@@ -786,6 +865,9 @@ export function HealthApp() {
           travelEndDate,
           travelLevel,
           travelDailyLevels: pastTravelLevels,
+          birthDate: String(data.get("birthDate") || "") || undefined,
+          heightCm: number(data.get("heightCm")) || undefined,
+          sex: String(data.get("sex") || "여성") as NonNullable<AppState["profile"]["sex"]>,
         },
       };
     });
@@ -826,6 +908,34 @@ export function HealthApp() {
       bodyRecords: [...records, ...current.bodyRecords]
         .sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`)),
     }));
+    setModal(null);
+  };
+
+  const saveActivity = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const editingId = String(data.get("editingId") || "");
+    const activeCalories = number(data.get("activeCalories"));
+    const activity: DailyActivity = {
+      id: editingId || id("activity"),
+      date: String(data.get("date")),
+      watchWorn: data.get("watchWorn") === "true",
+      steps: Math.max(0, number(data.get("steps"))),
+      activeCalories: activeCalories > 0 ? activeCalories : undefined,
+      note: String(data.get("note") || "").trim() || undefined,
+    };
+    commit((current) => ({
+      ...current,
+      dailyActivities: [activity, ...(current.dailyActivities ?? []).filter((item) => item.id !== editingId && item.date !== activity.date)].sort((a, b) => b.date.localeCompare(a.date)),
+    }));
+    setActivityDate(undefined);
+    setModal(null);
+  };
+
+  const deleteActivity = (entry: DailyActivity) => {
+    if (!window.confirm(`${entry.date} 하루 활동 기록을 삭제할까요?`)) return;
+    commit((current) => ({ ...current, dailyActivities: (current.dailyActivities ?? []).filter((item) => item.id !== entry.id) }));
+    setActivityDate(undefined);
     setModal(null);
   };
 
@@ -1133,10 +1243,10 @@ export function HealthApp() {
         </header>
 
         {tab === "today" && (
-          <TodayView state={state} today={today} todayBody={todayBody} nutrition={nutrition} completedCount={completedCount} totalCount={completed.length} nextAction={nextAction} mealActual={mealActual} mealPlan={mealPlan} actualWorkouts={actualWorkouts} plannedWorkout={plannedWorkout} openNextAction={openNextAction} skipNextAction={skipNextAction} setModal={setModal} setTab={setTab} openMeal={openMeal} openWorkout={openWorkout} updateTravelDayLevel={updateTravelDayLevel} />
+          <TodayView state={state} today={today} todayBody={todayBody} nutrition={nutrition} completedCount={completedCount} totalCount={completed.length} nextAction={nextAction} mealActual={mealActual} mealPlan={mealPlan} actualWorkouts={actualWorkouts} plannedWorkout={plannedWorkout} openNextAction={openNextAction} skipNextAction={skipNextAction} setModal={setModal} setTab={setTab} openMeal={openMeal} openWorkout={openWorkout} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} updateTravelDayLevel={updateTravelDayLevel} />
         )}
-        {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openGoal={() => setModal("nutrition-goal")} openLibrary={() => setModal("food-library")} updateTravelDayLevel={updateTravelDayLevel} />}
-        {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} updateTravelDayLevel={updateTravelDayLevel} />}
+        {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openGoal={() => setModal("nutrition-goal")} openLibrary={() => setModal("food-library")} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} updateTravelDayLevel={updateTravelDayLevel} />}
+        {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} updateTravelDayLevel={updateTravelDayLevel} />}
         {tab === "menstrual" && <MenstrualView state={state} today={today} openRecord={(date) => { setCycleRangeDraft(undefined); setCycleDate(date); setModal("cycle"); }} editRange={(date) => { const range = cycleRangeAround(state.cycles, date); if (range) { setCycleRangeDraft(range); setCycleDate(date); setModal("cycle"); } }} deleteRange={deleteCycleRange} />}
         {tab === "change" && <ChangeConsultView state={state} today={today} setModal={setModal} commit={commit} openWeeklyPlan={(start) => { setWeeklyPlanStart(start); setModal("weekly-plan"); }} deleteConsultation={deleteConsultation} openBodyDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} openConsultationDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
       </main>
@@ -1148,6 +1258,7 @@ export function HealthApp() {
       {modal === "body" && <BodySheet today={today} latest={state.bodyRecords.find((item) => item.id !== selectedBodyRecord?.id)} draft={selectedBodyRecord} openHistory={() => { setSelectedBodyRecord(undefined); setModal("body-bulk"); }} close={() => { setSelectedBodyRecord(undefined); setModal(null); }} save={saveBody} />}
       {modal === "body-bulk" && <BodyBulkSheet existing={state.bodyRecords} close={() => setModal(null)} save={saveBodyBulk} />}
       {modal === "body-detail" && selectedBodyRecord && <BodyDetailSheet record={selectedBodyRecord} close={() => { setSelectedBodyRecord(undefined); setModal(null); }} edit={() => setModal("body")} remove={() => deleteBody(selectedBodyRecord)} />}
+      {modal === "activity" && <ActivitySheet today={activityDate ?? today} draft={(state.dailyActivities ?? []).find((item) => item.date === (activityDate ?? today))} close={() => { setActivityDate(undefined); setModal(null); }} save={saveActivity} remove={deleteActivity} />}
       {(modal === "meal-plan" || modal === "meal-actual") && <MealSheet today={mealDate ?? today} kind={modal === "meal-plan" ? "plan" : "actual"} library={state.foodLibrary ?? []} draft={mealDraft} presetType={mealPresetType} close={() => { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); setModal(null); }} save={saveMeal} />}
       {modal === "food-library" && <FoodLibrarySheet library={state.foodLibrary ?? []} close={() => setModal(null)} save={saveFoodLibraryItem} saveSet={saveFoodSet} remove={deleteFoodLibraryItem} />}
       {modal === "nutrition-goal" && <NutritionGoalSheet goal={state.nutritionGoal} close={() => setModal(null)} save={saveNutritionGoal} />}
@@ -1181,11 +1292,12 @@ type TodayViewProps = {
   setTab: (tab: Tab) => void;
   openMeal: (kind: EntryKind, presetType?: MealType, draft?: MealEntry, date?: string) => void;
   openWorkout: (kind: EntryKind, draft?: WorkoutEntry, presetType?: WorkoutEntry["type"]) => void;
+  openActivity: (date: string) => void;
   updateTravelDayLevel: (date: string, level: TravelLevel) => void;
 };
 
 function TodayView(props: TodayViewProps) {
-  const { state, today, todayBody, nutrition, completedCount, totalCount, nextAction, mealActual, mealPlan, actualWorkouts, plannedWorkout, openNextAction, skipNextAction, setModal, setTab, openMeal, openWorkout, updateTravelDayLevel } = props;
+  const { state, today, todayBody, nutrition, completedCount, totalCount, nextAction, mealActual, mealPlan, actualWorkouts, plannedWorkout, openNextAction, skipNextAction, setModal, setTab, openMeal, openWorkout, openActivity, updateTravelDayLevel } = props;
   const goal = state.nutritionGoal;
   const latest = todayBody ?? state.bodyRecords[0];
   const prev = state.bodyRecords.find((item: BodyRecord) => item.id !== latest?.id);
@@ -1196,6 +1308,7 @@ function TodayView(props: TodayViewProps) {
   const targetTiming = goalTiming(state.profile, today);
   const todayTravelLevel = travelLevelForDate(state.profile, today);
   const travelToday = isTravelDate(state.profile, today);
+  const energy = dailyEnergyGuide(state, today);
   return <div className="dashboard-grid">
     <section className="next-card full-card">
       <div><span className="eyebrow">{nextAction.eyebrow}</span><h2>{nextAction.title}</h2><p>{nextAction.type !== "done" && <b className={`next-time ${nextAction.due ? "due" : "upcoming"}`}>{nextAction.time} {nextAction.due ? "알림" : "예정"}</b>}{nextAction.detail}</p></div>
@@ -1221,6 +1334,7 @@ function TodayView(props: TodayViewProps) {
       <CardTitle title="오늘 기록" aside={`${completedCount}/${totalCount}`} />
       <div className="record-list">
         {!travelToday && <RecordRow label="인바디" detail={todayBody ? `${todayBody.bodyFatMass}kg 체지방 · ${todayBody.skeletalMuscle}kg 골격근` : "아직 기록하지 않음"} done={Boolean(todayBody)} onClick={() => setModal("body")} />}
+        <RecordRow label="하루 활동" detail={energy.activity ? `${energy.activity.steps.toLocaleString()}걸음 · 활동 ${energy.activityCalories.toLocaleString()}kcal` : "아직 기록하지 않음"} done={Boolean(energy.activity)} onClick={() => openActivity(today)} />
         {(["breakfast", "lunch", "dinner"] as MealType[]).map((type) => { const actual = mealActual(type); const plan = mealPlan(type); return <RecordRow key={type} label={mealLabels[type]} detail={actual ? actual.title : plan ? `계획 · ${plan.title}` : "아직 기록하지 않음"} done={Boolean(actual)} onClick={() => openMeal("actual", type, actual ?? plan, today)} />; })}
         {plannedWorkout && <RecordRow label="운동" detail={actualWorkouts[0]?.title ?? `계획 · ${plannedWorkout.title}`} done={actualWorkouts.length > 0} onClick={() => openWorkout("actual", plannedWorkout)} />}
         {cycle && <RecordRow label="몸 상태" detail={cycleSummary(cycle)} done onClick={() => setModal("cycle")} />}
@@ -1229,7 +1343,8 @@ function TodayView(props: TodayViewProps) {
 
     <section className="card nutrition-card">
       <CardTitle title="오늘의 영양" aside={<button className="text-button" onClick={() => setModal("nutrition-goal")}>목표 설정</button>} />
-      <div className="calorie-total"><strong>{nutrition.calories.toLocaleString()}</strong><span>kcal</span>{!(travelToday && todayTravelLevel === "가볍게 기록") && <small>/ {goal.caloriesMin.toLocaleString()}~{goal.caloriesMax.toLocaleString()}</small>}</div>
+      <div className="calorie-total"><strong>{nutrition.calories.toLocaleString()}</strong><span>kcal</span>{!(travelToday && todayTravelLevel === "가볍게 기록") && <small>/ {energy.intakeMin.toLocaleString()}~{energy.intakeMax.toLocaleString()}</small>}</div>
+      {!(travelToday && todayTravelLevel === "가볍게 기록") && <div className="energy-guide-mini"><span>{energy.activity ? `활동 ${energy.activityCalories.toLocaleString()} kcal · 총소모 약 ${energy.expenditure.toLocaleString()} kcal` : "활동을 기록하면 오늘의 섭취 범위를 조정해요"}</span><button type="button" onClick={() => openActivity(today)}>{energy.activity ? "수정" : "활동 기록"}</button></div>}
       {!(travelToday && todayTravelLevel === "가볍게 기록") && <NutrientBar label="단백질" value={nutrition.protein} min={goal.proteinMin} max={goal.proteinMax} unit="g" tone="coral" />}
       {!(travelToday && todayTravelLevel !== "목표 유지") && <><NutrientBar label="탄수화물" value={nutrition.carbs} min={goal.carbsMin} max={goal.carbsMax} unit="g" tone="gold" /><NutrientBar label="지방" value={nutrition.fat} min={goal.fatMin} max={goal.fatMax} unit="g" tone="sage" /></>}
       <div className="micro-grid"><MicroStat label="당류" value={travelToday && todayTravelLevel === "가볍게 기록" ? `${nutrition.sugar}g` : `${nutrition.sugar} / ${goal.sugarMax}g`} hint={travelToday && todayTravelLevel === "가볍게 기록" ? "기록값" : "상한 기준"} /><MicroStat label="식이섬유" value={travelToday && todayTravelLevel === "가볍게 기록" ? `${nutrition.fiber}g` : `${nutrition.fiber} / ${goal.fiberMin}g`} hint={travelToday && todayTravelLevel === "가볍게 기록" ? "기록값" : "최소 목표"} /></div>
@@ -1249,14 +1364,15 @@ function TodayView(props: TodayViewProps) {
   </div>;
 }
 
-function FoodView({ state, today, openMeal, deleteMeal, openGoal, openLibrary, updateTravelDayLevel }: { state: AppState; today: string; openMeal: (kind: EntryKind, presetType?: MealType, draft?: MealEntry, date?: string) => void; deleteMeal: (entry: MealEntry) => void; openGoal: () => void; openLibrary: () => void; updateTravelDayLevel: (date: string, level: TravelLevel) => void }) {
+function FoodView({ state, today, openMeal, deleteMeal, openGoal, openLibrary, openActivity, updateTravelDayLevel }: { state: AppState; today: string; openMeal: (kind: EntryKind, presetType?: MealType, draft?: MealEntry, date?: string) => void; deleteMeal: (entry: MealEntry) => void; openGoal: () => void; openLibrary: () => void; openActivity: (date: string) => void; updateTravelDayLevel: (date: string, level: TravelLevel) => void }) {
   const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(today);
   const [nutritionMode, setNutritionMode] = useState<EntryKind>("actual");
   const cells = monthCells(`${selectedMonth}-01`);
   const mealStatus = (date: string) => {
     const meals = state.meals.filter((item) => item.date === date && item.kind === "actual" && !item.skipped);
-    return assessNutrition(nutritionTotal(meals), meals.length, new Set(meals.map((item) => item.mealType)).size >= 3, state.profile, state.nutritionGoal, date);
+    const energy = dailyEnergyGuide(state, date);
+    return assessNutrition(nutritionTotal(meals), meals.length, new Set(meals.map((item) => item.mealType)).size >= 3, state.profile, state.nutritionGoal, date, { min: energy.intakeMin, max: energy.intakeMax });
   };
   const hasMealPlan = (date: string) => state.meals.some((item) => item.date === date && item.kind === "plan");
   const changeMonth = (month: string) => {
@@ -1272,16 +1388,18 @@ function FoodView({ state, today, openMeal, deleteMeal, openGoal, openLibrary, u
   const goal = state.nutritionGoal;
   const selectedTravelLevel = travelLevelForDate(state.profile, selectedDate);
   const selectedIsTravel = isTravelDate(state.profile, selectedDate);
-  const nutritionTone = assessNutrition(selectedNutrition, selectedNutritionMeals.length, new Set(selectedNutritionMeals.map((item) => item.mealType)).size >= 3, state.profile, goal, selectedDate);
+  const energy = dailyEnergyGuide(state, selectedDate);
+  const nutritionTone = assessNutrition(selectedNutrition, selectedNutritionMeals.length, new Set(selectedNutritionMeals.map((item) => item.mealType)).size >= 3, state.profile, goal, selectedDate, { min: energy.intakeMin, max: energy.intakeMax });
   const nutritionLabel = nutritionTone === "balanced" ? "잘했어요" : nutritionTone === "attention" ? "아쉬워요" : nutritionTone === "partial" ? "괜찮아요" : nutritionMode === "plan" ? "계획 없음" : "기록 없음";
-  const calorieGuide = selectedIsTravel && selectedTravelLevel === "가볍게 기록" ? "이날은 기록을 남긴 것만으로 충분해요" : selectedIsTravel && selectedTravelLevel === "균형 유지" ? "이날은 단백질·당류·식이섬유 중심으로 살펴봐요" : selectedNutrition.calories < goal.caloriesMin ? `목표 하한까지 ${Math.round(goal.caloriesMin - selectedNutrition.calories)} kcal` : selectedNutrition.calories <= goal.caloriesMax ? "칼로리 목표 범위 안" : `목표 상한보다 ${Math.round(selectedNutrition.calories - goal.caloriesMax)} kcal 많음`;
+  const calorieGuide = selectedIsTravel && selectedTravelLevel === "가볍게 기록" ? "이날은 기록을 남긴 것만으로 충분해요" : selectedIsTravel && selectedTravelLevel === "균형 유지" ? "이날은 단백질·당류·식이섬유 중심으로 살펴봐요" : selectedNutrition.calories < energy.intakeMin ? `권장 하한까지 ${Math.round(energy.intakeMin - selectedNutrition.calories)} kcal` : selectedNutrition.calories <= energy.intakeMax ? "오늘의 권장 범위 안" : `권장 상한보다 ${Math.round(selectedNutrition.calories - energy.intakeMax)} kcal 많음`;
   return <div className="section-stack"><section className="card pixel-calendar-card food-calendar-card"><div className="calendar-heading calendar-heading-stacked food-calendar-heading"><span className="eyebrow">식단 밸런스</span><div className="calendar-toolbar"><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /><div className="calendar-toolbar-actions food-calendar-actions"><button className="food-calendar-library-button" onClick={openLibrary}>음식 보관함 추가</button><div className="food-calendar-action-row"><button className="ghost-button" onClick={() => openMeal("plan", undefined, undefined, selectedDate)}>계획</button><button className="primary-button" onClick={() => openMeal("actual", undefined, undefined, selectedDate)}>기록</button></div></div></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <button type="button" key={date} onClick={() => setSelectedDate(date)} className={`calendar-day ${mealStatus(date)} ${hasMealPlan(date) ? "meal-planned" : ""} ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b></button> : <span className="calendar-blank" key={`blank-${index}`} />)}</div><div className="calendar-legend"><span><i className="balanced" />잘했어요</span><span><i className="partial" />괜찮아요</span><span><i className="attention" />아쉬워요</span><span><b className="plan-heart">♥</b>계획</span></div></section>
     <section className="card daily-nutrition-card">
       <CardTitle title={`${dateLabel(selectedDate)} 영양`} aside={<button className="text-button" onClick={openGoal}>목표 설정</button>} />
       {selectedIsTravel && <TravelDayControl date={selectedDate} level={selectedTravelLevel} defaultLevel={state.profile.travelLevel ?? "균형 유지"} onChange={updateTravelDayLevel} />}
       <div className="nutrition-mode-tabs"><button type="button" className={nutritionMode === "actual" ? "active" : ""} onClick={() => setNutritionMode("actual")}>실제 섭취</button><button type="button" className={nutritionMode === "plan" ? "active" : ""} onClick={() => setNutritionMode("plan")}>계획 예상</button></div>
-      <div className="nutrition-summary-heading"><div className="calorie-total"><strong>{selectedNutrition.calories.toLocaleString()}</strong><span>kcal</span>{!(selectedIsTravel && selectedTravelLevel === "가볍게 기록") && <small>/ {goal.caloriesMin.toLocaleString()}~{goal.caloriesMax.toLocaleString()}</small>}</div><span className={`nutrition-status ${nutritionTone}`}>{nutritionLabel}</span></div>
+      <div className="nutrition-summary-heading"><div className="calorie-total"><strong>{selectedNutrition.calories.toLocaleString()}</strong><span>kcal</span>{!(selectedIsTravel && selectedTravelLevel === "가볍게 기록") && <small>/ {energy.intakeMin.toLocaleString()}~{energy.intakeMax.toLocaleString()}</small>}</div><span className={`nutrition-status ${nutritionTone}`}>{nutritionLabel}</span></div>
       <p className="calorie-guide">{calorieGuide}</p>
+      {!(selectedIsTravel && selectedTravelLevel === "가볍게 기록") && <div className="activity-energy-panel"><div><span>하루 활동</span><strong>{energy.activity ? `${energy.activity.steps.toLocaleString()}걸음` : "기록 필요"}</strong><small>{energy.activity ? `활동 ${energy.activityCalories.toLocaleString()} kcal · 총소모 약 ${energy.expenditure.toLocaleString()} kcal` : "기록하면 권장 범위를 다시 계산해요"}</small></div><button type="button" onClick={() => openActivity(selectedDate)}>{energy.activity ? "수정" : "기록"}</button></div>}
       {!(selectedIsTravel && selectedTravelLevel === "가볍게 기록") && <div className="daily-nutrient-grid"><NutrientBar label="단백질" value={selectedNutrition.protein} min={goal.proteinMin} max={goal.proteinMax} unit="g" tone="coral" />{(!selectedIsTravel || selectedTravelLevel === "목표 유지") && <><NutrientBar label="탄수화물" value={selectedNutrition.carbs} min={goal.carbsMin} max={goal.carbsMax} unit="g" tone="gold" /><NutrientBar label="지방" value={selectedNutrition.fat} min={goal.fatMin} max={goal.fatMax} unit="g" tone="sage" /></>}</div>}
       <div className="micro-grid"><MicroStat label="당류" value={selectedIsTravel && selectedTravelLevel === "가볍게 기록" ? `${selectedNutrition.sugar}g` : `${selectedNutrition.sugar} / ${goal.sugarMax}g`} hint={selectedIsTravel && selectedTravelLevel === "가볍게 기록" ? "기록값" : "상한 기준"} /><MicroStat label="식이섬유" value={selectedIsTravel && selectedTravelLevel === "가볍게 기록" ? `${selectedNutrition.fiber}g` : `${selectedNutrition.fiber} / ${goal.fiberMin}g`} hint={selectedIsTravel && selectedTravelLevel === "가볍게 기록" ? "기록값" : "최소 목표"} /></div>
     </section>
@@ -1300,7 +1418,7 @@ function FoodView({ state, today, openMeal, deleteMeal, openGoal, openLibrary, u
   </div>;
 }
 
-function WorkoutView({ state, today, openWorkout, deleteWorkout, openGoal, updateTravelDayLevel }: { state: AppState; today: string; openWorkout: (kind: EntryKind, draft?: WorkoutEntry, presetType?: WorkoutEntry["type"]) => void; deleteWorkout: (entry: WorkoutEntry) => void; openGoal: () => void; updateTravelDayLevel: (date: string, level: TravelLevel) => void }) {
+function WorkoutView({ state, today, openWorkout, deleteWorkout, openGoal, openActivity, updateTravelDayLevel }: { state: AppState; today: string; openWorkout: (kind: EntryKind, draft?: WorkoutEntry, presetType?: WorkoutEntry["type"]) => void; deleteWorkout: (entry: WorkoutEntry) => void; openGoal: () => void; openActivity: (date: string) => void; updateTravelDayLevel: (date: string, level: TravelLevel) => void }) {
   const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(today);
   const entries = state.workouts.filter((item) => item.date === selectedDate);
@@ -1309,6 +1427,7 @@ function WorkoutView({ state, today, openWorkout, deleteWorkout, openGoal, updat
   const cardio = weeklyCardio(state, today);
   const selectedTravelLevel = travelLevelForDate(state.profile, selectedDate);
   const selectedIsTravel = isTravelDate(state.profile, selectedDate);
+  const energy = dailyEnergyGuide(state, selectedDate);
   const openForDate = (kind: EntryKind) => openWorkout(kind, { id: "", date: selectedDate, kind, type: "유산소", title: "", minutes: 35, intensity: 5, heartRate: "", overlapsSteps: false, details: "" });
   const changeMonth = (month: string) => {
     setSelectedMonth(month);
@@ -1320,6 +1439,7 @@ function WorkoutView({ state, today, openWorkout, deleteWorkout, openGoal, updat
   };
   return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading calendar-heading-stacked"><span className="eyebrow">운동 해빗</span><div className="calendar-toolbar"><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /><div className="calendar-toolbar-actions"><button className="ghost-button" onClick={() => openForDate("plan")}>계획</button><button className="primary-button" onClick={() => openForDate("actual")}>기록</button></div></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => { if (!date) return <span className="calendar-blank" key={`blank-${index}`} />; const dayEntries = state.workouts.filter((item) => item.date === date); return <button type="button" onClick={() => setSelectedDate(date)} key={date} className={`calendar-day workout-day ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b><span className="workout-marks">{dayEntries.slice(0, 3).map((item) => <WorkoutMark key={item.id} type={item.type} kind={item.kind} />)}</span></button>; })}</div><div className="calendar-legend workout-legend"><span><WorkoutMark type="PT" kind="actual" />PT 완료</span><span><WorkoutMark type="유산소" kind="actual" />개인운동 완료</span><span><WorkoutMark type="PT" kind="plan" />PT 계획</span><span><WorkoutMark type="유산소" kind="plan" />개인운동 계획</span></div></section>
     {selectedIsTravel && <section className="card travel-workout-control"><TravelDayControl date={selectedDate} level={selectedTravelLevel} defaultLevel={state.profile.travelLevel ?? "균형 유지"} onChange={updateTravelDayLevel} /></section>}
+    <section className="card daily-activity-card"><CardTitle title={`${dateLabel(selectedDate)} 활동`} aside={<button className="text-button" onClick={() => openActivity(selectedDate)}>{energy.activity ? "수정" : "기록"}</button>} />{energy.activity ? <div className="daily-activity-stats"><div><span>걸음 수</span><strong>{energy.activity.steps.toLocaleString()}<small>걸음</small></strong></div><div><span>활동 칼로리</span><strong>{energy.activityCalories.toLocaleString()}<small>kcal</small></strong></div><div><span>총소모 추정</span><strong>{energy.expenditure.toLocaleString()}<small>kcal</small></strong></div></div> : <EmptyState text="하루 활동을 기록하면 걸음과 운동을 중복 없이 계산해요." action="활동 기록하기" onClick={() => openActivity(selectedDate)} showIcon={false} />}</section>
     <section className="workout-goal-block"><div className="workout-goal-heading"><h2>{selectedIsTravel && selectedTravelLevel !== "목표 유지" ? "여행 중 움직임" : "주간 목표"}</h2><button className="text-button" onClick={openGoal}>목표 설정</button></div><div className="metric-grid workout-metrics"><MetricCard label="개인 유산소" value={selectedIsTravel && selectedTravelLevel !== "목표 유지" ? `${cardio.sessions}` : `${cardio.sessions} / ${goal.cardioSessions}`} unit="회" hint={selectedIsTravel && selectedTravelLevel !== "목표 유지" ? "이번 주 기록" : "최소 주간 목표"} /><MetricCard label="누적시간" value={selectedIsTravel && selectedTravelLevel !== "목표 유지" ? `${cardio.minutes}` : `${cardio.minutes} / ${goal.cardioMinutes}`} unit="분" hint={selectedIsTravel && selectedTravelLevel !== "목표 유지" ? "이번 주 기록" : "이번 주 목표"} /></div></section>
     <section className="card"><CardTitle title="운동 계획·기록" aside={dateLabel(selectedDate)} />{entries.length ? <div className="timeline">{entries.map((entry) => <article key={entry.id}><span className={`timeline-dot ${entry.kind}`} /><div><small>{entry.kind === "plan" ? "계획" : "완료"} · {entry.type}</small><h3>{entry.title}</h3><p>{entry.minutes}분 · 강도 {typeof entry.intensity === "number" ? `${entry.intensity}/10` : entry.intensity || "미기록"}{entry.heartRate ? ` · 심박 ${entry.heartRate}` : ""}</p>{entry.overlapsSteps && <span className="overlap-badge">걸음 수 중복</span>}{entry.details && <em>{entry.details}</em>}<div className="entry-button-row">{entry.kind === "plan" && <button className="timeline-action" onClick={() => openWorkout("actual", entry)}>계획대로 기록</button>}<button className="timeline-action" onClick={() => openWorkout(entry.kind, entry)}>수정</button><button className="delete-text-button" onClick={() => deleteWorkout(entry)}>삭제</button></div></div></article>)}</div> : <EmptyState text="이날 운동 계획이나 기록이 없어요." action="운동 계획하기" onClick={() => openForDate("plan")} showIcon={false} />}</section>
     <section className="card"><CardTitle title="PT 빠른 기록" /><button className="secondary-button" onClick={() => openWorkout("actual", undefined, "PT")}>PT 내용 기록하기</button></section>
@@ -1665,7 +1785,7 @@ function EntryItem({ label, title, detail, record, edit, remove }: { label: stri
 
 function Sheet({ title, subtitle, titleAction, close, children }: { title: string; subtitle?: string; titleAction?: React.ReactNode; close: () => void; children: React.ReactNode }) { return <div className="sheet-backdrop"><section className="sheet" role="dialog" aria-modal="true"><div className="sheet-handle" /><header><div className="sheet-heading"><div className="sheet-title-row"><h2>{title}</h2>{titleAction}</div>{subtitle && <p>{subtitle}</p>}</div><button className="sheet-close-button" onClick={close} aria-label="닫기">×</button></header>{children}</section></div>; }
 
-function QuickSheet({ close, select }: { close: () => void; select: (modal: Modal) => void }) { return <Sheet title="무엇을 추가할까요?" close={close}><h3 className="sheet-section-title">지금 기록하기</h3><div className="quick-grid"><QuickButton label="인바디" onClick={() => select("body")} /><QuickButton label="월경 상태" onClick={() => select("cycle")} /><QuickButton label="먹은 식사" onClick={() => select("meal-actual")} /><QuickButton label="한 운동" onClick={() => select("workout-actual")} /></div><h3 className="sheet-section-title">미리 계획하기</h3><div className="quick-grid three"><QuickButton label="식사 계획" onClick={() => select("meal-plan")} /><QuickButton label="운동 계획" onClick={() => select("workout-plan")} /><QuickButton label="주간 계획" onClick={() => select("weekly-plan")} /></div></Sheet>; }
+function QuickSheet({ close, select }: { close: () => void; select: (modal: Modal) => void }) { return <Sheet title="무엇을 추가할까요?" close={close}><h3 className="sheet-section-title">지금 기록하기</h3><div className="quick-grid"><QuickButton label="인바디" onClick={() => select("body")} /><QuickButton label="하루 활동" onClick={() => select("activity")} /><QuickButton label="월경 상태" onClick={() => select("cycle")} /><QuickButton label="먹은 식사" onClick={() => select("meal-actual")} /><QuickButton label="한 운동" onClick={() => select("workout-actual")} /></div><h3 className="sheet-section-title">미리 계획하기</h3><div className="quick-grid three"><QuickButton label="식사 계획" onClick={() => select("meal-plan")} /><QuickButton label="운동 계획" onClick={() => select("workout-plan")} /><QuickButton label="주간 계획" onClick={() => select("weekly-plan")} /></div></Sheet>; }
 function QuickButton({ label, onClick }: { label: string; onClick: () => void }) { return <button className="quick-button" onClick={onClick}><strong>{label}</strong></button>; }
 
 function FatTrendChart({ records, emptyText = "체성분 기록을 입력하면 흐름이 보여요." }: { records: BodyRecord[]; emptyText?: string }) {
@@ -2139,12 +2259,14 @@ function DataManagementSheet({ state, today, close, backup, exportCsv: downloadC
     { kind: "body", label: "체성분", count: state.bodyRecords.length },
     { kind: "meals", label: "식단", count: state.meals.length },
     { kind: "workouts", label: "운동", count: state.workouts.length },
+    { kind: "activity", label: "하루 활동", count: (state.dailyActivities ?? []).length },
     { kind: "cycles", label: "월경", count: state.cycles.length },
   ];
   const counts = preview ? [
     ["체성분", preview.state.bodyRecords.length],
     ["식단", preview.state.meals.length],
     ["운동", preview.state.workouts.length],
+    ["하루 활동", (preview.state.dailyActivities ?? []).length],
     ["월경", preview.state.cycles.length],
     ["상담", preview.state.consultations.length],
     ["주간 메모", (preview.state.weeklyReviews ?? []).length],
@@ -2153,6 +2275,7 @@ function DataManagementSheet({ state, today, close, backup, exportCsv: downloadC
     ...preview.state.bodyRecords.map((item) => item.date),
     ...preview.state.meals.map((item) => item.date),
     ...preview.state.workouts.map((item) => item.date),
+    ...(preview.state.dailyActivities ?? []).map((item) => item.date),
     ...preview.state.cycles.map((item) => item.date),
     ...preview.state.consultations.map((item) => item.date),
     ...(preview.state.weeklyReviews ?? []).map((item) => item.weekStart),
@@ -2237,6 +2360,7 @@ function ProfileGoalSheet({ profile, today, close, save }: { profile: AppState["
   const [travelActive, setTravelActive] = useState(Boolean(profile.travelActive));
   const travelLevels: NonNullable<AppState["profile"]["travelLevel"]>[] = ["가볍게 기록", "균형 유지", "목표 유지"];
   return <Sheet title="목표와 모드" close={close}><form className="form-stack profile-goal-form" onSubmit={save}>
+    <section className="profile-layer-section"><strong>내 정보</strong><div className="two-fields"><Field label="생년월일 (선택)"><input type="date" name="birthDate" defaultValue={profile.birthDate ?? ""} /></Field><Field label="키 (cm)"><input type="number" name="heightCm" min="100" max="250" step="0.1" defaultValue={profile.heightCm ?? ""} /></Field></div><Field label="성별"><select name="sex" defaultValue={profile.sex ?? "여성"}><option>여성</option><option>남성</option><option>기타</option></select></Field></section>
     <section className="profile-layer-section"><strong>관리 목표</strong><div className="profile-mode-tabs">{(["감량기", "유지기"] as AppState["profile"]["mode"][]).map((item) => <label key={item} className={mode === item ? "active" : ""}><input type="radio" name="mode" value={item} checked={mode === item} onChange={() => setMode(item)} /><span>{item}</span></label>)}</div></section>
     <div className="two-fields sheet-leading-fields"><Field label="시작일"><input type="date" name="goalStartDate" defaultValue={profile.goalStartDate ?? today} required /></Field><Field label="종료일"><input type="date" name="goalEndDate" defaultValue={profile.goalEndDate} required /></Field></div>
     <section className="body-goal-fields"><strong>기간 동안의 변화 목표</strong><div className="two-fields"><Field label="체지방량 변화 (kg)"><input type="number" name="targetBodyFatChange" step="0.1" defaultValue={profile.targetBodyFatChange} required /></Field><Field label="골격근량 변화 (kg)"><input type="number" name="targetMuscleChange" step="0.1" defaultValue={profile.targetMuscleChange} required /></Field></div></section>
@@ -2245,6 +2369,18 @@ function ProfileGoalSheet({ profile, today, close, save }: { profile: AppState["
       {!travelActive && <input type="hidden" name="travelLevel" value={profile.travelLevel ?? "균형 유지"} />}
     </section>
     <button className="primary-button submit-button" type="submit">설정 저장</button>
+  </form></Sheet>;
+}
+
+function ActivitySheet({ today, draft, close, save, remove }: { today: string; draft?: DailyActivity; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void; remove: (entry: DailyActivity) => void }) {
+  return <Sheet title={draft ? "하루 활동 수정" : "하루 활동 기록"} close={close}><form className="form-stack" onSubmit={save}>
+    <input type="hidden" name="editingId" value={draft?.id ?? ""} />
+    <div className="two-fields sheet-leading-fields"><Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><Field label="애플워치"><select name="watchWorn" defaultValue={String(draft?.watchWorn ?? true)}><option value="true">착용함</option><option value="false">착용하지 않음</option></select></Field></div>
+    <div className="two-fields"><Field label="걸음 수"><input type="number" name="steps" min="0" step="1" defaultValue={draft?.steps ?? ""} placeholder="예: 8500" required /></Field><Field label="활동에너지 (선택)"><input type="number" name="activeCalories" min="0" step="1" defaultValue={draft?.activeCalories ?? ""} placeholder="예: 420" /></Field></div>
+    <div className="activity-priority-note"><strong>중복 없이 계산해요</strong><span>활동에너지를 입력하면 그 값을 우선 사용하고, 걸음과 운동 칼로리를 더하지 않아요.</span></div>
+    <Field label="메모 (선택)"><textarea className="activity-note-input" name="note" defaultValue={draft?.note ?? ""} placeholder="워치를 빼고 있던 시간처럼 필요한 내용만 적어주세요." /></Field>
+    <button className="primary-button submit-button" type="submit">{draft ? "수정 저장" : "활동 기록 저장"}</button>
+    {draft && <button className="delete-button full-delete-button" type="button" onClick={() => remove(draft)}>활동 기록 삭제</button>}
   </form></Sheet>;
 }
 

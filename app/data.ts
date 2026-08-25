@@ -91,6 +91,15 @@ export type WorkoutEntry = {
   details: string;
 };
 
+export type DailyActivity = {
+  id: string;
+  date: string;
+  watchWorn: boolean;
+  steps: number;
+  activeCalories?: number;
+  note?: string;
+};
+
 export type CycleEntry = {
   id: string;
   date: string;
@@ -150,6 +159,9 @@ export type AppState = {
     travelEndDate?: string;
     travelLevel?: TravelLevel;
     travelDailyLevels?: Record<string, TravelLevel>;
+    birthDate?: string;
+    heightCm?: number;
+    sex?: "여성" | "남성" | "기타";
   };
   nutritionGoal: {
     caloriesMin: number;
@@ -171,6 +183,7 @@ export type AppState = {
   foodLibrary?: FoodLibraryItem[];
   meals: MealEntry[];
   workouts: WorkoutEntry[];
+  dailyActivities?: DailyActivity[];
   cycles: CycleEntry[];
   consultations: Consultation[];
   weeklyReviews?: WeeklyReview[];
@@ -195,6 +208,8 @@ export const initialState: AppState = {
     targetMuscleChange: 0.3,
     travelActive: false,
     travelDailyLevels: {},
+    heightCm: 171,
+    sex: "여성",
   },
   nutritionGoal: {
     caloriesMin: 1650,
@@ -239,6 +254,7 @@ export const initialState: AppState = {
   workouts: [
     { id: "workout-plan", date: "2026-08-14", kind: "plan", type: "유산소", title: "인클라인 트레드밀", minutes: 35, intensity: 6, heartRate: "130~140", overlapsSteps: true, details: "컨디션에 따라 25~40분" },
   ],
+  dailyActivities: [],
   cycles: [],
   consultations: [],
   weeklyReviews: [],
