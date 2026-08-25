@@ -626,20 +626,23 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .nav-icon-today { --nav-icon-size: 34px; }
 .nav-icon-change { --nav-icon-size: 34px; }
 .nav-cycle-heart {
-  width: 40px;
-  height: 36px;
+  width: 42px;
+  height: 39px;
   display: grid;
   place-items: center;
   color: #aaa49d;
   font-family: Arial, sans-serif;
-  font-size: 35px;
+  font-size: 39px;
   font-weight: 900;
-  line-height: 1;
+  line-height: .9;
   -webkit-text-stroke: 2px var(--ink);
   paint-order: stroke fill;
   filter: grayscale(1);
   opacity: .9;
+  transform: translate(-3px, 1px);
 }
+.desktop-nav button .nav-cycle-heart,
+.mobile-nav button .nav-cycle-heart { width: 42px; height: 39px; font-size: 39px; line-height: .9; }
 .desktop-nav button.active .nav-cycle-heart,
 .mobile-nav button.active .nav-cycle-heart { color: var(--coral); filter: none; opacity: 1; }
 .desktop-nav button.active .nav-pixel-icon,
