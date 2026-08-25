@@ -61,10 +61,11 @@ const tabs: { id: Tab; label: string }[] = [
   { id: "change", label: "변화와 상담" },
 ];
 
-const navIcons: Record<Exclude<Tab, "menstrual">, string> = {
+const navIcons: Record<Tab, string> = {
   food: "/nav-food-v3-small.png",
   workout: "/nav-workout-v3-small.png",
   today: "/nav-home-v3-small.png",
+  menstrual: "/nav-menstrual-v3-small.png",
   change: "/nav-consult-v3-small.png",
 };
 
@@ -1059,7 +1060,6 @@ function WorkoutMark({ type, kind }: { type: WorkoutEntry["type"]; kind: EntryKi
   </svg>;
 }
 function NavPixelIcon({ tab }: { tab: Tab }) {
-  if (tab === "menstrual") return <span className="nav-cycle-heart" aria-hidden="true">♥</span>;
   return <Image className={`nav-pixel-icon nav-icon-${tab}`} src={navIcons[tab]} width={36} height={36} alt="" draggable={false} unoptimized />;
 }
 function RecordRow({ label, detail, done, onClick }: { label: string; detail: string; done: boolean; onClick: () => void }) { return <button className="record-row" onClick={onClick}><span className={`check ${done ? "done" : ""}`}>{done ? "✓" : ""}</span><span><strong>{label}</strong><small>{detail}</small></span><b>›</b></button>; }
