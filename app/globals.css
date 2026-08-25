@@ -667,9 +667,9 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .calendar-actions { display: flex; gap: 8px; }
 .calendar-actions .ghost-button { color: var(--ink); background: var(--cream); }
 .calendar-heading.calendar-heading-stacked { display: grid; align-items: start; gap: 6px; }
-.calendar-heading.calendar-heading-stacked > .calendar-toolbar { width: 100%; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.calendar-heading.calendar-heading-stacked > .calendar-toolbar { width: 100%; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 8px; }
 .calendar-toolbar .month-navigator { min-width: 0; margin-top: 0; }
-.calendar-inline-actions { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; }
+.calendar-inline-actions { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex: 0 0 auto; }
 .calendar-inline-actions button { min-width: 44px; min-height: 30px; padding: 0 8px; font-size: 8px; box-shadow: 2px 2px 0 var(--ink); }
 .calendar-inline-actions .ghost-button { color: var(--ink); background: var(--cream); }
 .calendar-weekdays, .month-grid {
