@@ -137,6 +137,7 @@ export type ReminderSettings = {
 };
 
 export type AppState = {
+  lastBackupAt?: string;
   profile: {
     mode: "감량기" | "유지기";
     goalWeek: number;

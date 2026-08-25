@@ -184,10 +184,39 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .reminder-row strong { font-size: 9px; }
 .reminder-row small { color: var(--muted); font-size: 7px; }
 .reminder-check { width: 18px; height: 18px; margin: 0; accent-color: var(--coral); }
-.reminder-time, .reminder-row.weekly select { width: 100%; min-width: 0; max-width: 100%; height: 36px; padding-inline: 5px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 9px; line-height: 1; text-align: center; }
+.reminder-time, .reminder-row.weekly select { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; height: 36px; padding-inline: 5px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 9px; line-height: 1; text-align: center; }
 .reminder-row.weekly select { text-align-last: center; }
 .reminder-time:disabled, .reminder-row.weekly select:disabled { opacity: .4; }
 .reminder-row.weekly { grid-template-columns: 20px minmax(0, 1fr) 68px 86px; }
+.data-button { display: grid; place-items: center; font-family: Galmuri9, Galmuri11, sans-serif; font-size: 17px; }
+.data-button span { transform: translateY(-1px); }
+.data-management-stack { display: grid; gap: 14px; }
+.data-management-section { padding: 14px; border: 1px solid var(--ink); background: var(--cream); display: grid; gap: 12px; }
+.data-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.data-section-heading > div { display: grid; gap: 4px; }
+.data-section-heading strong { color: var(--coral); font-size: 11px; }
+.data-section-heading small { color: var(--muted); font-size: 7px; line-height: 1.55; }
+.data-section-heading > span { padding: 4px 6px; border: 1px solid var(--line); background: var(--paper); color: var(--muted); font-size: 7px; }
+.data-wide-button { width: 100%; min-height: 46px; }
+.csv-export-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.csv-export-grid button { min-width: 0; min-height: 66px; padding: 10px; border: 1px solid var(--line); background: var(--paper); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; text-align: left; cursor: pointer; }
+.csv-export-grid button strong { min-width: 0; font-size: 9px; }
+.csv-export-grid button small { color: var(--muted); font-size: 7px; }
+.csv-export-grid button b { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--coral); font-size: 7px; }
+.backup-file-picker { min-height: 46px; border: 1px solid var(--ink); background: var(--paper); display: grid; place-items: center; color: var(--ink); font-size: 9px; font-weight: 800; cursor: pointer; }
+.backup-file-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.backup-error { margin: 0; color: var(--coral); font-size: 8px; }
+.restore-preview { padding: 12px; border: 1px solid var(--line); background: var(--paper); display: grid; gap: 12px; }
+.restore-preview-title { display: grid; gap: 5px; min-width: 0; }
+.restore-preview-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.restore-preview-title small { color: var(--muted); font-size: 7px; }
+.restore-count-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.restore-count-grid > div { min-width: 0; min-height: 52px; padding: 8px 6px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); display: grid; align-content: center; gap: 4px; }
+.restore-count-grid span { color: var(--muted); font-size: 7px; }
+.restore-count-grid strong { font-size: 12px; }
+.restore-actions { display: grid; grid-template-columns: 1.2fr .8fr; gap: 8px; }
+.restore-actions button { min-height: 44px; }
+.danger-button { border: 1px solid var(--coral); background: var(--paper); color: var(--coral); font: inherit; font-size: 8px; font-weight: 800; cursor: pointer; }
 .travel-reminder-section > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .travel-reminder-section > div:first-child small { color: var(--muted); font-size: 7px; }
 .travel-reminder-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--ink); }

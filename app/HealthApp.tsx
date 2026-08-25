@@ -20,7 +20,7 @@ import {
 } from "./data";
 
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
-type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail" | "reminders";
+type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail" | "reminders" | "data-management";
 type Consultation = AppState["consultations"][number];
 type WeeklyReview = NonNullable<AppState["weeklyReviews"]>[number];
 type BleedingState = Exclude<CycleEntry["state"], "없음">;
@@ -60,6 +60,9 @@ type OfficialFoodResult = {
   maker?: string;
 };
 type NutritionTotal = { calories: number; protein: number; carbs: number; fat: number; sugar: number; fiber: number };
+type BackupEnvelope = { format: "SOYA_BACKUP"; version: 1; exportedAt: string; state: AppState };
+type RestoreMode = "merge" | "replace";
+type CsvKind = "body" | "meals" | "workouts" | "cycles";
 type NextAction =
   | { type: "body"; eyebrow: string; title: string; detail: string; time: string; due: boolean }
   | { type: "workout"; eyebrow: string; title: string; detail: string; time: string; due: boolean }
@@ -140,6 +143,112 @@ const number = (value: FormDataEntryValue | null) => Number(value || 0);
 const dateLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(new Date(`${value}T12:00:00`));
 const monthLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(new Date(`${value.slice(0, 7)}-01T12:00:00`));
 const signed = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
+
+function normalizeAppState(value: unknown): AppState {
+  const saved = value && typeof value === "object" ? value as Partial<AppState> : {};
+  const savedProfile = saved.profile && typeof saved.profile === "object" ? saved.profile : initialState.profile;
+  const savedMode = String(savedProfile.mode ?? initialState.profile.mode);
+  const legacyTravel = savedMode === "여행";
+  const reminders = saved.reminderSettings && typeof saved.reminderSettings === "object" ? saved.reminderSettings : defaultReminders;
+  return {
+    ...initialState,
+    ...saved,
+    profile: {
+      ...initialState.profile,
+      ...savedProfile,
+      mode: savedMode === "유지기" ? "유지기" : "감량기",
+      travelActive: savedProfile.travelActive ?? legacyTravel,
+      travelStartDate: savedProfile.travelStartDate ?? (legacyTravel ? savedProfile.goalStartDate : undefined),
+      travelEndDate: savedProfile.travelEndDate ?? (legacyTravel ? savedProfile.goalEndDate : undefined),
+    },
+    nutritionGoal: { ...initialState.nutritionGoal, ...(saved.nutritionGoal ?? {}) },
+    workoutGoal: { ...initialState.workoutGoal!, ...(saved.workoutGoal ?? {}) },
+    bodyRecords: Array.isArray(saved.bodyRecords) ? saved.bodyRecords : [],
+    foodLibrary: (Array.isArray(saved.foodLibrary) ? saved.foodLibrary : []).map(normalizeFoodLibraryItem),
+    meals: Array.isArray(saved.meals) ? saved.meals : [],
+    workouts: Array.isArray(saved.workouts) ? saved.workouts : [],
+    cycles: Array.isArray(saved.cycles) ? saved.cycles : [],
+    consultations: Array.isArray(saved.consultations) ? saved.consultations : [],
+    weeklyReviews: Array.isArray(saved.weeklyReviews) ? saved.weeklyReviews : [],
+    reminderSettings: {
+      ...defaultReminders,
+      ...reminders,
+      mealEnabled: { ...defaultReminders.mealEnabled, ...reminders.mealEnabled },
+      mealTimes: { ...defaultReminders.mealTimes, ...reminders.mealTimes },
+    },
+    skippedTasks: Array.isArray(saved.skippedTasks) ? saved.skippedTasks : [],
+  };
+}
+
+function parseBackup(value: unknown): AppState | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<BackupEnvelope> & Partial<AppState>;
+  const source = candidate.format === "SOYA_BACKUP" && candidate.state ? candidate.state : candidate;
+  if (!source || typeof source !== "object") return null;
+  if (!Array.isArray(source.bodyRecords) || !Array.isArray(source.meals) || !Array.isArray(source.workouts) || !Array.isArray(source.cycles) || !Array.isArray(source.consultations)) return null;
+  return normalizeAppState(source);
+}
+
+function mergeById<T extends { id: string }>(current: T[], imported: T[]) {
+  const merged = new Map(current.map((item) => [item.id, item]));
+  imported.forEach((item) => merged.set(item.id, item));
+  return [...merged.values()];
+}
+
+function mergeAppState(current: AppState, imported: AppState): AppState {
+  return normalizeAppState({
+    ...current,
+    bodyRecords: mergeById(current.bodyRecords, imported.bodyRecords),
+    foodLibrary: mergeById(current.foodLibrary ?? [], imported.foodLibrary ?? []),
+    meals: mergeById(current.meals, imported.meals),
+    workouts: mergeById(current.workouts, imported.workouts),
+    cycles: mergeById(current.cycles, imported.cycles),
+    consultations: mergeById(current.consultations, imported.consultations),
+    weeklyReviews: mergeById(current.weeklyReviews ?? [], imported.weeklyReviews ?? []),
+    skippedTasks: [...new Set([...current.skippedTasks, ...imported.skippedTasks])],
+  });
+}
+
+function downloadFile(contents: string, filename: string, type: string) {
+  const blob = new Blob([contents], { type });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+function csvCell(value: string | number | boolean | undefined) {
+  let text = value === undefined ? "" : String(value);
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function exportCsv(state: AppState, kind: CsvKind, today: string) {
+  const labels: Record<CsvKind, string> = { body: "체성분", meals: "식단", workouts: "운동", cycles: "월경" };
+  let rows: (string | number | boolean | undefined)[][] = [];
+  if (kind === "body") rows = [
+    ["날짜", "시간", "체중(kg)", "골격근량(kg)", "체지방량(kg)", "체지방률(%)", "내장지방레벨", "측정 시점", "측정 기기"],
+    ...state.bodyRecords.map((item) => [item.date, item.time, item.weight, item.skeletalMuscle, item.bodyFatMass, item.bodyFatRate, item.visceralFat, item.measurementTiming, item.device]),
+  ];
+  if (kind === "meals") rows = [
+    ["날짜", "끼니", "구분", "음식", "섭취 없음", "칼로리(kcal)", "단백질(g)", "탄수화물(g)", "지방(g)", "당류(g)", "식이섬유(g)"],
+    ...state.meals.map((item) => [item.date, mealLabels[item.mealType], item.kind === "plan" ? "계획" : "기록", item.title, Boolean(item.skipped), item.calories, item.protein, item.carbs, item.fat, item.sugar, item.fiber]),
+  ];
+  if (kind === "workouts") rows = [
+    ["날짜", "구분", "운동 종류", "운동 이름", "시간(분)", "체감 강도", "평균 심박수", "걸음 수 중복", "운동 내용"],
+    ...state.workouts.map((item) => [item.date, item.kind === "plan" ? "계획" : "기록", item.type, item.title, item.minutes, item.intensity, item.heartRate, Boolean(item.overlapsSteps), item.details]),
+  ];
+  if (kind === "cycles") rows = [
+    ["날짜", "출혈 상태", "양", "통증", "에너지", "식욕", "증상", "사랑 기록 횟수", "피임", "메모"],
+    ...state.cycles.map((item) => [item.date, item.state, item.flow, item.pain, item.energy, item.appetite, (item.symptoms ?? []).join(" · "), item.sexCount, item.contraception, item.note]),
+  ];
+  const csv = `\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
+  downloadFile(csv, `SOYA-${labels[kind]}-${today}.csv`, "text/csv;charset=utf-8");
+}
 
 function cycleSummary(entry: CycleEntry) {
   const details = [
@@ -453,28 +562,7 @@ export function HealthApp() {
     fetch("/api/state")
       .then((response) => response.json() as Promise<{ state?: AppState }>)
       .then((data) => {
-        const saved = data.state ?? initialState;
-        const savedMode = String(saved.profile?.mode ?? initialState.profile.mode);
-        const legacyTravel = savedMode === "여행";
-        setState({
-          ...saved,
-          profile: {
-            ...initialState.profile,
-            ...saved.profile,
-            mode: savedMode === "유지기" ? "유지기" : "감량기",
-            travelActive: saved.profile?.travelActive ?? legacyTravel,
-            travelStartDate: saved.profile?.travelStartDate ?? (legacyTravel ? saved.profile?.goalStartDate : undefined),
-            travelEndDate: saved.profile?.travelEndDate ?? (legacyTravel ? saved.profile?.goalEndDate : undefined),
-          },
-          foodLibrary: (saved.foodLibrary ?? []).map(normalizeFoodLibraryItem),
-          weeklyReviews: saved.weeklyReviews ?? [],
-          reminderSettings: {
-            ...defaultReminders,
-            ...saved.reminderSettings,
-            mealEnabled: { ...defaultReminders.mealEnabled, ...saved.reminderSettings?.mealEnabled },
-            mealTimes: { ...defaultReminders.mealTimes, ...saved.reminderSettings?.mealTimes },
-          },
-        });
+        setState(normalizeAppState(data.state ?? initialState));
       })
       .catch(() => setSaveState("offline"))
       .finally(() => setLoaded(true));
@@ -993,14 +1081,18 @@ export function HealthApp() {
     setModal(null);
   };
 
-  const exportData = () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `SOYA-${today}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  const backupData = () => {
+    const exportedAt = new Date().toISOString();
+    const next = { ...state, lastBackupAt: exportedAt };
+    const envelope: BackupEnvelope = { format: "SOYA_BACKUP", version: 1, exportedAt, state: next };
+    downloadFile(JSON.stringify(envelope, null, 2), `SOYA-전체백업-${today}.json`, "application/json;charset=utf-8");
+    commit(() => next);
+  };
+
+  const restoreData = (imported: AppState, mode: RestoreMode) => {
+    const next = mode === "replace" ? normalizeAppState(imported) : mergeAppState(state, imported);
+    commit(() => next);
+    setModal(null);
   };
 
   if (!loaded) return <div className="loading-screen"><Image className="loading-mark" src="/tiger-icon-192.png" width={64} height={64} alt="" /><p>오늘의 기록을 준비하고 있어요</p></div>;
@@ -1016,7 +1108,7 @@ export function HealthApp() {
       <main className="main-content">
         <header className="topbar">
           <div className="topbar-heading"><Image className="topbar-tiger" src="/mascot-top-transparent.png" width={76} height={76} alt="호랑이 마스코트" /><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? travelToday ? "여행 중에도 내 리듬대로" : "오늘도 가볍게 기록해요" : tabs.find((item) => item.id === tab)?.label}</h1></div></div>
-          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "임시 저장" : "저장됨"}</span><button className="icon-button reminder-button" onClick={() => setModal("reminders")} aria-label="알림 설정"><span className="pixel-bell" aria-hidden="true" /></button>{tab === "food" ? <button className="header-library-button" onClick={() => setModal("food-library")}>음식 보관함 추가</button> : <button className="icon-button" onClick={exportData} aria-label="전체 기록 내보내기">↓</button>}</div>
+          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "임시 저장" : "저장됨"}</span><button className="icon-button reminder-button" onClick={() => setModal("reminders")} aria-label="알림 설정"><span className="pixel-bell" aria-hidden="true" /></button>{tab === "food" ? <button className="header-library-button" onClick={() => setModal("food-library")}>음식 보관함 추가</button> : <button className="icon-button data-button" onClick={() => setModal("data-management")} aria-label="데이터 관리"><span aria-hidden="true">↓</span></button>}</div>
         </header>
 
         {tab === "today" && (
@@ -1044,6 +1136,7 @@ export function HealthApp() {
       {modal === "cycle" && <CycleSheet today={cycleDate ?? today} draft={state.cycles.find((item) => item.date === (cycleDate ?? today))} previous={state.cycles.find((item) => item.date === addDays(cycleDate ?? today, -1))} existing={state.cycles} initialRange={cycleRangeDraft} close={() => { setCycleDate(undefined); setCycleRangeDraft(undefined); setModal(null); }} save={saveCycle} saveRanges={saveCycleRanges} remove={deleteCycle} />}
       {modal === "consultation-detail" && selectedConsultation && <ConsultationDetailSheet consultation={selectedConsultation} close={() => { setSelectedConsultation(undefined); setModal(null); }} remove={() => deleteConsultation(selectedConsultation)} />}
       {modal === "reminders" && <ReminderSettingsSheet settings={state.reminderSettings ?? defaultReminders} close={() => setModal(null)} save={saveReminders} />}
+      {modal === "data-management" && <DataManagementSheet state={state} today={today} close={() => setModal(null)} backup={backupData} exportCsv={(kind) => exportCsv(state, kind, today)} restore={restoreData} />}
     </div>
   );
 }
@@ -1917,6 +2010,80 @@ function WeeklyPlanSheet({ state, today, initialStart, close, save }: { state: A
 
 function WorkoutGoalSheet({ goal, close, save }: { goal: NonNullable<AppState["workoutGoal"]>; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void }) {
   return <Sheet title="주간 운동 목표" close={close}><form className="form-stack" onSubmit={save}><Field label="개인 유산소 최소 횟수"><input type="number" name="cardioSessions" min="1" max="14" defaultValue={goal.cardioSessions} required /></Field><Field label="개인 유산소 누적시간 (분)"><input type="number" name="cardioMinutes" min="1" max="1000" defaultValue={goal.cardioMinutes} required /></Field><button className="primary-button submit-button" type="submit">목표 저장</button></form></Sheet>;
+}
+
+function DataManagementSheet({ state, today, close, backup, exportCsv: downloadCsv, restore }: { state: AppState; today: string; close: () => void; backup: () => void; exportCsv: (kind: CsvKind) => void; restore: (state: AppState, mode: RestoreMode) => void }) {
+  const [preview, setPreview] = useState<{ state: AppState; name: string }>();
+  const [error, setError] = useState("");
+  const csvItems: { kind: CsvKind; label: string; count: number }[] = [
+    { kind: "body", label: "체성분", count: state.bodyRecords.length },
+    { kind: "meals", label: "식단", count: state.meals.length },
+    { kind: "workouts", label: "운동", count: state.workouts.length },
+    { kind: "cycles", label: "월경", count: state.cycles.length },
+  ];
+  const counts = preview ? [
+    ["체성분", preview.state.bodyRecords.length],
+    ["식단", preview.state.meals.length],
+    ["운동", preview.state.workouts.length],
+    ["월경", preview.state.cycles.length],
+    ["상담", preview.state.consultations.length],
+    ["주간 메모", (preview.state.weeklyReviews ?? []).length],
+  ] as const : [];
+  const dates = preview ? [
+    ...preview.state.bodyRecords.map((item) => item.date),
+    ...preview.state.meals.map((item) => item.date),
+    ...preview.state.workouts.map((item) => item.date),
+    ...preview.state.cycles.map((item) => item.date),
+    ...preview.state.consultations.map((item) => item.date),
+    ...(preview.state.weeklyReviews ?? []).map((item) => item.weekStart),
+  ].filter(Boolean).sort() : [];
+  const lastBackup = state.lastBackupAt
+    ? new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(state.lastBackupAt))
+    : "아직 백업하지 않음";
+
+  const chooseFile = async (file?: File) => {
+    setPreview(undefined);
+    setError("");
+    if (!file) return;
+    if (file.size > 5_000_000) { setError("5MB 이하의 SOYA 백업 파일을 선택해주세요."); return; }
+    try {
+      const restored = parseBackup(JSON.parse(await file.text()));
+      if (!restored) throw new Error("invalid");
+      setPreview({ state: restored, name: file.name });
+    } catch {
+      setError("SOYA 백업 파일을 읽지 못했어요.");
+    }
+  };
+
+  const replaceAll = () => {
+    if (!preview) return;
+    if (window.confirm("현재 SOYA 기록을 모두 지우고 이 백업으로 교체할까요?")) restore(preview.state, "replace");
+  };
+
+  return <Sheet title="데이터 관리" close={close}>
+    <div className="data-management-stack">
+      <section className="data-management-section backup-section">
+        <div className="data-section-heading"><div><strong>전체 백업</strong><small>마지막 백업 · {lastBackup}</small></div><span>JSON</span></div>
+        <button type="button" className="primary-button data-wide-button" onClick={backup}>전체 백업 파일 내려받기</button>
+      </section>
+
+      <section className="data-management-section">
+        <div className="data-section-heading"><div><strong>분야별 내보내기</strong><small>엑셀에서 열 수 있어요</small></div><span>CSV</span></div>
+        <div className="csv-export-grid">{csvItems.map((item) => <button type="button" key={item.kind} onClick={() => downloadCsv(item.kind)}><strong>{item.label}</strong><small>{item.count}개</small><b>내려받기</b></button>)}</div>
+      </section>
+
+      <section className="data-management-section restore-section">
+        <div className="data-section-heading"><div><strong>백업에서 복원</strong><small>기존 SOYA JSON도 사용할 수 있어요</small></div></div>
+        <label className="backup-file-picker"><input type="file" accept="application/json,.json" onChange={(event) => { void chooseFile(event.target.files?.[0]); event.currentTarget.value = ""; }} /><span>{preview ? "다른 파일 선택" : "백업 파일 선택"}</span></label>
+        {error && <p className="backup-error" role="alert">{error}</p>}
+        {preview && <div className="restore-preview">
+          <div className="restore-preview-title"><strong>{preview.name}</strong><small>{dates.length ? `${dates[0].replaceAll("-", ".")} – ${dates[dates.length - 1].replaceAll("-", ".")}` : "기록 날짜 없음"}</small></div>
+          <div className="restore-count-grid">{counts.map(([label, count]) => <div key={label}><span>{label}</span><strong>{count}</strong></div>)}</div>
+          <div className="restore-actions"><button type="button" className="secondary-button" onClick={() => restore(preview.state, "merge")}>현재 기록과 합치기</button><button type="button" className="danger-button" onClick={replaceAll}>전체 교체</button></div>
+        </div>}
+      </section>
+    </div>
+  </Sheet>;
 }
 
 function ReminderSettingsSheet({ settings, close, save }: { settings: ReminderSettings; close: () => void; save: (settings: ReminderSettings) => void }) {
