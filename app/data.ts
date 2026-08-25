@@ -57,6 +57,14 @@ export type BodyRecord = {
   device?: string;
 };
 
+export type CircumferenceRecord = {
+  id: string;
+  date: string;
+  waistCm: number;
+  hipCm: number;
+  note?: string;
+};
+
 export type MealEntry = {
   id: string;
   date: string;
@@ -180,6 +188,7 @@ export type AppState = {
     cardioMinutes: number;
   };
   bodyRecords: BodyRecord[];
+  circumferenceRecords?: CircumferenceRecord[];
   foodLibrary?: FoodLibraryItem[];
   meals: MealEntry[];
   workouts: WorkoutEntry[];
@@ -244,6 +253,7 @@ export const initialState: AppState = {
     { id: "body-20260813", date: "2026-08-13", time: "07:21", weight: 61.8, skeletalMuscle: 23.3, bodyFatMass: 18.8, bodyFatRate: 30.4, visceralFat: 8, measurementTiming: "아침 공복", device: "InBody Dial H30", condition: "아침 공복 · InBody Dial H30" },
     { id: "body-20260812", date: "2026-08-12", time: "07:18", weight: 62.0, skeletalMuscle: 23.2, bodyFatMass: 19.0, bodyFatRate: 30.6, visceralFat: 8, measurementTiming: "아침 공복", device: "InBody Dial H30", condition: "아침 공복 · InBody Dial H30" },
   ],
+  circumferenceRecords: [],
   foodLibrary: [],
   meals: [
     { id: "plan-b", date: "2026-08-14", mealType: "breakfast", kind: "plan", title: "무가당 그릭요거트와 단백질바", calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, confidence: "높음" },

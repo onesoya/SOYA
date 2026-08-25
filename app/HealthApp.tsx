@@ -5,6 +5,7 @@ import { FormEvent, isValidElement, useCallback, useEffect, useMemo, useState } 
 import {
   AppState,
   BodyRecord,
+  CircumferenceRecord,
   CycleEntry,
   DailyActivity,
   EntryKind,
@@ -21,7 +22,7 @@ import {
 } from "./data";
 
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
-type Modal = null | "quick" | "body" | "body-bulk" | "body-detail" | "activity" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail" | "reminders" | "data-management";
+type Modal = null | "quick" | "measurement-picker" | "movement-picker" | "body" | "body-bulk" | "body-detail" | "circumference" | "activity" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail" | "reminders" | "data-management";
 type Consultation = AppState["consultations"][number];
 type WeeklyReview = NonNullable<AppState["weeklyReviews"]>[number];
 type BleedingState = Exclude<CycleEntry["state"], "없음">;
@@ -75,7 +76,7 @@ type BulkBodyDraft = {
 };
 type BackupEnvelope = { format: "SOYA_BACKUP"; version: 1; exportedAt: string; state: AppState };
 type RestoreMode = "merge" | "replace";
-type CsvKind = "body" | "meals" | "workouts" | "activity" | "cycles";
+type CsvKind = "body" | "circumference" | "meals" | "workouts" | "activity" | "cycles";
 type NextAction =
   | { type: "body"; eyebrow: string; title: string; detail: string; time: string; due: boolean }
   | { type: "workout"; eyebrow: string; title: string; detail: string; time: string; due: boolean }
@@ -177,6 +178,7 @@ function normalizeAppState(value: unknown): AppState {
     nutritionGoal: { ...initialState.nutritionGoal, ...(saved.nutritionGoal ?? {}) },
     workoutGoal: { ...initialState.workoutGoal!, ...(saved.workoutGoal ?? {}) },
     bodyRecords: Array.isArray(saved.bodyRecords) ? saved.bodyRecords : [],
+    circumferenceRecords: Array.isArray(saved.circumferenceRecords) ? saved.circumferenceRecords : [],
     foodLibrary: (Array.isArray(saved.foodLibrary) ? saved.foodLibrary : []).map(normalizeFoodLibraryItem),
     meals: Array.isArray(saved.meals) ? saved.meals : [],
     workouts: Array.isArray(saved.workouts) ? saved.workouts : [],
@@ -213,6 +215,7 @@ function mergeAppState(current: AppState, imported: AppState): AppState {
   return normalizeAppState({
     ...current,
     bodyRecords: mergeById(current.bodyRecords, imported.bodyRecords),
+    circumferenceRecords: mergeById(current.circumferenceRecords ?? [], imported.circumferenceRecords ?? []),
     foodLibrary: mergeById(current.foodLibrary ?? [], imported.foodLibrary ?? []),
     meals: mergeById(current.meals, imported.meals),
     workouts: mergeById(current.workouts, imported.workouts),
@@ -243,11 +246,15 @@ function csvCell(value: string | number | boolean | undefined) {
 }
 
 function exportCsv(state: AppState, kind: CsvKind, today: string) {
-  const labels: Record<CsvKind, string> = { body: "체성분", meals: "식단", workouts: "운동", activity: "하루활동", cycles: "월경" };
+  const labels: Record<CsvKind, string> = { body: "체성분", circumference: "신체둘레", meals: "식단", workouts: "운동", activity: "하루활동", cycles: "월경" };
   let rows: (string | number | boolean | undefined)[][] = [];
   if (kind === "body") rows = [
     ["날짜", "시간", "체중(kg)", "골격근량(kg)", "체지방량(kg)", "체지방률(%)", "내장지방레벨", "측정 시점", "측정 기기"],
     ...state.bodyRecords.map((item) => [item.date, item.time, item.weight, item.skeletalMuscle, item.bodyFatMass, item.bodyFatRate, item.visceralFat, item.measurementTiming, item.device]),
+  ];
+  if (kind === "circumference") rows = [
+    ["날짜", "허리둘레(cm)", "엉덩이둘레(cm)", "메모"],
+    ...(state.circumferenceRecords ?? []).map((item) => [item.date, item.waistCm, item.hipCm, item.note]),
   ];
   if (kind === "meals") rows = [
     ["날짜", "끼니", "구분", "음식", "섭취 없음", "칼로리(kcal)", "단백질(g)", "탄수화물(g)", "지방(g)", "당류(g)", "식이섬유(g)"],
@@ -642,6 +649,7 @@ export function HealthApp() {
   const [cycleDate, setCycleDate] = useState<string>();
   const [cycleRangeDraft, setCycleRangeDraft] = useState<CycleRange>();
   const [selectedBodyRecord, setSelectedBodyRecord] = useState<BodyRecord>();
+  const [selectedCircumferenceRecord, setSelectedCircumferenceRecord] = useState<CircumferenceRecord>();
   const [selectedConsultation, setSelectedConsultation] = useState<Consultation>();
   const [weeklyPlanStart, setWeeklyPlanStart] = useState<string>();
   const [loaded, setLoaded] = useState(false);
@@ -911,6 +919,26 @@ export function HealthApp() {
     setModal(null);
   };
 
+  const saveCircumference = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const editingId = String(data.get("editingId") || "");
+    const record: CircumferenceRecord = {
+      id: editingId || id("circumference"),
+      date: String(data.get("date")),
+      waistCm: number(data.get("waistCm")),
+      hipCm: number(data.get("hipCm")),
+      note: String(data.get("note") || "").trim() || undefined,
+    };
+    commit((current) => ({
+      ...current,
+      circumferenceRecords: [record, ...(current.circumferenceRecords ?? []).filter((item) => item.id !== editingId && item.date !== record.date)]
+        .sort((a, b) => b.date.localeCompare(a.date)),
+    }));
+    setSelectedCircumferenceRecord(undefined);
+    setModal(null);
+  };
+
   const saveActivity = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -1100,6 +1128,13 @@ export function HealthApp() {
     setModal(null);
   };
 
+  const deleteCircumference = (record: CircumferenceRecord) => {
+    if (!window.confirm(`${record.date} 허리·엉덩이둘레 기록을 삭제할까요?`)) return;
+    commit((current) => ({ ...current, circumferenceRecords: (current.circumferenceRecords ?? []).filter((item) => item.id !== record.id) }));
+    setSelectedCircumferenceRecord(undefined);
+    setModal(null);
+  };
+
   const deleteConsultation = (consultation: Consultation) => {
     if (!window.confirm(`${consultation.date} 상담을 삭제할까요?`)) return;
     commit((current) => ({ ...current, consultations: current.consultations.filter((item) => item.id !== consultation.id) }));
@@ -1238,7 +1273,7 @@ export function HealthApp() {
 
       <main className="main-content">
         <header className="topbar">
-          <div className="topbar-heading"><Image className="topbar-tiger" src="/mascot-top-transparent.png" width={76} height={76} alt="호랑이 마스코트" /><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? travelToday ? "여행 중에도 내 리듬대로" : "오늘도 가볍게 기록해요" : tabs.find((item) => item.id === tab)?.label}</h1></div></div>
+          <div className="topbar-heading"><Image className="topbar-tiger" src="/mascot-top-transparent.png" width={76} height={76} alt="호랑이 마스코트" /><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? travelToday ? <>여행 중에도<br />내 리듬대로</> : "오늘도 가볍게 기록해요" : tabs.find((item) => item.id === tab)?.label}</h1></div></div>
           <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "임시 저장" : "저장됨"}</span><button className="icon-button reminder-button" onClick={() => setModal("reminders")} aria-label="알림 설정"><span className="pixel-bell" aria-hidden="true" /></button><button className="icon-button data-button" onClick={() => setModal("data-management")} aria-label="데이터 관리"><span aria-hidden="true">↓</span></button></div>
         </header>
 
@@ -1248,16 +1283,19 @@ export function HealthApp() {
         {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openGoal={() => setModal("nutrition-goal")} openLibrary={() => setModal("food-library")} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} updateTravelDayLevel={updateTravelDayLevel} />}
         {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} updateTravelDayLevel={updateTravelDayLevel} />}
         {tab === "menstrual" && <MenstrualView state={state} today={today} openRecord={(date) => { setCycleRangeDraft(undefined); setCycleDate(date); setModal("cycle"); }} editRange={(date) => { const range = cycleRangeAround(state.cycles, date); if (range) { setCycleRangeDraft(range); setCycleDate(date); setModal("cycle"); } }} deleteRange={deleteCycleRange} />}
-        {tab === "change" && <ChangeConsultView state={state} today={today} setModal={setModal} commit={commit} openWeeklyPlan={(start) => { setWeeklyPlanStart(start); setModal("weekly-plan"); }} deleteConsultation={deleteConsultation} openBodyDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} openConsultationDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
+        {tab === "change" && <ChangeConsultView state={state} today={today} setModal={setModal} commit={commit} openWeeklyPlan={(start) => { setWeeklyPlanStart(start); setModal("weekly-plan"); }} deleteConsultation={deleteConsultation} openBodyDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} openCircumference={(record) => { setSelectedCircumferenceRecord(record); setModal("circumference"); }} openConsultationDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
       </main>
 
       <button className="fab" onClick={() => setModal("quick")} aria-label="빠른 추가">+</button>
       <nav className="mobile-nav">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}><NavPixelIcon tab={item.id} /><small>{item.label}</small></button>)}</nav>
 
-      {modal === "quick" && <QuickSheet close={() => setModal(null)} select={(next) => { if (next === "body") setSelectedBodyRecord(undefined); if (next === "cycle") { setCycleDate(undefined); setCycleRangeDraft(undefined); } if (next === "workout-plan" || next === "workout-actual") { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); } if (next === "meal-plan" || next === "meal-actual") { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); } setModal(next); }} />}
+      {modal === "quick" && <QuickSheet close={() => setModal(null)} select={(next) => { if (next === "body") setSelectedBodyRecord(undefined); if (next === "circumference") setSelectedCircumferenceRecord(undefined); if (next === "cycle") { setCycleDate(undefined); setCycleRangeDraft(undefined); } if (next === "workout-plan" || next === "workout-actual") { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); } if (next === "meal-plan" || next === "meal-actual") { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); } setModal(next); }} />}
+      {modal === "measurement-picker" && <MeasurementPickerSheet close={() => setModal(null)} select={(next) => { setSelectedBodyRecord(undefined); setSelectedCircumferenceRecord(undefined); setModal(next); }} />}
+      {modal === "movement-picker" && <MovementPickerSheet close={() => setModal(null)} select={(next) => { if (next === "workout-actual") { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); } if (next === "activity") setActivityDate(undefined); setModal(next); }} />}
       {modal === "body" && <BodySheet today={today} latest={state.bodyRecords.find((item) => item.id !== selectedBodyRecord?.id)} draft={selectedBodyRecord} openHistory={() => { setSelectedBodyRecord(undefined); setModal("body-bulk"); }} close={() => { setSelectedBodyRecord(undefined); setModal(null); }} save={saveBody} />}
       {modal === "body-bulk" && <BodyBulkSheet existing={state.bodyRecords} close={() => setModal(null)} save={saveBodyBulk} />}
       {modal === "body-detail" && selectedBodyRecord && <BodyDetailSheet record={selectedBodyRecord} close={() => { setSelectedBodyRecord(undefined); setModal(null); }} edit={() => setModal("body")} remove={() => deleteBody(selectedBodyRecord)} />}
+      {modal === "circumference" && <CircumferenceSheet today={today} latest={(state.circumferenceRecords ?? []).find((item) => item.id !== selectedCircumferenceRecord?.id)} draft={selectedCircumferenceRecord} close={() => { setSelectedCircumferenceRecord(undefined); setModal(null); }} save={saveCircumference} remove={deleteCircumference} />}
       {modal === "activity" && <ActivitySheet today={activityDate ?? today} draft={(state.dailyActivities ?? []).find((item) => item.date === (activityDate ?? today))} close={() => { setActivityDate(undefined); setModal(null); }} save={saveActivity} remove={deleteActivity} />}
       {(modal === "meal-plan" || modal === "meal-actual") && <MealSheet today={mealDate ?? today} kind={modal === "meal-plan" ? "plan" : "actual"} library={state.foodLibrary ?? []} draft={mealDraft} presetType={mealPresetType} close={() => { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); setModal(null); }} save={saveMeal} />}
       {modal === "food-library" && <FoodLibrarySheet library={state.foodLibrary ?? []} close={() => setModal(null)} save={saveFoodLibraryItem} saveSet={saveFoodSet} remove={deleteFoodLibraryItem} />}
@@ -1500,12 +1538,12 @@ function MenstrualView({ state, today, openRecord, editRange, deleteRange }: { s
   </div>;
 }
 
-function ChangeConsultView({ state, today, setModal, commit, openWeeklyPlan, deleteConsultation, openBodyDetail, openConsultationDetail }: { state: AppState; today: string; setModal: (modal: Modal) => void; commit: (updater: (current: AppState) => AppState) => void; openWeeklyPlan: (start?: string) => void; deleteConsultation: (consultation: Consultation) => void; openBodyDetail: (record: BodyRecord) => void; openConsultationDetail: (consultation: Consultation) => void }) {
+function ChangeConsultView({ state, today, setModal, commit, openWeeklyPlan, deleteConsultation, openBodyDetail, openCircumference, openConsultationDetail }: { state: AppState; today: string; setModal: (modal: Modal) => void; commit: (updater: (current: AppState) => AppState) => void; openWeeklyPlan: (start?: string) => void; deleteConsultation: (consultation: Consultation) => void; openBodyDetail: (record: BodyRecord) => void; openCircumference: (record?: CircumferenceRecord) => void; openConsultationDetail: (consultation: Consultation) => void }) {
   const [view, setView] = useState<"change" | "consult">("change");
-  return <><div className="combined-view-tabs" role="tablist" aria-label="변화와 상담 화면 선택"><button type="button" role="tab" aria-selected={view === "change"} className={view === "change" ? "active" : ""} onClick={() => setView("change")}>변화</button><button type="button" role="tab" aria-selected={view === "consult"} className={view === "consult" ? "active" : ""} onClick={() => setView("consult")}>상담</button></div>{view === "change" ? <ChangeView state={state} today={today} setModal={setModal} openDetail={openBodyDetail} /> : <ConsultView state={state} commit={commit} openWeeklyPlan={openWeeklyPlan} deleteConsultation={deleteConsultation} openDetail={openConsultationDetail} />}</>;
+  return <><div className="combined-view-tabs" role="tablist" aria-label="변화와 상담 화면 선택"><button type="button" role="tab" aria-selected={view === "change"} className={view === "change" ? "active" : ""} onClick={() => setView("change")}>변화</button><button type="button" role="tab" aria-selected={view === "consult"} className={view === "consult" ? "active" : ""} onClick={() => setView("consult")}>상담</button></div>{view === "change" ? <ChangeView state={state} today={today} setModal={setModal} openDetail={openBodyDetail} openCircumference={openCircumference} /> : <ConsultView state={state} commit={commit} openWeeklyPlan={openWeeklyPlan} deleteConsultation={deleteConsultation} openDetail={openConsultationDetail} />}</>;
 }
 
-function ChangeView({ state, today, setModal, openDetail }: { state: AppState; today: string; setModal: (modal: Modal) => void; openDetail: (record: BodyRecord) => void }) {
+function ChangeView({ state, today, setModal, openDetail, openCircumference }: { state: AppState; today: string; setModal: (modal: Modal) => void; openDetail: (record: BodyRecord) => void; openCircumference: (record?: CircumferenceRecord) => void }) {
   const [phaseFilter, setPhaseFilter] = useState<"all" | "focus" | "influence">("all");
   const latest = state.bodyRecords[0];
   const recentRecords = state.bodyRecords.slice(0, 7).reverse();
@@ -1518,6 +1556,9 @@ function ChangeView({ state, today, setModal, openDetail }: { state: AppState; t
   });
   const chartRecords = filteredRecords.slice(0, 7).map(({ record }) => record).reverse();
   const visibleRecords = filteredRecords.slice(0, 8);
+  const circumferenceRecords = [...(state.circumferenceRecords ?? [])].sort((a, b) => b.date.localeCompare(a.date));
+  const latestCircumference = circumferenceRecords[0];
+  const circumferenceChartRecords = circumferenceRecords.slice(0, 8).reverse();
   const measuredAt = latest ? `${latest.date.replaceAll("-", ".")} · ${latest.time}` : "기록 없음";
   const timing = goalTiming(state.profile, today);
   const travelToday = isTravelDate(state.profile, today);
@@ -1525,6 +1566,9 @@ function ChangeView({ state, today, setModal, openDetail }: { state: AppState; t
   return <div className="section-stack"><section className={`card change-overview ${travelToday ? "travel-change-overview" : ""}`}><div><span className="eyebrow">{state.profile.mode} {timing.week}주차{travelToday ? " · 여행 중" : ""}</span><h2>{travelToday ? "측정 공백도 여행 기록의 일부예요" : <>체지방 {oldest && latest ? `${signed(latest.bodyFatMass - oldest.bodyFatMass)}kg` : "-"} · 골격근 {oldest && latest ? `${signed(latest.skeletalMuscle - oldest.skeletalMuscle)}kg` : "-"}</>}</h2><p>{goalCopy}</p></div><div className="change-overview-actions"><button className="ghost-button" onClick={() => setModal("profile-goal")}>목표 수정</button><button className="primary-button" onClick={() => setModal("body")}>인바디 입력</button></div></section>
     <div className="metric-grid change-metric-grid"><MetricCard label="체지방량" value={String(latest?.bodyFatMass ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="골격근량" value={String(latest?.skeletalMuscle ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="체중" value={String(latest?.weight ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="내장지방" value={String(latest?.visceralFat ?? "-")} unit="Lv" hint={measuredAt} /></div>
     <section className="card chart-card cycle-aware-chart"><CardTitle title="최근 체지방량" aside={`kg · ${chartRecords.length}회`} /><div className="body-phase-filter" role="tablist" aria-label="월경 주기 구간으로 체성분 기록 보기"><button type="button" role="tab" aria-selected={phaseFilter === "all"} className={phaseFilter === "all" ? "active" : ""} onClick={() => setPhaseFilter("all")}>전체</button><button type="button" role="tab" aria-selected={phaseFilter === "focus"} className={phaseFilter === "focus" ? "active" : ""} onClick={() => setPhaseFilter("focus")}>월경 후 집중</button><button type="button" role="tab" aria-selected={phaseFilter === "influence"} className={phaseFilter === "influence" ? "active" : ""} onClick={() => setPhaseFilter("influence")}>월경 전·중</button></div><FatTrendChart records={chartRecords} emptyText={phaseFilter === "all" ? "체성분 기록을 입력하면 흐름이 보여요." : "이 주기 구간의 체성분 기록이 아직 없어요."} /></section>
+    <section className="card circumference-card"><CardTitle title="허리·엉덩이둘레" aside={<button type="button" className="text-button" onClick={() => openCircumference()}>기록하기</button>} />
+      {latestCircumference ? <><div className="circumference-latest"><MetricCard label="허리둘레" value={String(latestCircumference.waistCm)} unit="cm" hint={latestCircumference.date} /><MetricCard label="엉덩이둘레" value={String(latestCircumference.hipCm)} unit="cm" hint={latestCircumference.date} /></div><CircumferenceTrendChart records={circumferenceChartRecords} /><div className="circumference-history">{circumferenceRecords.slice(0, 5).map((record) => <button type="button" key={record.id} onClick={() => openCircumference(record)}><span>{record.date}</span><strong>허리 {record.waistCm}cm</strong><strong>엉덩이 {record.hipCm}cm</strong><b aria-hidden="true">›</b></button>)}</div></> : <EmptyState text="일요일 아침 측정값을 기록해보세요." action="둘레 기록하기" onClick={() => openCircumference()} showIcon={false} />}
+    </section>
     <section className="card"><CardTitle title="측정 기록" aside={`${filteredRecords.length}개`} />{visibleRecords.length ? <div className="data-table">{visibleRecords.map(({ record, phase }) => <button type="button" key={record.id} onClick={() => openDetail(record)} aria-label={`${record.date} 인바디 상세 보기, ${phase.label}`}><span><strong>{record.date}</strong><i className={`record-phase-badge phase-${phase.key}`}>{phase.label}</i><small>{record.time} · {record.measurementTiming ?? record.condition.split(" · ")[0]} · {record.device ?? record.condition.split(" · ")[1]}</small></span><span>{record.bodyFatMass}<small>kg 지방</small></span><span>{record.skeletalMuscle}<small>kg 골격근</small></span><b aria-hidden="true">›</b></button>)}</div> : <div className="phase-record-empty">이 구간의 측정 기록이 아직 없어요.</div>}</section>
   </div>;
 }
@@ -1785,7 +1829,9 @@ function EntryItem({ label, title, detail, record, edit, remove }: { label: stri
 
 function Sheet({ title, subtitle, titleAction, close, children }: { title: string; subtitle?: string; titleAction?: React.ReactNode; close: () => void; children: React.ReactNode }) { return <div className="sheet-backdrop"><section className="sheet" role="dialog" aria-modal="true"><div className="sheet-handle" /><header><div className="sheet-heading"><div className="sheet-title-row"><h2>{title}</h2>{titleAction}</div>{subtitle && <p>{subtitle}</p>}</div><button className="sheet-close-button" onClick={close} aria-label="닫기">×</button></header>{children}</section></div>; }
 
-function QuickSheet({ close, select }: { close: () => void; select: (modal: Modal) => void }) { return <Sheet title="무엇을 추가할까요?" close={close}><h3 className="sheet-section-title">지금 기록하기</h3><div className="quick-grid"><QuickButton label="인바디" onClick={() => select("body")} /><QuickButton label="하루 활동" onClick={() => select("activity")} /><QuickButton label="월경 상태" onClick={() => select("cycle")} /><QuickButton label="먹은 식사" onClick={() => select("meal-actual")} /><QuickButton label="한 운동" onClick={() => select("workout-actual")} /></div><h3 className="sheet-section-title">미리 계획하기</h3><div className="quick-grid three"><QuickButton label="식사 계획" onClick={() => select("meal-plan")} /><QuickButton label="운동 계획" onClick={() => select("workout-plan")} /><QuickButton label="주간 계획" onClick={() => select("weekly-plan")} /></div></Sheet>; }
+function QuickSheet({ close, select }: { close: () => void; select: (modal: Modal) => void }) { return <Sheet title="무엇을 추가할까요?" close={close}><h3 className="sheet-section-title">지금 기록하기</h3><div className="quick-grid two"><QuickButton label="몸의 변화" onClick={() => select("measurement-picker")} /><QuickButton label="월경 상태" onClick={() => select("cycle")} /><QuickButton label="먹은 식사" onClick={() => select("meal-actual")} /><QuickButton label="하루의 움직임" onClick={() => select("movement-picker")} /></div><h3 className="sheet-section-title">미리 계획하기</h3><div className="quick-grid three"><QuickButton label="식사 계획" onClick={() => select("meal-plan")} /><QuickButton label="운동 계획" onClick={() => select("workout-plan")} /><QuickButton label="주간 계획" onClick={() => select("weekly-plan")} /></div></Sheet>; }
+function MeasurementPickerSheet({ close, select }: { close: () => void; select: (modal: "body" | "circumference") => void }) { return <Sheet title="몸의 변화" close={close}><div className="quick-grid two measurement-picker-grid"><QuickButton label="인바디" onClick={() => select("body")} /><QuickButton label="허리·엉덩이둘레" onClick={() => select("circumference")} /></div></Sheet>; }
+function MovementPickerSheet({ close, select }: { close: () => void; select: (modal: "workout-actual" | "activity") => void }) { return <Sheet title="하루의 움직임" close={close}><div className="quick-grid two measurement-picker-grid"><QuickButton label="한 운동 기록" onClick={() => select("workout-actual")} /><QuickButton label="하루 활동" onClick={() => select("activity")} /></div></Sheet>; }
 function QuickButton({ label, onClick }: { label: string; onClick: () => void }) { return <button className="quick-button" onClick={onClick}><strong>{label}</strong></button>; }
 
 function FatTrendChart({ records, emptyText = "체성분 기록을 입력하면 흐름이 보여요." }: { records: BodyRecord[]; emptyText?: string }) {
@@ -1810,6 +1856,47 @@ function FatTrendChart({ records, emptyText = "체성분 기록을 입력하면 
     <polyline points={points.map((point) => `${point.x},${point.y}`).join(" ")} className="trend-line" />
     {points.map(({ record, x, y }) => <g key={record.id}><circle cx={x} cy={y} r="6" className="trend-point" /><text x={x} y={y - 14} textAnchor="middle" className="trend-value">{record.bodyFatMass}kg</text><text x={x} y={height - 16} textAnchor="middle" className="trend-date">{record.date.slice(5).replace("-", "/")}</text></g>)}
   </svg></div>;
+}
+
+function CircumferenceTrendChart({ records }: { records: CircumferenceRecord[] }) {
+  if (!records.length) return null;
+  const width = 700;
+  const height = 250;
+  const left = 52;
+  const right = 28;
+  const top = 36;
+  const bottom = 46;
+  const values = records.flatMap((item) => [item.waistCm, item.hipCm]);
+  const min = Math.floor((Math.min(...values) - 1) * 10) / 10;
+  const max = Math.ceil((Math.max(...values) + 1) * 10) / 10;
+  const range = Math.max(max - min, 2);
+  const point = (record: CircumferenceRecord, index: number, value: number) => ({
+    record,
+    x: left + (records.length === 1 ? (width - left - right) / 2 : index * ((width - left - right) / (records.length - 1))),
+    y: top + ((max - value) / range) * (height - top - bottom),
+    value,
+  });
+  const waist = records.map((record, index) => point(record, index, record.waistCm));
+  const hip = records.map((record, index) => point(record, index, record.hipCm));
+  return <div className="circumference-chart-wrap"><div className="circumference-legend"><span className="waist">허리</span><span className="hip">엉덩이</span></div><svg className="trend-chart circumference-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="허리둘레와 엉덩이둘레 변화 선 그래프">
+    {[0, 0.5, 1].map((ratio) => { const y = top + ratio * (height - top - bottom); const value = max - ratio * range; return <g key={ratio}><line x1={left} x2={width - right} y1={y} y2={y} className="chart-grid-line" /><text x={left - 10} y={y + 4} textAnchor="end" className="chart-axis-value">{value.toFixed(1)}</text></g>; })}
+    <polyline points={waist.map(({ x, y }) => `${x},${y}`).join(" ")} className="circumference-line waist" />
+    <polyline points={hip.map(({ x, y }) => `${x},${y}`).join(" ")} className="circumference-line hip" />
+    {waist.map(({ record, x, y, value }) => <g key={`waist-${record.id}`}><circle cx={x} cy={y} r="5" className="circumference-point waist" /><text x={x} y={y - 11} textAnchor="middle" className="circumference-value waist">{value}</text></g>)}
+    {hip.map(({ record, x, y, value }) => <g key={`hip-${record.id}`}><circle cx={x} cy={y} r="5" className="circumference-point hip" /><text x={x} y={y + 18} textAnchor="middle" className="circumference-value hip">{value}</text><text x={x} y={height - 16} textAnchor="middle" className="trend-date">{record.date.slice(5).replace("-", "/")}</text></g>)}
+  </svg></div>;
+}
+
+function CircumferenceSheet({ today, latest, draft, close, save, remove }: { today: string; latest?: CircumferenceRecord; draft?: CircumferenceRecord; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void; remove: (record: CircumferenceRecord) => void }) {
+  return <Sheet title={draft ? "허리·엉덩이둘레 수정" : "허리·엉덩이둘레 기록"} close={close}><form className="form-stack" onSubmit={save}>
+    <input type="hidden" name="editingId" value={draft?.id ?? ""} />
+    <Field label="측정일"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field>
+    <MeasureField label="허리둘레" name="waistCm" unit="cm" previous={latest?.waistCm} value={draft?.waistCm} />
+    <MeasureField label="엉덩이둘레" name="hipCm" unit="cm" previous={latest?.hipCm} value={draft?.hipCm} />
+    <Field label="메모 (선택)"><textarea name="note" defaultValue={draft?.note ?? ""} placeholder="측정 조건이나 평소와 다른 점" /></Field>
+    <button className="primary-button submit-button" type="submit">{draft ? "수정 저장" : "둘레 기록 저장"}</button>
+    {draft && <button className="delete-button full-delete-button" type="button" onClick={() => remove(draft)}>둘레 기록 삭제</button>}
+  </form></Sheet>;
 }
 
 function BodySheet({ today, latest, draft, openHistory, close, save }: { today: string; latest?: BodyRecord; draft?: BodyRecord; openHistory: () => void; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void }) { const [legacyTiming = "아침 공복", legacyDevice = "InBody Dial H30"] = (draft?.condition ?? latest?.condition)?.split(" · ") ?? []; return <Sheet title={draft ? "인바디 기록 수정" : "인바디 기록"} titleAction={!draft ? <button type="button" className="sheet-title-action" onClick={openHistory}>과거 기록 가져오기</button> : undefined} close={close}><form className="form-stack" onSubmit={save}><input type="hidden" name="editingId" value={draft?.id ?? ""} /><div className="two-fields sheet-leading-fields"><Field label="측정일"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><Field label="측정시간"><input type="time" name="time" defaultValue={draft?.time ?? new Date().toTimeString().slice(0, 5)} required /></Field></div><MeasureField label="체중" name="weight" unit="kg" previous={latest?.weight} value={draft?.weight} /><MeasureField label="골격근량" name="skeletalMuscle" unit="kg" previous={latest?.skeletalMuscle} value={draft?.skeletalMuscle} /><MeasureField label="체지방량" name="bodyFatMass" unit="kg" previous={latest?.bodyFatMass} value={draft?.bodyFatMass} /><MeasureField label="체지방률" name="bodyFatRate" unit="%" previous={latest?.bodyFatRate} value={draft?.bodyFatRate} /><MeasureField label="내장지방레벨" name="visceralFat" unit="Lv" previous={latest?.visceralFat} value={draft?.visceralFat} step="1" /><div className="two-fields"><Field label="측정 시점"><select name="measurementTiming" defaultValue={draft?.measurementTiming ?? latest?.measurementTiming ?? legacyTiming}><option>아침 공복</option><option>평소와 다른 시간</option><option>식후</option><option>운동 후</option></select></Field><Field label="측정 기기"><select name="device" defaultValue={draft?.device ?? latest?.device ?? legacyDevice}><option>InBody Dial H30</option><option>헬스장 InBody</option><option>병원 InBody</option><option>다른 체성분 기기</option></select></Field></div><button className="primary-button submit-button" type="submit">{draft ? "수정 저장" : "저장하기"}</button></form></Sheet>; }
@@ -2257,6 +2344,7 @@ function DataManagementSheet({ state, today, close, backup, exportCsv: downloadC
   const [error, setError] = useState("");
   const csvItems: { kind: CsvKind; label: string; count: number }[] = [
     { kind: "body", label: "체성분", count: state.bodyRecords.length },
+    { kind: "circumference", label: "신체둘레", count: (state.circumferenceRecords ?? []).length },
     { kind: "meals", label: "식단", count: state.meals.length },
     { kind: "workouts", label: "운동", count: state.workouts.length },
     { kind: "activity", label: "하루 활동", count: (state.dailyActivities ?? []).length },
@@ -2264,6 +2352,7 @@ function DataManagementSheet({ state, today, close, backup, exportCsv: downloadC
   ];
   const counts = preview ? [
     ["체성분", preview.state.bodyRecords.length],
+    ["신체둘레", (preview.state.circumferenceRecords ?? []).length],
     ["식단", preview.state.meals.length],
     ["운동", preview.state.workouts.length],
     ["하루 활동", (preview.state.dailyActivities ?? []).length],
@@ -2273,6 +2362,7 @@ function DataManagementSheet({ state, today, close, backup, exportCsv: downloadC
   ] as const : [];
   const dates = preview ? [
     ...preview.state.bodyRecords.map((item) => item.date),
+    ...(preview.state.circumferenceRecords ?? []).map((item) => item.date),
     ...preview.state.meals.map((item) => item.date),
     ...preview.state.workouts.map((item) => item.date),
     ...(preview.state.dailyActivities ?? []).map((item) => item.date),
