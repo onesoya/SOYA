@@ -302,6 +302,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .weekly-goal-progress > div:nth-child(2) { height: 8px; border: 1px solid var(--ink); background: var(--cream); overflow: hidden; }
 .weekly-goal-progress i { display: block; height: 100%; background: var(--coral); }
 .weekly-goal-progress p { margin: 0; color: var(--muted); font-size: 8px; }
+.weekly-auto-review { padding: 15px; border: 1px solid var(--ink); background: var(--paper); box-shadow: 3px 3px 0 rgba(51, 46, 43, .13); display: grid; gap: 11px; }
+.weekly-auto-review-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.weekly-auto-review-heading strong { color: var(--coral); font-size: 11px; font-weight: 900; }
+.weekly-auto-review-heading small { color: var(--muted); font-size: 7px; }
+.weekly-auto-review-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.weekly-auto-review-list article { min-width: 0; min-height: 90px; padding: 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--cream); display: grid; align-content: start; gap: 7px; }
+.weekly-auto-review-list span { color: var(--ink); font-size: 8px; font-weight: 900; }
+.weekly-auto-review-list p { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.65; }
 .weekly-note-card { padding: 15px; border: 1px solid var(--ink); background: var(--cream); box-shadow: 3px 3px 0 rgba(51, 46, 43, .13); display: grid; gap: 10px; }
 .weekly-note-heading { min-height: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .weekly-note-heading > strong { color: var(--coral); font-size: 11px; font-weight: 900; }
@@ -1093,6 +1101,8 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .weekly-review-grid { grid-template-columns: minmax(0, 1fr); }
   .weekly-review-panel { min-height: 132px; }
   .weekly-review-nav strong { font-size: 9px; }
+  .weekly-auto-review-list { grid-template-columns: minmax(0, 1fr); }
+  .weekly-auto-review-list article { min-height: 0; }
   .weekly-note-editor > div { flex-wrap: wrap; }
   .weekly-review-next .primary-button { width: 100%; }
   .cycle-history-heading { align-items: flex-start; flex-direction: column; }

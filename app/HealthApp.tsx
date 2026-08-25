@@ -1328,6 +1328,79 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
     };
   }, [reviewEnd, reviewStart, state]);
 
+  const previousReview = useMemo(() => {
+    const previousStart = addDays(reviewStart, -7);
+    const previousEnd = addDays(reviewStart, -1);
+    const inPreviousWeek = (date: string) => date >= previousStart && date <= previousEnd;
+    const meals = state.meals.filter((item) => inPreviousWeek(item.date) && item.kind === "actual" && !item.skipped);
+    const nutrition = nutritionTotal(meals);
+    const nutritionDays = new Set(meals.map((item) => item.date)).size;
+    const average = (value: number) => nutritionDays ? roundNutrient(value / nutritionDays) : 0;
+    const workouts = state.workouts.filter((item) => inPreviousWeek(item.date) && item.kind === "actual");
+    const cardio = workouts.filter((item) => item.type === "유산소");
+    const conditions = state.cycles.filter((item) => inPreviousWeek(item.date) && (item.energy || item.appetite || item.symptoms?.length));
+    const averageCondition = (key: "energy" | "appetite") => {
+      const values = conditions.map((item) => item[key]).filter((value): value is number => Boolean(value));
+      return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+    };
+    return {
+      nutritionDays,
+      averageNutrition: { protein: average(nutrition.protein), sugar: average(nutrition.sugar), fiber: average(nutrition.fiber) },
+      actualWorkouts: workouts.length,
+      cardioMinutes: cardio.reduce((sum, item) => sum + item.minutes, 0),
+      energy: averageCondition("energy"),
+      appetite: averageCondition("appetite"),
+      conditionDays: conditions.length,
+    };
+  }, [reviewStart, state]);
+
+  const automaticReview = useMemo(() => {
+    const nutritionGoal = state.nutritionGoal;
+    const workoutGoal = state.workoutGoal ?? { cardioSessions: 2, cardioMinutes: 90 };
+    const hasCurrentRecords = review.nutritionDays + review.actualWorkouts + review.bodyCount + review.conditionDays > 0;
+    const hasPreviousRecords = previousReview.nutritionDays + previousReview.actualWorkouts + previousReview.conditionDays > 0;
+    const positives: string[] = [];
+    const adjustments: string[] = [];
+
+    if (review.bodyFatChange !== undefined && state.profile.targetBodyFatChange < 0 && review.bodyFatChange <= 0) positives.push(`체지방량이 주간 첫 측정보다 ${Math.abs(review.bodyFatChange).toFixed(1)}kg 낮아졌어요.`);
+    if (review.muscleChange !== undefined && review.muscleChange >= 0) positives.push(`골격근량을 ${signed(review.muscleChange)}kg로 지켰어요.`);
+    if (review.nutritionDays && review.averageNutrition.protein >= nutritionGoal.proteinMin) positives.push(`단백질 평균 ${review.averageNutrition.protein}g으로 최소 목표를 채웠어요.`);
+    if (review.nutritionDays && review.averageNutrition.fiber >= nutritionGoal.fiberMin) positives.push(`식이섬유 평균 ${review.averageNutrition.fiber}g으로 목표를 채웠어요.`);
+    if (review.nutritionDays && review.averageNutrition.sugar <= nutritionGoal.sugarMax) positives.push(`당류 평균 ${review.averageNutrition.sugar}g으로 상한 안에 머물렀어요.`);
+    if (review.cardioSessions >= workoutGoal.cardioSessions && review.cardioMinutes >= workoutGoal.cardioMinutes) positives.push(`개인 유산소 ${review.cardioSessions}회·${review.cardioMinutes}분으로 주간 목표를 달성했어요.`);
+    if (review.plannedMealSlots && review.completedMealPlans / review.plannedMealSlots >= .8) positives.push(`계획한 식사의 ${Math.round(review.completedMealPlans / review.plannedMealSlots * 100)}%를 실제 기록으로 이어갔어요.`);
+
+    if (review.nutritionDays < 3) adjustments.push(`식단 기록이 ${review.nutritionDays}일이라 평균 방향을 보기 어려워요. 먼저 3일 이상 기록해봐요.`);
+    else if (review.averageNutrition.protein < nutritionGoal.proteinMin) adjustments.push(`단백질이 하루 평균 ${Math.round(nutritionGoal.proteinMin - review.averageNutrition.protein)}g 부족해요.`);
+    if (review.nutritionDays >= 3 && review.averageNutrition.fiber < nutritionGoal.fiberMin) adjustments.push(`식이섬유가 하루 평균 ${Math.round(nutritionGoal.fiberMin - review.averageNutrition.fiber)}g 부족해요.`);
+    if (review.nutritionDays >= 3 && review.averageNutrition.sugar > nutritionGoal.sugarMax) adjustments.push(`당류가 하루 평균 상한보다 ${Math.round(review.averageNutrition.sugar - nutritionGoal.sugarMax)}g 높아요.`);
+    if (review.cardioSessions < workoutGoal.cardioSessions || review.cardioMinutes < workoutGoal.cardioMinutes) adjustments.push(`개인 유산소 목표까지 ${Math.max(0, workoutGoal.cardioSessions - review.cardioSessions)}회·${Math.max(0, workoutGoal.cardioMinutes - review.cardioMinutes)}분 남았어요.`);
+
+    const comparisonParts: string[] = [];
+    if (hasPreviousRecords) {
+      const mealDayDifference = review.nutritionDays - previousReview.nutritionDays;
+      const workoutDifference = review.actualWorkouts - previousReview.actualWorkouts;
+      const cardioDifference = review.cardioMinutes - previousReview.cardioMinutes;
+      if (mealDayDifference) comparisonParts.push(`식단 기록 ${mealDayDifference > 0 ? `${mealDayDifference}일 증가` : `${Math.abs(mealDayDifference)}일 감소`}`);
+      if (workoutDifference) comparisonParts.push(`운동 ${workoutDifference > 0 ? `${workoutDifference}회 증가` : `${Math.abs(workoutDifference)}회 감소`}`);
+      if (cardioDifference) comparisonParts.push(`유산소 ${cardioDifference > 0 ? `${cardioDifference}분 증가` : `${Math.abs(cardioDifference)}분 감소`}`);
+      if (!comparisonParts.length) comparisonParts.push("식단 기록일과 운동량이 지난주와 비슷해요");
+    }
+
+    let nextAction = "다음 주에는 식단과 운동 계획을 먼저 넣고 실제 기록을 이어가요.";
+    if (review.nutritionDays < 3) nextAction = "다음 주에는 우선 3일 이상 식사를 기록해 비교 가능한 평균을 만들어요.";
+    else if (review.averageNutrition.protein < nutritionGoal.proteinMin) nextAction = "다음 주 식사마다 단백질 음식을 하나씩 먼저 계획해요.";
+    else if (review.averageNutrition.fiber < nutritionGoal.fiberMin) nextAction = "다음 주 점심과 저녁에 채소·과일·통곡물 중 하나를 더해요.";
+    else if (review.cardioSessions < workoutGoal.cardioSessions || review.cardioMinutes < workoutGoal.cardioMinutes) nextAction = `다음 주 개인 유산소 ${workoutGoal.cardioSessions}회·${workoutGoal.cardioMinutes}분을 먼저 나눠 계획해요.`;
+
+    return [
+      { label: "잘한 점", text: hasCurrentRecords ? (positives[0] ?? `이번 주에 식단 ${review.nutritionDays}일·운동 ${review.actualWorkouts}회를 기록했어요.`) : "기록이 생기면 목표에 맞게 잘한 점을 찾아드려요." },
+      { label: "조정할 점", text: hasCurrentRecords ? (adjustments[0] ?? "현재 기록에서는 우선 조정할 큰 항목이 없어요.") : "아직 평가하지 않고 실제 기록을 기다릴게요." },
+      { label: "지난주 비교", text: hasPreviousRecords ? `${comparisonParts.join(" · ")}.` : "지난주 기록이 없어 이번 주가 첫 비교 기준이 돼요." },
+      { label: "다음 주 제안", text: hasCurrentRecords ? nextAction : "다음 주 계획을 먼저 세우고 기록을 시작해요." },
+    ];
+  }, [previousReview, review, state.nutritionGoal, state.profile.targetBodyFatChange, state.workoutGoal]);
+
   const conditionLabel = (value: number) => value ? conditionLabels[Math.min(4, Math.max(0, Math.round(value) - 1))] : "기록 없음";
   const saveReview = () => {
     const note = reviewNote.trim();
@@ -1363,6 +1436,10 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
         <article className="weekly-review-panel condition"><div className="weekly-panel-title"><span>월경·컨디션</span><small>{review.conditionDays}일 기록</small></div><strong>에너지 {conditionLabel(review.energy)}</strong><b>식욕 {conditionLabel(review.appetite)}</b><p>{review.symptoms || review.phaseLabel}</p></article>
       </div>
       <div className="weekly-goal-progress"><div><span>목표 진행</span><strong>{Math.round(review.timing.progress)}%</strong></div><div><i style={{ width: `${review.timing.progress}%` }} /></div><p>체지방 {signed(state.profile.targetBodyFatChange)}kg · 골격근 {signed(state.profile.targetMuscleChange)}kg</p></div>
+      <section className="weekly-auto-review">
+        <div className="weekly-auto-review-heading"><strong>이번 주 자동 분석</strong><small>기록 기준</small></div>
+        <div className="weekly-auto-review-list">{automaticReview.map((item) => <article key={item.label}><span>{item.label}</span><p>{item.text}</p></article>)}</div>
+      </section>
       <section className="weekly-note-card">
         <div className="weekly-note-heading">
           <strong>이번 주 메모</strong>
