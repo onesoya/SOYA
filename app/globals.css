@@ -238,8 +238,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .travel-reminder-options button.active { background: var(--coral); color: white; }
 .travel-reminder-section p { margin: 0; color: var(--muted); font-size: 7px; line-height: 1.6; }
 .energy-guide-mini { margin: -2px 0 10px; padding: 8px 10px; border: 1px solid var(--line); background: var(--cream); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.energy-guide-mini span { color: var(--muted); font-size: 7px; line-height: 1.5; }
+.energy-guide-mini span { min-width: 0; color: var(--muted); font-size: 7px; line-height: 1.5; }
 .energy-guide-mini button, .activity-energy-panel button { flex: 0 0 auto; min-height: 28px; padding: 0 8px; border: 1px solid var(--ink); background: var(--paper); color: var(--coral); font: inherit; font-size: 7px; font-weight: 850; cursor: pointer; }
+.energy-guide-mini button:disabled { opacity: .55; cursor: default; }
+.energy-guide-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 5px; }
+.energy-guide-mini .health-sync-mini-button { background: var(--coral); color: white; }
 .activity-energy-panel { padding: 10px 12px; border: 1px solid var(--line); background: var(--cream); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .activity-energy-panel > div { min-width: 0; display: grid; gap: 4px; }
 .activity-energy-panel span, .daily-activity-stats span { color: var(--muted); font-size: 7px; }
@@ -279,7 +282,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .health-shortcut-guide pre { margin: 9px 0 0; padding: 10px; background: var(--cream); color: var(--ink); font: 8px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .health-connection-message { margin: 0; padding: 9px 11px; background: var(--cream); color: var(--muted); font-size: 8px; line-height: 1.55; }
 .health-connection-actions { display: flex; justify-content: flex-end; gap: 9px; }
-.health-connection-actions .ghost-button, .health-connection-actions .delete-button { min-height: 36px; padding: 0 11px; font-size: 8px; }
+.health-connection-actions .primary-button, .health-connection-actions .ghost-button, .health-connection-actions .delete-button { min-height: 36px; padding: 0 11px; font-size: 8px; }
+.health-sync-now-button { margin-right: auto; }
 .micro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 19px; }
 .micro-stat { padding: 13px; background: var(--cream); border-radius: 16px; display: grid; gap: 4px; }
 .micro-stat span, .micro-stat small { color: var(--muted); font-size: 9px; }

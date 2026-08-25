@@ -178,6 +178,9 @@ const todayKey = () => {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
 
+const appleHealthShortcutName = "SOYA 건강 보내기";
+const appleHealthSyncPendingKey = "soya-apple-health-sync-pending";
+
 const id = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const number = (value: FormDataEntryValue | null) => Number(value || 0);
 const dateLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(new Date(`${value}T12:00:00`));
@@ -743,6 +746,7 @@ export function HealthApp() {
   const [saveState, setSaveState] = useState<"saved" | "saving" | "offline">("saved");
   const [pushStatus, setPushStatus] = useState<PushStatus>("off");
   const [pushMessage, setPushMessage] = useState("");
+  const [appleHealthSyncing, setAppleHealthSyncing] = useState(false);
   const saveQueue = useRef(Promise.resolve());
   const today = todayKey();
 
@@ -860,13 +864,64 @@ export function HealthApp() {
     });
   };
 
-  const refreshFromCloud = async () => {
+  const refreshFromCloud = useCallback(async () => {
     if (!authUser) return;
     await saveQueue.current;
     const saved = await loadUserState(authUser.uid);
     setState(normalizeAppState(saved));
     setSaveState("saved");
-  };
+  }, [authUser]);
+
+  const startAppleHealthSync = useCallback(() => {
+    if (typeof window === "undefined") return;
+    setAppleHealthSyncing(true);
+    setModal(null);
+    window.sessionStorage.setItem(appleHealthSyncPendingKey, "1");
+    const returnUrl = new URL(window.location.href);
+    returnUrl.searchParams.set("healthSync", "1");
+    const shortcutUrl = new URL("shortcuts://x-callback-url/run-shortcut");
+    shortcutUrl.searchParams.set("name", appleHealthShortcutName);
+    shortcutUrl.searchParams.set("x-success", returnUrl.toString());
+    shortcutUrl.searchParams.set("x-cancel", returnUrl.toString());
+    shortcutUrl.searchParams.set("x-error", returnUrl.toString());
+    window.location.assign(shortcutUrl.toString());
+  }, []);
+
+  useEffect(() => {
+    if (!authUser || !loaded) return;
+    let refreshing = false;
+    let timer: number | undefined;
+    const finishAppleHealthSync = () => {
+      if (refreshing || document.visibilityState !== "visible") return;
+      const params = new URLSearchParams(window.location.search);
+      const returnedFromShortcut = params.get("healthSync") === "1";
+      const pending = window.sessionStorage.getItem(appleHealthSyncPendingKey) === "1";
+      if (!returnedFromShortcut && !pending) return;
+      refreshing = true;
+      setAppleHealthSyncing(true);
+      window.sessionStorage.removeItem(appleHealthSyncPendingKey);
+      params.delete("healthSync");
+      const cleanQuery = params.toString();
+      window.history.replaceState({}, "", `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`);
+      timer = window.setTimeout(() => {
+        void refreshFromCloud()
+          .finally(() => {
+            setAppleHealthSyncing(false);
+            refreshing = false;
+          });
+      }, 900);
+    };
+    finishAppleHealthSync();
+    document.addEventListener("visibilitychange", finishAppleHealthSync);
+    window.addEventListener("focus", finishAppleHealthSync);
+    window.addEventListener("pageshow", finishAppleHealthSync);
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", finishAppleHealthSync);
+      window.removeEventListener("focus", finishAppleHealthSync);
+      window.removeEventListener("pageshow", finishAppleHealthSync);
+    };
+  }, [authUser, loaded, refreshFromCloud]);
 
   const todayBody = state.bodyRecords.find((entry) => entry.date === today);
   const todayMeals = state.meals.filter((entry) => entry.date === today);
@@ -1461,7 +1516,7 @@ export function HealthApp() {
         </header>
 
         {tab === "today" && (
-          <TodayView state={state} today={today} todayBody={todayBody} nutrition={nutrition} completedCount={completedCount} totalCount={completed.length} nextAction={nextAction} mealActual={mealActual} mealPlan={mealPlan} actualWorkouts={actualWorkouts} plannedWorkout={plannedWorkout} openNextAction={openNextAction} skipNextAction={skipNextAction} setModal={setModal} setTab={setTab} openMeal={openMeal} openWorkout={openWorkout} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} updateTravelDayLevel={updateTravelDayLevel} />
+          <TodayView state={state} today={today} todayBody={todayBody} nutrition={nutrition} completedCount={completedCount} totalCount={completed.length} nextAction={nextAction} mealActual={mealActual} mealPlan={mealPlan} actualWorkouts={actualWorkouts} plannedWorkout={plannedWorkout} openNextAction={openNextAction} skipNextAction={skipNextAction} setModal={setModal} setTab={setTab} openMeal={openMeal} openWorkout={openWorkout} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} syncAppleHealth={startAppleHealthSync} appleHealthSyncing={appleHealthSyncing} updateTravelDayLevel={updateTravelDayLevel} />
         )}
         {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openGoal={() => setModal("nutrition-goal")} openLibrary={() => setModal("food-library")} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} updateTravelDayLevel={updateTravelDayLevel} />}
         {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} updateTravelDayLevel={updateTravelDayLevel} />}
@@ -1480,7 +1535,7 @@ export function HealthApp() {
       {modal === "body-detail" && selectedBodyRecord && <BodyDetailSheet record={selectedBodyRecord} close={() => { setSelectedBodyRecord(undefined); setModal(null); }} edit={() => setModal("body")} remove={() => deleteBody(selectedBodyRecord)} />}
       {modal === "circumference" && <CircumferenceSheet today={today} latest={(state.circumferenceRecords ?? []).find((item) => item.id !== selectedCircumferenceRecord?.id)} draft={selectedCircumferenceRecord} close={() => { setSelectedCircumferenceRecord(undefined); setModal(null); }} save={saveCircumference} remove={deleteCircumference} />}
       {modal === "activity" && <ActivitySheet today={activityDate ?? today} draft={(state.dailyActivities ?? []).find((item) => item.date === (activityDate ?? today))} openAppleHealth={() => setModal("apple-health")} close={() => { setActivityDate(undefined); setModal(null); }} save={saveActivity} remove={deleteActivity} />}
-      {modal === "apple-health" && <AppleHealthSheet close={() => setModal(null)} refresh={refreshFromCloud} />}
+      {modal === "apple-health" && <AppleHealthSheet close={() => setModal(null)} refresh={refreshFromCloud} syncNow={startAppleHealthSync} syncing={appleHealthSyncing} />}
       {(modal === "meal-plan" || modal === "meal-actual") && <MealSheet today={mealDate ?? today} kind={modal === "meal-plan" ? "plan" : "actual"} library={state.foodLibrary ?? []} draft={mealDraft} presetType={mealPresetType} close={() => { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); setModal(null); }} save={saveMeal} />}
       {modal === "food-library" && <FoodLibrarySheet library={state.foodLibrary ?? []} close={() => setModal(null)} save={saveFoodLibraryItem} saveSet={saveFoodSet} remove={deleteFoodLibraryItem} />}
       {modal === "nutrition-goal" && <NutritionGoalSheet goal={state.nutritionGoal} close={() => setModal(null)} save={saveNutritionGoal} />}
@@ -1515,11 +1570,13 @@ type TodayViewProps = {
   openMeal: (kind: EntryKind, presetType?: MealType, draft?: MealEntry, date?: string) => void;
   openWorkout: (kind: EntryKind, draft?: WorkoutEntry, presetType?: WorkoutEntry["type"]) => void;
   openActivity: (date: string) => void;
+  syncAppleHealth: () => void;
+  appleHealthSyncing: boolean;
   updateTravelDayLevel: (date: string, level: TravelLevel) => void;
 };
 
 function TodayView(props: TodayViewProps) {
-  const { state, today, todayBody, nutrition, completedCount, totalCount, nextAction, mealActual, mealPlan, actualWorkouts, plannedWorkout, openNextAction, skipNextAction, setModal, setTab, openMeal, openWorkout, openActivity, updateTravelDayLevel } = props;
+  const { state, today, todayBody, nutrition, completedCount, totalCount, nextAction, mealActual, mealPlan, actualWorkouts, plannedWorkout, openNextAction, skipNextAction, setModal, setTab, openMeal, openWorkout, openActivity, syncAppleHealth, appleHealthSyncing, updateTravelDayLevel } = props;
   const goal = state.nutritionGoal;
   const latest = todayBody ?? state.bodyRecords[0];
   const prev = state.bodyRecords.find((item: BodyRecord) => item.id !== latest?.id);
@@ -1566,7 +1623,7 @@ function TodayView(props: TodayViewProps) {
     <section className="card nutrition-card">
       <CardTitle title="오늘의 영양" aside={<button className="text-button" onClick={() => setModal("nutrition-goal")}>목표 설정</button>} />
       <div className="calorie-total"><strong>{nutrition.calories.toLocaleString()}</strong><span>kcal</span>{!(travelToday && todayTravelLevel === "가볍게 기록") && <small>/ {energy.intakeMin.toLocaleString()}~{energy.intakeMax.toLocaleString()}</small>}</div>
-      {!(travelToday && todayTravelLevel === "가볍게 기록") && <div className="energy-guide-mini"><span>{energy.activity ? `활동 ${energy.activityCalories.toLocaleString()} kcal · 총소모 약 ${energy.expenditure.toLocaleString()} kcal` : "활동을 기록하면 오늘의 섭취 범위를 조정해요"}</span><button type="button" onClick={() => openActivity(today)}>{energy.activity ? "수정" : "활동 기록"}</button></div>}
+      {!(travelToday && todayTravelLevel === "가볍게 기록") && <div className="energy-guide-mini"><span>{energy.activity ? `활동 ${energy.activityCalories.toLocaleString()} kcal · 총소모 약 ${energy.expenditure.toLocaleString()} kcal${energy.activity.source === "apple_health" && energy.activity.importedAt ? ` · ${new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit" }).format(new Date(energy.activity.importedAt))} 동기화` : ""}` : "활동을 기록하면 오늘의 섭취 범위를 조정해요"}</span><div className="energy-guide-actions"><button type="button" className="health-sync-mini-button" disabled={appleHealthSyncing} onClick={syncAppleHealth}>{appleHealthSyncing ? "동기화 중" : "지금 동기화"}</button><button type="button" onClick={() => openActivity(today)}>{energy.activity ? "수정" : "직접 기록"}</button></div></div>}
       {!(travelToday && todayTravelLevel === "가볍게 기록") && <NutrientBar label="단백질" value={nutrition.protein} min={goal.proteinMin} max={goal.proteinMax} unit="g" tone="coral" />}
       {!(travelToday && todayTravelLevel !== "목표 유지") && <><NutrientBar label="탄수화물" value={nutrition.carbs} min={goal.carbsMin} max={goal.carbsMax} unit="g" tone="gold" /><NutrientBar label="지방" value={nutrition.fat} min={goal.fatMin} max={goal.fatMax} unit="g" tone="sage" /></>}
       <div className="micro-grid"><MicroStat label="당류" value={travelToday && todayTravelLevel === "가볍게 기록" ? `${nutrition.sugar}g` : `${nutrition.sugar} / ${goal.sugarMax}g`} hint={travelToday && todayTravelLevel === "가볍게 기록" ? "기록값" : "상한 기준"} /><MicroStat label="식이섬유" value={travelToday && todayTravelLevel === "가볍게 기록" ? `${nutrition.fiber}g` : `${nutrition.fiber} / ${goal.fiberMin}g`} hint={travelToday && todayTravelLevel === "가볍게 기록" ? "기록값" : "최소 목표"} /></div>
@@ -2744,7 +2801,7 @@ function ActivitySheet({ today, draft, openAppleHealth, close, save, remove }: {
   </form></Sheet>;
 }
 
-function AppleHealthSheet({ close, refresh }: { close: () => void; refresh: () => Promise<void> }) {
+function AppleHealthSheet({ close, refresh, syncNow, syncing }: { close: () => void; refresh: () => Promise<void>; syncNow: () => void; syncing: boolean }) {
   const [status, setStatus] = useState<AppleHealthConnectionStatus>();
   const [credentials, setCredentials] = useState<AppleHealthConnectionKey>();
   const [working, setWorking] = useState(true);
@@ -2837,12 +2894,12 @@ function AppleHealthSheet({ close, refresh }: { close: () => void; refresh: () =
 
       <section className="health-shortcut-guide">
         <strong>아이폰 단축어에서 한 번만 설정해요</strong>
-        <ol><li>건강 앱에서 오늘의 걸음 수와 활동 에너지를 가져와요.</li><li>현재 날짜를 <b>yyyy-MM-dd</b> 형식으로 만들어요.</li><li>‘URL 콘텐츠 가져오기’에서 POST·JSON을 선택하고 위 주소와 연결 키를 넣어요.</li><li>개인용 자동화에서 매일 저녁 실행하도록 정해요.</li></ol>
+        <ol><li>건강 앱에서 오늘의 걸음 수와 활동 에너지를 가져와요.</li><li>현재 날짜를 <b>yyyy-MM-dd</b> 형식으로 만들어요.</li><li>‘URL 콘텐츠 가져오기’에서 POST·JSON을 선택하고 위 주소와 연결 키를 넣어요.</li><li>앱의 ‘지금 동기화’ 버튼이나 개인용 자동화로 실행해요.</li></ol>
         <details><summary>보낼 항목 이름 보기</summary><pre>{`date\nsteps\nactiveCalories\nwatchWorn\nworkouts (선택)`}</pre></details>
       </section>
 
       {message && <p className="health-connection-message" role="status">{message}</p>}
-      <div className="health-connection-actions"><button type="button" className="ghost-button" disabled={working} onClick={() => void reload()}>새 기록 확인</button>{status?.connected && <button type="button" className="delete-button" disabled={working} onClick={() => void revoke()}>연결 해제</button>}</div>
+      <div className="health-connection-actions"><button type="button" className="primary-button health-sync-now-button" disabled={working || syncing || !status?.connected} onClick={syncNow}>{syncing ? "동기화 중" : "지금 동기화"}</button><button type="button" className="ghost-button" disabled={working} onClick={() => void reload()}>기록 새로고침</button>{status?.connected && <button type="button" className="delete-button" disabled={working} onClick={() => void revoke()}>연결 해제</button>}</div>
     </div>
   </Sheet>;
 }
