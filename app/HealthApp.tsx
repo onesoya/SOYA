@@ -1401,6 +1401,30 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
     ];
   }, [previousReview, review, state.nutritionGoal, state.profile.targetBodyFatChange, state.workoutGoal]);
 
+  const bodyGoalProgress = useMemo(() => {
+    const goalStart = state.profile.goalStartDate ?? reviewStart;
+    const records = state.bodyRecords
+      .filter((item) => item.date >= goalStart && item.date <= reviewEnd)
+      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    const baseline = records[0];
+    const latestRecord = records.at(-1);
+    const progress = (change: number, target: number, tolerance: number) => {
+      if (target === 0) return Math.abs(change) <= tolerance ? 100 : 0;
+      return Math.min(100, Math.max(0, change / target * 100));
+    };
+    if (!baseline || !latestRecord) return { baseline, latestRecord, bodyFatChange: 0, muscleChange: 0, bodyFatPercent: 0, musclePercent: 0 };
+    const bodyFatChange = roundNutrient(latestRecord.bodyFatMass - baseline.bodyFatMass);
+    const muscleChange = roundNutrient(latestRecord.skeletalMuscle - baseline.skeletalMuscle);
+    return {
+      baseline,
+      latestRecord,
+      bodyFatChange,
+      muscleChange,
+      bodyFatPercent: progress(bodyFatChange, state.profile.targetBodyFatChange, .2),
+      musclePercent: progress(muscleChange, state.profile.targetMuscleChange, .1),
+    };
+  }, [reviewEnd, reviewStart, state.bodyRecords, state.profile.goalStartDate, state.profile.targetBodyFatChange, state.profile.targetMuscleChange]);
+
   const conditionLabel = (value: number) => value ? conditionLabels[Math.min(4, Math.max(0, Math.round(value) - 1))] : "기록 없음";
   const saveReview = () => {
     const note = reviewNote.trim();
@@ -1435,7 +1459,13 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
         <article className="weekly-review-panel workout"><div className="weekly-panel-title"><span>운동</span><small>{review.actualWorkouts}회 수행</small></div><strong>유산소 {review.cardioSessions}회 · {review.cardioMinutes}분</strong><b>PT {review.ptSessions}회</b><p>{review.plannedWorkouts ? `계획 ${review.plannedWorkouts}회` : "운동 계획 없음"}</p></article>
         <article className="weekly-review-panel condition"><div className="weekly-panel-title"><span>월경·컨디션</span><small>{review.conditionDays}일 기록</small></div><strong>에너지 {conditionLabel(review.energy)}</strong><b>식욕 {conditionLabel(review.appetite)}</b><p>{review.symptoms || review.phaseLabel}</p></article>
       </div>
-      <div className="weekly-goal-progress"><div><span>목표 진행</span><strong>{Math.round(review.timing.progress)}%</strong></div><div><i style={{ width: `${review.timing.progress}%` }} /></div><p>체지방 {signed(state.profile.targetBodyFatChange)}kg · 골격근 {signed(state.profile.targetMuscleChange)}kg</p></div>
+      <section className="weekly-goal-progress">
+        <div className="weekly-goal-progress-heading"><strong>목표 진행</strong><small>{bodyGoalProgress.baseline && bodyGoalProgress.latestRecord ? `${bodyGoalProgress.baseline.date.replaceAll("-", ".")} → ${bodyGoalProgress.latestRecord.date.replaceAll("-", ".")}` : "기준 측정 필요"}</small></div>
+        <div className="weekly-goal-progress-grid">
+          <article><div><span>체지방량</span><strong>{Math.round(bodyGoalProgress.bodyFatPercent)}%</strong></div><div className="weekly-progress-track"><i className="body-fat" style={{ width: `${bodyGoalProgress.bodyFatPercent}%` }} /></div><p>{bodyGoalProgress.baseline ? `${signed(bodyGoalProgress.bodyFatChange)}kg` : "-"} / 목표 {signed(state.profile.targetBodyFatChange)}kg</p></article>
+          <article><div><span>골격근량</span><strong>{Math.round(bodyGoalProgress.musclePercent)}%</strong></div><div className="weekly-progress-track"><i className="muscle" style={{ width: `${bodyGoalProgress.musclePercent}%` }} /></div><p>{bodyGoalProgress.baseline ? `${signed(bodyGoalProgress.muscleChange)}kg` : "-"} / 목표 {signed(state.profile.targetMuscleChange)}kg</p></article>
+        </div>
+      </section>
       <section className="weekly-auto-review">
         <div className="weekly-auto-review-heading"><strong>이번 주 자동 분석</strong><small>기록 기준</small></div>
         <div className="weekly-auto-review-list">{automaticReview.map((item) => <article key={item.label}><span>{item.label}</span><p>{item.text}</p></article>)}</div>

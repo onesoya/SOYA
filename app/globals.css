@@ -297,11 +297,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .weekly-nutrition-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .weekly-nutrition-values span { min-width: 0; color: var(--muted); font-size: 8px; }
 .weekly-nutrition-values b { display: block; margin-bottom: 2px; color: var(--ink); font-size: 12px; }
-.weekly-goal-progress { display: grid; gap: 7px; padding: 14px; border: 1px solid var(--line); background: var(--paper); }
-.weekly-goal-progress > div:first-child { display: flex; justify-content: space-between; font-size: 9px; font-weight: 850; }
-.weekly-goal-progress > div:nth-child(2) { height: 8px; border: 1px solid var(--ink); background: var(--cream); overflow: hidden; }
-.weekly-goal-progress i { display: block; height: 100%; background: var(--coral); }
-.weekly-goal-progress p { margin: 0; color: var(--muted); font-size: 8px; }
+.weekly-goal-progress { display: grid; gap: 11px; padding: 14px; border: 1px solid var(--line); background: var(--paper); }
+.weekly-goal-progress-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.weekly-goal-progress-heading strong { color: var(--coral); font-size: 11px; font-weight: 900; }
+.weekly-goal-progress-heading small { color: var(--muted); font-size: 7px; }
+.weekly-goal-progress-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.weekly-goal-progress-grid article { min-width: 0; display: grid; gap: 7px; }
+.weekly-goal-progress-grid article > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.weekly-goal-progress-grid span { color: var(--ink); font-size: 8px; font-weight: 850; }
+.weekly-goal-progress-grid strong { color: var(--ink); font-size: 13px; }
+.weekly-progress-track { height: 8px; border: 1px solid var(--ink); background: var(--cream); overflow: hidden; }
+.weekly-progress-track i { display: block; height: 100%; }
+.weekly-progress-track i.body-fat { background: var(--coral); }
+.weekly-progress-track i.muscle { background: var(--sage); }
+.weekly-goal-progress-grid p { margin: 0; color: var(--muted); font-size: 7px; line-height: 1.5; }
 .weekly-auto-review { padding: 15px; border: 1px solid var(--ink); background: var(--paper); box-shadow: 3px 3px 0 rgba(51, 46, 43, .13); display: grid; gap: 11px; }
 .weekly-auto-review-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .weekly-auto-review-heading strong { color: var(--coral); font-size: 11px; font-weight: 900; }
@@ -1101,6 +1110,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .weekly-review-grid { grid-template-columns: minmax(0, 1fr); }
   .weekly-review-panel { min-height: 132px; }
   .weekly-review-nav strong { font-size: 9px; }
+  .weekly-goal-progress-grid { grid-template-columns: minmax(0, 1fr); }
   .weekly-auto-review-list { grid-template-columns: minmax(0, 1fr); }
   .weekly-auto-review-list article { min-height: 0; }
   .weekly-note-editor > div { flex-wrap: wrap; }
