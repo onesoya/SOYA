@@ -253,7 +253,7 @@ export const revokeAppleHealthConnection = onCall({
 
 export const importAppleHealth = onRequest({
   region: "asia-northeast3",
-  memory: "128MiB",
+  memory: "256MiB",
   timeoutSeconds: 30,
 }, async (request, response) => {
   if (request.method !== "POST") {
