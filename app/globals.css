@@ -46,7 +46,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .save-state { font-size: 11px; font-weight: 800; color: var(--sage); }
 .save-state.saving { color: var(--gold); }
 .save-state.offline { color: var(--coral); }
-.account-button { width: 34px; height: 34px; padding: 0; border: 2px solid var(--ink); border-radius: 50%; background: var(--cream); color: var(--ink); font: inherit; font-size: 13px; font-weight: 900; cursor: pointer; box-shadow: 2px 2px 0 var(--ink); }
 .icon-button { width: 42px; height: 42px; border-radius: 14px; border: 1px solid var(--line); background: var(--paper); cursor: pointer; font-size: 20px; }
 .reminder-button { display: grid; place-items: center; }
 .pixel-bell { position: relative; display: block; width: 15px; height: 14px; border: 2px solid var(--ink); border-top-width: 3px; border-radius: 7px 7px 2px 2px; }
@@ -728,8 +727,14 @@ html, body {
 
 .brand-mark { width: 46px; height: 46px; }
 .loading-mark { width: 64px; height: 64px; padding: 0; background: var(--paper); }
-.topbar-heading { display: flex; align-items: center; gap: 13px; }
+.topbar-heading { position: relative; display: flex; align-items: center; gap: 13px; }
+.topbar-tiger-button { width: 48px; height: 48px; flex: none; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .topbar-tiger { width: 48px; height: 48px; object-fit: cover; image-rendering: pixelated; border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--coral); }
+.account-popover { position: absolute; z-index: 70; top: 60px; left: 0; width: 190px; padding: 14px; border: 2px solid var(--ink); background: var(--paper); box-shadow: 4px 4px 0 var(--ink); }
+.account-popover p { margin: 0 0 12px; font-size: 12px; font-weight: 850; }
+.account-popover > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.account-popover button { min-height: 34px; border: 1px solid var(--ink); background: var(--cream); font-size: 10px; font-weight: 850; cursor: pointer; }
+.account-popover .logout-button { background: var(--coral); color: white; }
 
 .card, .next-card, .metric-card, .consult-checks > div,
 .week-days button, .mobile-nav, .sheet, .quick-button,

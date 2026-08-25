@@ -718,6 +718,8 @@ export function HealthApp() {
   const [authReady, setAuthReady] = useState(false);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authMessage, setAuthMessage] = useState("");
+  const [authSigningIn, setAuthSigningIn] = useState(false);
+  const [logoutPrompt, setLogoutPrompt] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "offline">("saved");
   const [pushStatus, setPushStatus] = useState<PushStatus>("off");
   const [pushMessage, setPushMessage] = useState("");
@@ -730,6 +732,7 @@ export function HealthApp() {
       if (!active) return;
       setAuthUser(user);
       setAuthReady(true);
+      setAuthSigningIn(false);
       setAuthMessage("");
       if (!user) {
         setState(createFreshState());
@@ -1384,9 +1387,22 @@ export function HealthApp() {
     setModal(null);
   };
 
+  const startGoogleSignIn = async () => {
+    setAuthMessage("");
+    setAuthSigningIn(true);
+    try {
+      await signInWithGoogle();
+    } catch {
+      setAuthSigningIn(false);
+      setAuthMessage("Google 로그인을 시작하지 못했어요.");
+    }
+  };
+
   if (!authReady) return <div className="loading-screen"><Image className="loading-mark" src="/tiger-icon-192.png" width={64} height={64} alt="" /><p>SOYA를 여는 중이에요</p></div>;
 
-  if (!authUser) return <main className="login-screen"><section className="login-card"><Image className="login-tiger" src="/tiger-icon-192.png" width={112} height={112} alt="SOYA 호랑이" /><span className="eyebrow">나만의 건강 기록</span><h1>SOYA</h1><p>내 기록은 내 Google 계정에만<br />안전하게 저장돼요.</p><button type="button" className="google-login-button" onClick={() => { setAuthMessage(""); void signInWithGoogle().catch(() => setAuthMessage("Google 로그인을 시작하지 못했어요.")); }}><span aria-hidden="true">G</span>Google로 로그인</button>{authMessage && <small className="login-error">{authMessage}</small>}</section></main>;
+  if (authSigningIn && !authUser) return <div className="loading-screen"><Image className="loading-mark" src="/tiger-icon-192.png" width={64} height={64} alt="" /><p>로그인 중...</p></div>;
+
+  if (!authUser) return <main className="login-screen"><section className="login-card"><Image className="login-tiger" src="/tiger-icon-192.png" width={112} height={112} alt="SOYA 호랑이" /><span className="eyebrow">나만의 건강 기록</span><h1>SOYA</h1><p>내 기록은 내 Google 계정에만<br />안전하게 저장돼요.</p><button type="button" className="google-login-button" onClick={() => void startGoogleSignIn()}><span aria-hidden="true">G</span>Google로 로그인</button>{authMessage && <small className="login-error">{authMessage}</small>}</section></main>;
 
   if (!loaded) return <div className="loading-screen"><Image className="loading-mark" src="/tiger-icon-192.png" width={64} height={64} alt="" /><p>오늘의 기록을 준비하고 있어요</p></div>;
 
@@ -1400,8 +1416,8 @@ export function HealthApp() {
 
       <main className="main-content">
         <header className="topbar">
-          <div className="topbar-heading"><Image className="topbar-tiger" src="/mascot-top-transparent.png" width={76} height={76} alt="호랑이 마스코트" /><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? travelToday ? <>여행 중에도<br />내 리듬대로</> : "오늘도 가볍게 기록해요" : tabs.find((item) => item.id === tab)?.label}</h1></div></div>
-          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "저장 확인 필요" : "저장됨"}</span><button className="account-button" type="button" title={`${authUser.email ?? "Google 계정"}에서 로그아웃`} aria-label="Google 계정에서 로그아웃" onClick={() => void signOutGoogleUser()}>{(authUser.displayName ?? authUser.email ?? "나").slice(0, 1)}</button><button className="icon-button reminder-button" onClick={() => setModal("reminders")} aria-label="알림 설정"><span className="pixel-bell" aria-hidden="true" /></button><button className="icon-button data-button" onClick={() => setModal("data-management")} aria-label="데이터 관리"><span aria-hidden="true">↓</span></button></div>
+          <div className="topbar-heading"><button className="topbar-tiger-button" type="button" aria-label="계정 메뉴" aria-expanded={logoutPrompt} onClick={() => setLogoutPrompt((current) => !current)}><Image className="topbar-tiger" src="/mascot-top-transparent.png" width={76} height={76} alt="호랑이 마스코트" /></button><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? travelToday ? <>여행 중에도<br />내 리듬대로</> : "오늘도 가볍게 기록해요" : tabs.find((item) => item.id === tab)?.label}</h1></div>{logoutPrompt && <div className="account-popover" role="dialog" aria-label="로그아웃 확인"><p>로그아웃 할까요?</p><div><button type="button" onClick={() => setLogoutPrompt(false)}>아니요</button><button type="button" className="logout-button" onClick={() => { setLogoutPrompt(false); void signOutGoogleUser(); }}>로그아웃</button></div></div>}</div>
+          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "저장 확인 필요" : "저장됨"}</span><button className="icon-button reminder-button" onClick={() => setModal("reminders")} aria-label="알림 설정"><span className="pixel-bell" aria-hidden="true" /></button><button className="icon-button data-button" onClick={() => setModal("data-management")} aria-label="데이터 관리"><span aria-hidden="true">↓</span></button></div>
         </header>
 
         {tab === "today" && (
