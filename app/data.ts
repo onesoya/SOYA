@@ -109,12 +109,15 @@ export type TravelLevel = "가볍게 기록" | "균형 유지" | "목표 유지"
 
 export type AppState = {
   profile: {
-    mode: "감량기" | "유지기" | "여행";
+    mode: "감량기" | "유지기";
     goalWeek: number;
     goalStartDate?: string;
     goalEndDate: string;
     targetBodyFatChange: number;
     targetMuscleChange: number;
+    travelActive?: boolean;
+    travelStartDate?: string;
+    travelEndDate?: string;
     travelLevel?: TravelLevel;
     travelDailyLevels?: Record<string, TravelLevel>;
   };
@@ -158,6 +161,7 @@ export const initialState: AppState = {
     goalEndDate: "2026-10-25",
     targetBodyFatChange: -2.5,
     targetMuscleChange: 0.3,
+    travelActive: false,
     travelDailyLevels: {},
   },
   nutritionGoal: {
