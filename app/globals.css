@@ -625,7 +625,9 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .nav-icon-workout { --nav-icon-size: 36px; }
 .nav-icon-today { --nav-icon-size: 34px; }
 .nav-icon-change { --nav-icon-size: 34px; }
-.nav-icon-consult { --nav-icon-size: 34px; }
+.nav-cycle-heart { width: 34px; height: 34px; display: grid; place-items: center; color: #8f8a84; font-family: Galmuri11, monospace; font-size: 30px; line-height: 1; filter: grayscale(1); opacity: .82; }
+.desktop-nav button.active .nav-cycle-heart,
+.mobile-nav button.active .nav-cycle-heart { color: var(--coral); filter: none; opacity: 1; }
 .desktop-nav button.active .nav-pixel-icon,
 .mobile-nav button.active .nav-pixel-icon { filter: none; opacity: 1; }
 .desktop-nav .nav-icon-today { margin-block: 0; }
@@ -725,6 +727,30 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .calendar-legend span { display: flex; align-items: center; gap: 6px; }
 .calendar-legend i { width: 9px; height: 9px; border: 1px solid var(--ink); }
 .calendar-legend .plan-heart { color: var(--coral); font-family: Arial, sans-serif; font-size: 12px; line-height: 1; }
+.menstrual-calendar-heading { align-items: center; }
+.menstrual-day { overflow: hidden; }
+.menstrual-day.brown-bleeding { background: #c8a185; color: #38271f; }
+.menstrual-day.main-bleeding { background: #efa09a; color: #43201e; }
+.menstrual-day.irregular-bleeding { background: repeating-linear-gradient(135deg, #f7d2ce 0 6px, #df746c 6px 10px); color: #3d1c19; }
+.fertile-flower { position: absolute; left: 4px; bottom: 2px; z-index: 2; color: #b789ad; font-family: Galmuri11, sans-serif; font-size: 13px; line-height: 1; text-shadow: 1px 1px 0 var(--paper); }
+.fertile-flower.ovulation { color: #8f6292; font-size: 15px; }
+.love-heart { position: absolute; right: 4px; bottom: 2px; z-index: 2; font-family: Arial, sans-serif; font-size: 13px; line-height: 1; }
+.love-heart.outline { color: transparent; -webkit-text-stroke: 1.3px #a83f4b; text-shadow: none; }
+.love-heart.filled { color: #a83f4b; text-shadow: 1px 1px 0 var(--paper); }
+.menstrual-metrics .metric-card { min-height: 132px; }
+.menstrual-summary { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; }
+.menstrual-summary > * { padding: 7px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--cream); font-size: 9px; }
+.menstrual-summary strong { background: #f4d8d2; }
+.menstrual-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 12px; }
+.menstrual-detail-grid > div { padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: white; display: grid; gap: 5px; }
+.menstrual-detail-grid span { color: var(--muted); font-size: 8px; }
+.menstrual-detail-grid strong { font-size: 10px; }
+.menstrual-note { margin: 12px 0 0; padding: 12px; border-left: 3px solid var(--coral); background: var(--cream); color: var(--muted); font-size: 10px; line-height: 1.65; }
+.prediction-note { margin: -3px 2px 0; color: var(--muted); font-size: 8px; line-height: 1.65; }
+.combined-view-tabs { width: min(360px, 100%); margin: 0 auto 18px; padding: 4px; border: 2px solid var(--ink); border-radius: 999px; background: var(--paper); display: grid; grid-template-columns: 1fr 1fr; gap: 4px; box-shadow: 3px 3px 0 rgba(51,46,43,.16); }
+.combined-view-tabs button { min-height: 42px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-family: inherit; font-size: 11px; font-weight: 850; cursor: pointer; }
+.combined-view-tabs button.active { background: var(--coral); color: white; }
+.meal-skip-button { min-height: 48px; border: 1px solid var(--line); border-radius: 14px; background: var(--cream); color: var(--muted); font-family: inherit; font-size: 10px; font-weight: 850; cursor: pointer; }
 
 .workout-day { align-content: center; gap: 5px; }
 .workout-marks { min-height: 10px; display: flex; justify-content: center; gap: 2px; }

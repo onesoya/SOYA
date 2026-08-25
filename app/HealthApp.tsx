@@ -18,7 +18,7 @@ import {
   WorkoutEntry,
 } from "./data";
 
-type Tab = "today" | "food" | "workout" | "change" | "consult";
+type Tab = "today" | "food" | "workout" | "menstrual" | "change";
 type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail";
 type Consultation = AppState["consultations"][number];
 type WeeklyWorkoutDraft = {
@@ -57,20 +57,20 @@ const tabs: { id: Tab; label: string }[] = [
   { id: "food", label: "식단" },
   { id: "workout", label: "운동" },
   { id: "today", label: "홈" },
-  { id: "change", label: "변화" },
-  { id: "consult", label: "상담" },
+  { id: "menstrual", label: "월경" },
+  { id: "change", label: "변화와 상담" },
 ];
 
-const navIcons: Record<Tab, string> = {
+const navIcons: Record<Exclude<Tab, "menstrual">, string> = {
   food: "/nav-food-v3-small.png",
   workout: "/nav-workout-v3-small.png",
   today: "/nav-home-v3-small.png",
-  change: "/nav-change-v3-small.png",
-  consult: "/nav-consult-v3-small.png",
+  change: "/nav-consult-v3-small.png",
 };
 
 const roundNutrient = (value: number) => Math.round(value * 10) / 10;
 const foodUnits: FoodUnit[] = ["g", "kg", "개", "인분"];
+const conditionLabels = ["매우 적음", "적음", "보통", "많음", "매우 많음"];
 const emptyNutrition = (): NutritionTotal => ({ calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0 });
 const mealNutrition = (meal: MealEntry): NutritionTotal => {
   if (meal.kind === "actual" || !meal.components?.length) return { calories: meal.calories, protein: meal.protein, carbs: meal.carbs, fat: meal.fat, sugar: meal.sugar, fiber: meal.fiber };
@@ -132,6 +132,40 @@ function cycleSummary(entry: CycleEntry) {
     ...(entry.symptoms ?? []),
   ].filter(Boolean);
   return details.join(" · ");
+}
+
+function daysBetween(start: string, end: string) {
+  return Math.round((new Date(`${end}T12:00:00`).getTime() - new Date(`${start}T12:00:00`).getTime()) / 86_400_000);
+}
+
+function menstrualPrediction(entries: CycleEntry[], today: string) {
+  const byDate = new Map(entries.map((entry) => [entry.date, entry]));
+  const starts = entries
+    .filter((entry) => entry.state === "본 출혈" && byDate.get(addDays(entry.date, -1))?.state !== "본 출혈")
+    .map((entry) => entry.date)
+    .sort();
+  const intervals = starts.slice(1).map((date, index) => daysBetween(starts[index], date)).filter((days) => days >= 15 && days <= 60).slice(-6);
+  const sortedIntervals = [...intervals].sort((a, b) => a - b);
+  const cycleLength = sortedIntervals.length ? Math.round(sortedIntervals[Math.floor(sortedIntervals.length / 2)]) : 28;
+  const lastStart = starts.at(-1);
+  const fertileDates = new Set<string>();
+  const ovulationDates = new Set<string>();
+  if (!lastStart) return { cycleLength, lastStart: undefined, nextPeriod: undefined, nextOvulation: undefined, fertileDates, ovulationDates, basedOnCycles: 0 };
+  let nextPeriod = addDays(lastStart, cycleLength);
+  while (nextPeriod <= today) nextPeriod = addDays(nextPeriod, cycleLength);
+  let nextOvulation = addDays(nextPeriod, -14);
+  if (nextOvulation < today) {
+    nextPeriod = addDays(nextPeriod, cycleLength);
+    nextOvulation = addDays(nextPeriod, -14);
+  }
+  let projectedStart = lastStart;
+  for (let index = 0; index < 18; index += 1) {
+    const ovulation = addDays(projectedStart, cycleLength - 14);
+    ovulationDates.add(ovulation);
+    for (let offset = -5; offset <= 1; offset += 1) fertileDates.add(addDays(ovulation, offset));
+    projectedStart = addDays(projectedStart, cycleLength);
+  }
+  return { cycleLength, lastStart, nextPeriod, nextOvulation, fertileDates, ovulationDates, basedOnCycles: intervals.length };
 }
 
 function monthCells(anchor: string) {
@@ -265,6 +299,7 @@ export function HealthApp() {
   const [mealDate, setMealDate] = useState<string>();
   const [workoutDraft, setWorkoutDraft] = useState<WorkoutEntry>();
   const [workoutPresetType, setWorkoutPresetType] = useState<WorkoutEntry["type"]>();
+  const [cycleDate, setCycleDate] = useState<string>();
   const [selectedBodyRecord, setSelectedBodyRecord] = useState<BodyRecord>();
   const [selectedConsultation, setSelectedConsultation] = useState<Consultation>();
   const [loaded, setLoaded] = useState(false);
@@ -509,6 +544,8 @@ export function HealthApp() {
   const saveMeal = (event: FormEvent<HTMLFormElement>, kind: EntryKind) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const skipped = kind === "actual" && submitter?.name === "skipped" && submitter.value === "true";
     const editingId = String(data.get("editingId") || "");
     const mealType = String(data.get("mealType")) as MealType;
     let components: MealFoodComponent[] = [];
@@ -527,7 +564,7 @@ export function HealthApp() {
     } catch {
       components = [];
     }
-    if (!components.length) return;
+    if (!components.length && !skipped) return;
     const singleComponent = components.length === 1 ? components[0] : undefined;
     const libraryId = singleComponent?.foodLibraryId ?? "";
     const libraryItem = (state.foodLibrary ?? []).find((item) => item.id === libraryId);
@@ -536,15 +573,16 @@ export function HealthApp() {
     const servings = libraryItem && basis ? quantity! / basis.amount : undefined;
     const meal: MealEntry = {
       id: editingId || id("meal"), date: String(data.get("date")), mealType, kind,
-      title: String(data.get("title")), calories: kind === "actual" ? number(data.get("calories")) : 0,
-      protein: kind === "actual" ? number(data.get("protein")) : 0, carbs: kind === "actual" ? number(data.get("carbs")) : 0,
-      fat: kind === "actual" ? number(data.get("fat")) : 0, sugar: kind === "actual" ? number(data.get("sugar")) : 0,
-      fiber: kind === "actual" ? number(data.get("fiber")) : 0,
+      title: skipped ? "먹지 않음" : String(data.get("title")), calories: kind === "actual" && !skipped ? number(data.get("calories")) : 0,
+      protein: kind === "actual" && !skipped ? number(data.get("protein")) : 0, carbs: kind === "actual" && !skipped ? number(data.get("carbs")) : 0,
+      fat: kind === "actual" && !skipped ? number(data.get("fat")) : 0, sugar: kind === "actual" && !skipped ? number(data.get("sugar")) : 0,
+      fiber: kind === "actual" && !skipped ? number(data.get("fiber")) : 0,
       foodLibraryId: libraryId || undefined,
       servings,
       quantity,
       servingLabel: libraryItem ? foodBasisLabel(libraryItem) : undefined,
-      components,
+      components: skipped ? [] : components,
+      skipped,
     };
     commit((current) => ({
       ...current,
@@ -672,8 +710,9 @@ export function HealthApp() {
   };
 
   const deleteCycle = (entry: CycleEntry) => {
-    if (!window.confirm(`${entry.date} 생리·컨디션 기록을 삭제할까요?`)) return;
+    if (!window.confirm(`${entry.date} 월경·컨디션 기록을 삭제할까요?`)) return;
     commit((current) => ({ ...current, cycles: current.cycles.filter((item) => item.id !== entry.id) }));
+    setCycleDate(undefined);
     setModal(null);
   };
 
@@ -720,6 +759,7 @@ export function HealthApp() {
       note: String(data.get("note")),
     };
     commit((current) => ({ ...current, cycles: [...current.cycles.filter((item) => item.id !== editingId && item.date !== cycle.date), cycle] }));
+    setCycleDate(undefined);
     setModal(null);
   };
 
@@ -754,14 +794,14 @@ export function HealthApp() {
         )}
         {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openGoal={() => setModal("nutrition-goal")} updateTravelDayLevel={updateTravelDayLevel} />}
         {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} updateTravelDayLevel={updateTravelDayLevel} />}
-        {tab === "change" && <ChangeView state={state} today={today} setModal={setModal} openDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} />}
-        {tab === "consult" && <ConsultView state={state} commit={commit} openWeeklyPlan={() => setModal("weekly-plan")} deleteConsultation={deleteConsultation} openDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
+        {tab === "menstrual" && <MenstrualView state={state} today={today} openRecord={(date) => { setCycleDate(date); setModal("cycle"); }} />}
+        {tab === "change" && <ChangeConsultView state={state} today={today} setModal={setModal} commit={commit} openWeeklyPlan={() => setModal("weekly-plan")} deleteConsultation={deleteConsultation} openBodyDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} openConsultationDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
       </main>
 
       <button className="fab" onClick={() => setModal("quick")} aria-label="빠른 추가">+</button>
       <nav className="mobile-nav">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}><NavPixelIcon tab={item.id} /><small>{item.label}</small></button>)}</nav>
 
-      {modal === "quick" && <QuickSheet close={() => setModal(null)} select={(next) => { if (next === "body") setSelectedBodyRecord(undefined); if (next === "workout-plan" || next === "workout-actual") { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); } if (next === "meal-plan" || next === "meal-actual") { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); } setModal(next); }} />}
+      {modal === "quick" && <QuickSheet close={() => setModal(null)} select={(next) => { if (next === "body") setSelectedBodyRecord(undefined); if (next === "cycle") setCycleDate(undefined); if (next === "workout-plan" || next === "workout-actual") { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); } if (next === "meal-plan" || next === "meal-actual") { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); } setModal(next); }} />}
       {modal === "body" && <BodySheet today={today} latest={state.bodyRecords.find((item) => item.id !== selectedBodyRecord?.id)} draft={selectedBodyRecord} close={() => { setSelectedBodyRecord(undefined); setModal(null); }} save={saveBody} />}
       {modal === "body-detail" && selectedBodyRecord && <BodyDetailSheet record={selectedBodyRecord} close={() => { setSelectedBodyRecord(undefined); setModal(null); }} edit={() => setModal("body")} remove={() => deleteBody(selectedBodyRecord)} />}
       {(modal === "meal-plan" || modal === "meal-actual") && <MealSheet today={mealDate ?? today} kind={modal === "meal-plan" ? "plan" : "actual"} library={state.foodLibrary ?? []} draft={mealDraft} presetType={mealPresetType} close={() => { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); setModal(null); }} save={saveMeal} />}
@@ -771,7 +811,7 @@ export function HealthApp() {
       {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={() => { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); setModal(null); }} save={saveWorkout} />}
       {modal === "workout-goal" && <WorkoutGoalSheet goal={state.workoutGoal ?? initialState.workoutGoal!} close={() => setModal(null)} save={saveWorkoutGoal} />}
       {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} close={() => setModal(null)} save={saveWeeklyPlan} />}
-      {modal === "cycle" && <CycleSheet today={today} draft={state.cycles.find((item) => item.date === today)} close={() => setModal(null)} save={saveCycle} remove={deleteCycle} />}
+      {modal === "cycle" && <CycleSheet today={cycleDate ?? today} draft={state.cycles.find((item) => item.date === (cycleDate ?? today))} previous={state.cycles.find((item) => item.date === addDays(cycleDate ?? today, -1))} close={() => { setCycleDate(undefined); setModal(null); }} save={saveCycle} remove={deleteCycle} />}
       {modal === "consultation-detail" && selectedConsultation && <ConsultationDetailSheet consultation={selectedConsultation} close={() => { setSelectedConsultation(undefined); setModal(null); }} remove={() => deleteConsultation(selectedConsultation)} />}
     </div>
   );
@@ -897,7 +937,7 @@ function FoodView({ state, today, openMeal, deleteMeal, openGoal, updateTravelDa
         const actuals = state.meals.filter((m) => m.date === selectedDate && m.mealType === type && m.kind === "actual");
         return <article key={type} className="meal-card editable-meal-card"><div><span>{mealLabels[type]}</span>{actuals.length > 0 && <b>기록 완료</b>}</div>
           {plans.map((plan) => <EntryItem key={plan.id} label="계획" title={plan.title} record={() => openMeal("actual", type, plan, selectedDate)} edit={() => openMeal("plan", type, plan, selectedDate)} remove={() => deleteMeal(plan)} />)}
-          {actuals.map((actual) => <EntryItem key={actual.id} label="기록" title={actual.title} detail={`${actual.calories} kcal · 단백질 ${actual.protein}g`} edit={() => openMeal("actual", type, actual, selectedDate)} remove={() => deleteMeal(actual)} />)}
+          {actuals.map((actual) => <EntryItem key={actual.id} label="기록" title={actual.title} detail={actual.skipped ? "건너뜀으로 기록" : `${actual.calories} kcal · 단백질 ${actual.protein}g`} edit={() => openMeal("actual", type, actual, selectedDate)} remove={() => deleteMeal(actual)} />)}
           {!plans.length && !actuals.length && <p className="no-entry">아직 계획이나 기록이 없어요.</p>}
           <div className="meal-add-actions">{!actuals.length && <button onClick={() => openMeal("plan", type, undefined, selectedDate)}>계획 추가</button>}<button onClick={() => openMeal("actual", type, undefined, selectedDate)}>{actuals.length ? "기록 추가" : "기록하기"}</button></div>
         </article>;
@@ -930,6 +970,48 @@ function WorkoutView({ state, today, openWorkout, deleteWorkout, openGoal, updat
     <section className="card"><CardTitle title="운동 계획·기록" aside={dateLabel(selectedDate)} />{entries.length ? <div className="timeline">{entries.map((entry) => <article key={entry.id}><span className={`timeline-dot ${entry.kind}`} /><div><small>{entry.kind === "plan" ? "계획" : "완료"} · {entry.type}</small><h3>{entry.title}</h3><p>{entry.minutes}분 · 강도 {typeof entry.intensity === "number" ? `${entry.intensity}/10` : entry.intensity || "미기록"}{entry.heartRate ? ` · 심박 ${entry.heartRate}` : ""}</p>{entry.overlapsSteps && <span className="overlap-badge">걸음 수 중복</span>}{entry.details && <em>{entry.details}</em>}<div className="entry-button-row">{entry.kind === "plan" && <button className="timeline-action" onClick={() => openWorkout("actual", entry)}>계획대로 기록</button>}<button className="timeline-action" onClick={() => openWorkout(entry.kind, entry)}>수정</button><button className="delete-text-button" onClick={() => deleteWorkout(entry)}>삭제</button></div></div></article>)}</div> : <EmptyState text="이날 운동 계획이나 기록이 없어요." action="운동 계획하기" onClick={() => openForDate("plan")} showIcon={false} />}</section>
     <section className="card"><CardTitle title="PT 빠른 기록" /><button className="secondary-button" onClick={() => openWorkout("actual", undefined, "PT")}>PT 내용 기록하기</button></section>
   </div>;
+}
+
+function MenstrualView({ state, today, openRecord }: { state: AppState; today: string; openRecord: (date: string) => void }) {
+  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
+  const [selectedDate, setSelectedDate] = useState(today);
+  const cells = monthCells(`${selectedMonth}-01`);
+  const prediction = menstrualPrediction(state.cycles, today);
+  const selected = state.cycles.find((entry) => entry.date === selectedDate);
+  const changeMonth = (month: string) => {
+    setSelectedMonth(month);
+    if (!selectedDate.startsWith(month)) setSelectedDate(`${month}-01`);
+  };
+  const goToday = () => {
+    setSelectedMonth(today.slice(0, 7));
+    setSelectedDate(today);
+  };
+  return <div className="section-stack menstrual-view">
+    <section className="card pixel-calendar-card menstrual-calendar-card">
+      <div className="calendar-heading menstrual-calendar-heading"><div><span className="eyebrow">월경 캘린더</span><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /></div><button className="primary-button" onClick={() => openRecord(selectedDate)}>{selected ? "기록 수정" : "기록"}</button></div>
+      <div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div>
+      <div className="month-grid">{cells.map((date, index) => {
+        if (!date) return <span className="calendar-blank" key={`blank-${index}`} />;
+        const entry = state.cycles.find((item) => item.date === date);
+        const stateClass = entry?.state === "갈색 출혈" ? "brown-bleeding" : entry?.state === "본 출혈" ? "main-bleeding" : entry?.state === "부정출혈" ? "irregular-bleeding" : "";
+        const love = (entry?.sexCount ?? 0) > 0 ? entry?.contraception === "피임하지 않음" ? "filled" : entry?.contraception === "피임함" ? "outline" : "" : "";
+        const fertile = prediction.fertileDates.has(date);
+        const ovulation = prediction.ovulationDates.has(date);
+        const description = [entry ? cycleSummary(entry) : "", fertile ? "예상 가임기" : "", ovulation ? "예상 배란일" : ""].filter(Boolean).join(", ");
+        return <button type="button" key={date} className={`calendar-day menstrual-day ${stateClass} ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`} onClick={() => setSelectedDate(date)} aria-label={`${date}${description ? `, ${description}` : ""}`}><b>{Number(date.slice(-2))}</b>{fertile && <span className={`fertile-flower ${ovulation ? "ovulation" : ""}`} aria-hidden="true">✿</span>}{love && <span className={`love-heart ${love}`} aria-hidden="true">♥</span>}</button>;
+      })}</div>
+    </section>
+    <div className="metric-grid menstrual-metrics"><MetricCard label="평균 주기" value={prediction.lastStart ? String(prediction.cycleLength) : "-"} unit="일" hint={prediction.basedOnCycles ? `최근 ${prediction.basedOnCycles + 1}주기 기준` : prediction.lastStart ? "기록 1회 · 28일 기준" : "본 출혈 기록 필요"} /><MetricCard label="다음 예상 배란일" value={prediction.nextOvulation ? prediction.nextOvulation.slice(5).replace("-", ".") : "-"} unit="" hint={prediction.nextPeriod ? `다음 월경 예상 ${prediction.nextPeriod.slice(5).replace("-", ".")}` : "기록이 쌓이면 계산"} /></div>
+    <section className="card menstrual-day-detail"><CardTitle title={dateLabel(selectedDate)} aside={<button className="text-button" onClick={() => openRecord(selectedDate)}>{selected ? "수정" : "기록하기"}</button>} />
+      {selected ? <><div className="menstrual-summary"><strong>{selected.state}</strong>{selected.flow && selected.flow !== "없음" && <span>월경량 {selected.flow}</span>}{selected.pain && selected.pain !== "없음" && <span>월경통 {selected.pain}</span>}{(selected.symptoms ?? []).map((symptom) => <span key={symptom}>{symptom}</span>)}</div><div className="menstrual-detail-grid"><div><span>에너지</span><strong>{selected.energy ? conditionLabels[selected.energy - 1] : "-"}</strong></div><div><span>식욕</span><strong>{selected.appetite ? conditionLabels[selected.appetite - 1] : "-"}</strong></div>{(selected.sexCount ?? 0) > 0 && <div><span>사랑 기록</span><strong>{selected.sexCount}회 · {selected.contraception}</strong></div>}</div>{selected.note && <p className="menstrual-note">{selected.note}</p>}</> : <EmptyState text="이날의 월경과 컨디션 기록이 없어요." action="기록하기" onClick={() => openRecord(selectedDate)} showIcon={false} />}
+    </section>
+    <p className="prediction-note">꽃무늬는 최근 월경 기록으로 계산한 예상 가임기예요. 피임이나 임신 판단의 확정 기준으로 사용할 수는 없어요.</p>
+  </div>;
+}
+
+function ChangeConsultView({ state, today, setModal, commit, openWeeklyPlan, deleteConsultation, openBodyDetail, openConsultationDetail }: { state: AppState; today: string; setModal: (modal: Modal) => void; commit: (updater: (current: AppState) => AppState) => void; openWeeklyPlan: () => void; deleteConsultation: (consultation: Consultation) => void; openBodyDetail: (record: BodyRecord) => void; openConsultationDetail: (consultation: Consultation) => void }) {
+  const [view, setView] = useState<"change" | "consult">("change");
+  return <><div className="combined-view-tabs" role="tablist" aria-label="변화와 상담 화면 선택"><button type="button" role="tab" aria-selected={view === "change"} className={view === "change" ? "active" : ""} onClick={() => setView("change")}>변화</button><button type="button" role="tab" aria-selected={view === "consult"} className={view === "consult" ? "active" : ""} onClick={() => setView("consult")}>상담</button></div>{view === "change" ? <ChangeView state={state} today={today} setModal={setModal} openDetail={openBodyDetail} /> : <ConsultView state={state} commit={commit} openWeeklyPlan={openWeeklyPlan} deleteConsultation={deleteConsultation} openDetail={openConsultationDetail} />}</>;
 }
 
 function ChangeView({ state, today, setModal, openDetail }: { state: AppState; today: string; setModal: (modal: Modal) => void; openDetail: (record: BodyRecord) => void }) {
@@ -978,6 +1060,7 @@ function WorkoutMark({ type, kind }: { type: WorkoutEntry["type"]; kind: EntryKi
   </svg>;
 }
 function NavPixelIcon({ tab }: { tab: Tab }) {
+  if (tab === "menstrual") return <span className="nav-cycle-heart" aria-hidden="true">♥</span>;
   return <Image className={`nav-pixel-icon nav-icon-${tab}`} src={navIcons[tab]} width={36} height={36} alt="" draggable={false} unoptimized />;
 }
 function RecordRow({ label, detail, done, onClick }: { label: string; detail: string; done: boolean; onClick: () => void }) { return <button className="record-row" onClick={onClick}><span className={`check ${done ? "done" : ""}`}>{done ? "✓" : ""}</span><span><strong>{label}</strong><small>{detail}</small></span><b>›</b></button>; }
@@ -989,7 +1072,7 @@ function EntryItem({ label, title, detail, record, edit, remove }: { label: stri
 
 function Sheet({ title, subtitle, close, children }: { title: string; subtitle?: string; close: () => void; children: React.ReactNode }) { return <div className="sheet-backdrop"><section className="sheet" role="dialog" aria-modal="true"><div className="sheet-handle" /><header><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div><button onClick={close} aria-label="닫기">×</button></header>{children}</section></div>; }
 
-function QuickSheet({ close, select }: { close: () => void; select: (modal: Modal) => void }) { return <Sheet title="무엇을 추가할까요?" close={close}><h3 className="sheet-section-title">지금 기록하기</h3><div className="quick-grid"><QuickButton label="인바디" onClick={() => select("body")} /><QuickButton label="생리 상태" onClick={() => select("cycle")} /><QuickButton label="먹은 식사" onClick={() => select("meal-actual")} /><QuickButton label="한 운동" onClick={() => select("workout-actual")} /></div><h3 className="sheet-section-title">미리 계획하기</h3><div className="quick-grid three"><QuickButton label="식사 계획" onClick={() => select("meal-plan")} /><QuickButton label="운동 계획" onClick={() => select("workout-plan")} /><QuickButton label="주간 계획" onClick={() => select("weekly-plan")} /></div></Sheet>; }
+function QuickSheet({ close, select }: { close: () => void; select: (modal: Modal) => void }) { return <Sheet title="무엇을 추가할까요?" close={close}><h3 className="sheet-section-title">지금 기록하기</h3><div className="quick-grid"><QuickButton label="인바디" onClick={() => select("body")} /><QuickButton label="월경 상태" onClick={() => select("cycle")} /><QuickButton label="먹은 식사" onClick={() => select("meal-actual")} /><QuickButton label="한 운동" onClick={() => select("workout-actual")} /></div><h3 className="sheet-section-title">미리 계획하기</h3><div className="quick-grid three"><QuickButton label="식사 계획" onClick={() => select("meal-plan")} /><QuickButton label="운동 계획" onClick={() => select("workout-plan")} /><QuickButton label="주간 계획" onClick={() => select("weekly-plan")} /></div></Sheet>; }
 function QuickButton({ label, onClick }: { label: string; onClick: () => void }) { return <button className="quick-button" onClick={onClick}><strong>{label}</strong></button>; }
 
 function FatTrendChart({ records }: { records: BodyRecord[] }) {
@@ -1085,6 +1168,8 @@ function MealSheet({ today, kind, library, draft, presetType, close, save }: { t
   });
   const initialComponents = draft?.components?.length
     ? draft.components.map((item) => ({ ...item, id: item.id || id("meal-food") }))
+    : draft?.skipped
+      ? []
     : initialFood
       ? [makeFoodComponent(initialFood, initialQuantity)]
       : draft?.title
@@ -1154,6 +1239,7 @@ function MealSheet({ today, kind, library, draft, presetType, close, save }: { t
       })}</div> : <p className="meal-component-empty">음식을 추가해주세요.</p>}</section>
       {kind === "actual" && <div className="macro-grid"><Field label="칼로리"><input type="number" name="calories" min="0" value={nutrients.calories} onChange={(event) => setNutrient("calories", event.target.value)} placeholder="kcal" /></Field><Field label="단백질"><input type="number" name="protein" min="0" step="0.1" value={nutrients.protein} onChange={(event) => setNutrient("protein", event.target.value)} placeholder="g" /></Field><Field label="탄수화물"><input type="number" name="carbs" min="0" step="0.1" value={nutrients.carbs} onChange={(event) => setNutrient("carbs", event.target.value)} placeholder="g" /></Field><Field label="지방"><input type="number" name="fat" min="0" step="0.1" value={nutrients.fat} onChange={(event) => setNutrient("fat", event.target.value)} placeholder="g" /></Field><Field label="당류"><input type="number" name="sugar" min="0" step="0.1" value={nutrients.sugar} onChange={(event) => setNutrient("sugar", event.target.value)} placeholder="g" /></Field><Field label="식이섬유"><input type="number" name="fiber" min="0" step="0.1" value={nutrients.fiber} onChange={(event) => setNutrient("fiber", event.target.value)} placeholder="g" /></Field></div>}
       <button className="primary-button submit-button" type="submit" disabled={!title}>{editing ? "수정 저장" : kind === "plan" ? "계획 저장" : "식사 기록 저장"}</button>
+      {kind === "actual" && <button className="meal-skip-button" type="submit" name="skipped" value="true">{draft?.skipped ? "먹지 않음으로 유지" : "이번 끼니는 먹지 않음"}</button>}
     </form>
   </Sheet>;
 }
@@ -1407,14 +1493,14 @@ function ConsultationDetailSheet({ consultation, close, remove }: { consultation
   return <Sheet title="상담 다시보기" close={close}><div className="detail-date"><strong>{consultation.date}</strong></div><span className={`source-badge ${consultation.source}`}>{consultation.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span><div className="consultation-text consultation-popup-text">{consultation.text}</div><button type="button" className="delete-button full-delete-button" onClick={remove}>상담 삭제</button></Sheet>;
 }
 
-function CycleSheet({ today, draft, close, save, remove }: { today: string; draft?: CycleEntry; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void; remove: (entry: CycleEntry) => void }) {
+function CycleSheet({ today, draft, previous, close, save, remove }: { today: string; draft?: CycleEntry; previous?: CycleEntry; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void; remove: (entry: CycleEntry) => void }) {
   const symptoms = ["졸림", "피로"];
-  return <Sheet title="생리·컨디션 기록" close={close}><form className="form-stack" onSubmit={save}>
+  return <Sheet title="월경·컨디션 기록" close={close}><form className="form-stack" onSubmit={save}>
     <input type="hidden" name="editingId" value={draft?.id ?? ""} />
     <Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field>
-    <Field label="오늘 상태"><select name="state" defaultValue={draft?.state ?? "없음"}><option>없음</option><option>갈색 출혈</option><option>본 출혈</option><option>부정출혈</option></select></Field>
-    <div className="two-fields"><Field label="생리량"><select name="flow" defaultValue={draft?.flow ?? "없음"}><option>없음</option><option>소량</option><option>보통</option><option>많음</option></select></Field><Field label="생리통"><select name="pain" defaultValue={draft?.pain ?? "없음"}><option>없음</option><option>약함</option><option>보통</option><option>심함</option></select></Field></div>
-    <div className="two-fields"><Field label="에너지 (1~5)"><select name="energy" defaultValue={draft?.energy ?? 3}>{[1,2,3,4,5].map((value) => <option value={value} key={value}>{value}</option>)}</select></Field><Field label="식욕 (1~5)"><select name="appetite" defaultValue={draft?.appetite ?? 3}>{[1,2,3,4,5].map((value) => <option value={value} key={value}>{value}</option>)}</select></Field></div>
+    <Field label="오늘 상태"><select name="state" defaultValue={draft?.state ?? previous?.state ?? "없음"}><option>없음</option><option>갈색 출혈</option><option>본 출혈</option><option>부정출혈</option></select></Field>
+    <div className="two-fields"><Field label="월경량"><select name="flow" defaultValue={draft?.flow ?? previous?.flow ?? "없음"}><option>없음</option><option>소량</option><option>보통</option><option>많음</option></select></Field><Field label="월경통"><select name="pain" defaultValue={draft?.pain ?? "없음"}><option>없음</option><option>약함</option><option>보통</option><option>심함</option></select></Field></div>
+    <div className="two-fields"><Field label="에너지"><select name="energy" defaultValue={draft?.energy ?? 3}>{conditionLabels.map((label, index) => <option value={index + 1} key={label}>{label}</option>)}</select></Field><Field label="식욕"><select name="appetite" defaultValue={draft?.appetite ?? 3}>{conditionLabels.map((label, index) => <option value={index + 1} key={label}>{label}</option>)}</select></Field></div>
     <fieldset className="cycle-check-group"><legend>오늘 느낀 증상</legend><div>{symptoms.map((symptom) => <label key={symptom}><input type="checkbox" name="symptoms" value={symptom} defaultChecked={draft?.symptoms?.includes(symptom)} /><span>{symptom}</span></label>)}</div></fieldset>
     <section className="cycle-love-section"><strong>사랑 기록</strong><div className="two-fields"><Field label="횟수"><input type="number" name="sexCount" min="0" max="20" defaultValue={draft?.sexCount ?? 0} /></Field><Field label="피임 여부"><select name="contraception" defaultValue={draft?.contraception ?? "해당 없음"}><option>해당 없음</option><option>피임함</option><option>피임하지 않음</option></select></Field></div></section>
     <Field label="메모 (선택)"><textarea name="note" defaultValue={draft?.note ?? ""} placeholder="평소와 다른 점이 있다면 적어주세요." /></Field>
