@@ -18,7 +18,7 @@ import {
 } from "./data";
 
 type Tab = "today" | "food" | "workout" | "change" | "consult";
-type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail";
+type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "consultation-detail";
 type Consultation = AppState["consultations"][number];
 type WeeklyWorkoutDraft = {
   id: string;
@@ -203,6 +203,36 @@ function weeklyCardio(state: AppState, anchor: string) {
   return { sessions: entries.length, minutes: entries.reduce((sum, item) => sum + item.minutes, 0) };
 }
 
+function goalTiming(profile: AppState["profile"], today: string) {
+  const startKey = profile.goalStartDate ?? today;
+  const start = new Date(`${startKey}T12:00:00`).getTime();
+  const end = new Date(`${profile.goalEndDate}T12:00:00`).getTime();
+  const now = new Date(`${today}T12:00:00`).getTime();
+  const day = 86_400_000;
+  const totalDays = Math.max(1, Math.round((end - start) / day));
+  const elapsedDays = Math.max(0, Math.round((now - start) / day));
+  return {
+    startKey,
+    week: Math.max(1, Math.floor(elapsedDays / 7) + 1),
+    daysLeft: Math.max(0, Math.ceil((end - now) / day)),
+    progress: Math.min(100, Math.max(0, elapsedDays / totalDays * 100)),
+  };
+}
+
+function assessNutrition(total: NutritionTotal, mealCount: number, complete: boolean, profile: AppState["profile"], goal: AppState["nutritionGoal"]): "none" | "balanced" | "partial" | "attention" {
+  if (!mealCount) return "none";
+  if (profile.mode === "여행" && profile.travelLevel === "가볍게 기록") return complete ? "balanced" : "partial";
+  if (!complete) return "partial";
+  if (profile.mode === "여행" && (profile.travelLevel ?? "균형 유지") === "균형 유지") {
+    if (total.sugar > goal.sugarMax * 1.5 || total.protein < goal.proteinMin * 0.5) return "attention";
+    if (total.protein >= goal.proteinMin * 0.8 && total.sugar <= goal.sugarMax * 1.15 && total.fiber >= goal.fiberMin * 0.7) return "balanced";
+    return "partial";
+  }
+  if (total.sugar > goal.sugarMax * 1.25 || total.calories > goal.caloriesMax * 1.15 || total.protein < goal.proteinMin * 0.65) return "attention";
+  if (total.calories >= goal.caloriesMin && total.calories <= goal.caloriesMax && total.protein >= goal.proteinMin && total.sugar <= goal.sugarMax && total.fiber >= goal.fiberMin) return "balanced";
+  return "partial";
+}
+
 export function HealthApp() {
   const [state, setState] = useState<AppState>(initialState);
   const [tab, setTab] = useState<Tab>("today");
@@ -223,7 +253,7 @@ export function HealthApp() {
       .then((response) => response.json() as Promise<{ state?: AppState }>)
       .then((data) => {
         const saved = data.state ?? initialState;
-        setState({ ...saved, foodLibrary: (saved.foodLibrary ?? []).map(normalizeFoodLibraryItem) });
+        setState({ ...saved, profile: { ...initialState.profile, ...saved.profile }, foodLibrary: (saved.foodLibrary ?? []).map(normalizeFoodLibraryItem) });
       })
       .catch(() => setSaveState("offline"))
       .finally(() => setLoaded(true));
@@ -283,6 +313,7 @@ export function HealthApp() {
   const todayWorkouts = state.workouts.filter((entry) => entry.date === today);
   const actualWorkouts = todayWorkouts.filter((entry) => entry.kind === "actual");
   const plannedWorkout = todayWorkouts.find((entry) => entry.kind === "plan");
+  const goalClock = goalTiming(state.profile, today);
 
   const nutrition = nutritionTotal(actualMeals);
 
@@ -368,6 +399,29 @@ export function HealthApp() {
         caloriesMin, caloriesMax, proteinMin, proteinMax, carbsMin, carbsMax, fatMin, fatMax,
         sugarMax: Math.max(0, number(data.get("sugarMax"))),
         fiberMin: Math.max(0, number(data.get("fiberMin"))),
+      },
+    }));
+    setModal(null);
+  };
+
+  const saveProfileGoal = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const mode = String(data.get("mode")) as AppState["profile"]["mode"];
+    const goalStartDate = String(data.get("goalStartDate"));
+    const requestedEnd = String(data.get("goalEndDate"));
+    const goalEndDate = requestedEnd < goalStartDate ? goalStartDate : requestedEnd;
+    const elapsed = Math.max(0, Math.floor((new Date(`${today}T12:00:00`).getTime() - new Date(`${goalStartDate}T12:00:00`).getTime()) / 604_800_000));
+    commit((current) => ({
+      ...current,
+      profile: {
+        mode,
+        goalWeek: elapsed + 1,
+        goalStartDate,
+        goalEndDate,
+        targetBodyFatChange: number(data.get("targetBodyFatChange")),
+        targetMuscleChange: number(data.get("targetMuscleChange")),
+        travelLevel: mode === "여행" ? String(data.get("travelLevel")) as AppState["profile"]["travelLevel"] : undefined,
       },
     }));
     setModal(null);
@@ -606,7 +660,7 @@ export function HealthApp() {
       <aside className="desktop-nav">
         <div className="brand"><Image className="brand-mark" src="/tiger-icon-192.png" width={46} height={46} alt="" /><div><strong>나의 밸런스</strong><small>온전히 나를 위한 기록</small></div></div>
         <nav>{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}><NavPixelIcon tab={item.id} />{item.label}</button>)}</nav>
-        <div className="side-note"><span>감량기 {state.profile.goalWeek}주차</span><strong>체중보다 변화를 봐요</strong></div>
+        <div className="side-note"><span>{state.profile.mode} {goalClock.week}주차</span><strong>{state.profile.mode === "여행" ? state.profile.travelLevel ?? "균형 유지" : "체중보다 변화를 봐요"}</strong></div>
       </aside>
 
       <main className="main-content">
@@ -620,7 +674,7 @@ export function HealthApp() {
         )}
         {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openGoal={() => setModal("nutrition-goal")} />}
         {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} />}
-        {tab === "change" && <ChangeView state={state} setModal={setModal} openDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} />}
+        {tab === "change" && <ChangeView state={state} today={today} setModal={setModal} openDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} />}
         {tab === "consult" && <ConsultView state={state} commit={commit} openWeeklyPlan={() => setModal("weekly-plan")} deleteConsultation={deleteConsultation} openDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
       </main>
 
@@ -633,6 +687,7 @@ export function HealthApp() {
       {(modal === "meal-plan" || modal === "meal-actual") && <MealSheet today={mealDate ?? today} kind={modal === "meal-plan" ? "plan" : "actual"} library={state.foodLibrary ?? []} draft={mealDraft} presetType={mealPresetType} close={() => { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); setModal(null); }} save={saveMeal} />}
       {modal === "food-library" && <FoodLibrarySheet library={state.foodLibrary ?? []} close={() => setModal(null)} save={saveFoodLibraryItem} saveSet={saveFoodSet} remove={deleteFoodLibraryItem} />}
       {modal === "nutrition-goal" && <NutritionGoalSheet goal={state.nutritionGoal} close={() => setModal(null)} save={saveNutritionGoal} />}
+      {modal === "profile-goal" && <ProfileGoalSheet profile={state.profile} today={today} close={() => setModal(null)} save={saveProfileGoal} />}
       {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={() => { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); setModal(null); }} save={saveWorkout} />}
       {modal === "workout-goal" && <WorkoutGoalSheet goal={state.workoutGoal ?? initialState.workoutGoal!} close={() => setModal(null)} save={saveWorkoutGoal} />}
       {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} close={() => setModal(null)} save={saveWeeklyPlan} />}
@@ -670,10 +725,18 @@ function TodayView(props: TodayViewProps) {
   const cycle = state.cycles.find((item: CycleEntry) => item.date === today);
   const workoutGoal = state.workoutGoal ?? initialState.workoutGoal!;
   const cardio = weeklyCardio(state, today);
+  const targetTiming = goalTiming(state.profile, today);
   return <div className="dashboard-grid">
     <section className="next-card full-card">
       <div><span className="eyebrow">{nextAction.eyebrow}</span><h2>{nextAction.title}</h2><p>{nextAction.detail}</p></div>
       {nextAction.type !== "done" && <div className="next-actions"><button className="ghost-button" onClick={skipNextAction}>오늘은 건너뛰기</button><button className="primary-button" onClick={openNextAction}>기록하기 <span>→</span></button></div>}
+    </section>
+
+    <section className="card goal-summary-card">
+      <CardTitle title="현재 목표" aside={<button className="text-button" onClick={() => setModal("profile-goal")}>목표 수정</button>} />
+      <div className="goal-mode-line"><span className={`goal-mode-badge mode-${state.profile.mode}`}>{state.profile.mode}</span><strong>{targetTiming.week}주차 · {targetTiming.daysLeft}일 남음</strong></div>
+      {state.profile.mode === "여행" ? <div className="travel-level"><span>관리 수준</span><strong>{state.profile.travelLevel ?? "균형 유지"}</strong></div> : <div className="goal-target-grid"><div><span>체지방량</span><strong>{signed(state.profile.targetBodyFatChange)}kg</strong></div><div><span>골격근량</span><strong>{signed(state.profile.targetMuscleChange)}kg</strong></div></div>}
+      <div className="goal-progress"><div className="progress-track"><i style={{ width: `${targetTiming.progress}%` }} /></div><small>{targetTiming.startKey.replaceAll("-", ".")} → {state.profile.goalEndDate.replaceAll("-", ".")}</small></div>
     </section>
 
     <section className="card records-card">
@@ -716,12 +779,7 @@ function FoodView({ state, today, openMeal, deleteMeal, openGoal }: { state: App
   const cells = monthCells(`${selectedMonth}-01`);
   const mealStatus = (date: string) => {
     const meals = state.meals.filter((item) => item.date === date && item.kind === "actual" && !item.skipped);
-    if (!meals.length) return "none";
-    const totals = meals.reduce((sum, item) => ({ calories: sum.calories + item.calories, protein: sum.protein + item.protein, sugar: sum.sugar + item.sugar, fiber: sum.fiber + item.fiber }), { calories: 0, protein: 0, sugar: 0, fiber: 0 });
-    if (new Set(meals.map((item) => item.mealType)).size < 3) return "partial";
-    if (totals.sugar > state.nutritionGoal.sugarMax * 1.25 || totals.calories > state.nutritionGoal.caloriesMax * 1.15 || totals.protein < state.nutritionGoal.proteinMin * 0.65) return "attention";
-    if (totals.calories >= state.nutritionGoal.caloriesMin && totals.calories <= state.nutritionGoal.caloriesMax && totals.protein >= state.nutritionGoal.proteinMin && totals.sugar <= state.nutritionGoal.sugarMax && totals.fiber >= state.nutritionGoal.fiberMin) return "balanced";
-    return "partial";
+    return assessNutrition(nutritionTotal(meals), meals.length, new Set(meals.map((item) => item.mealType)).size >= 3, state.profile, state.nutritionGoal);
   };
   const hasMealPlan = (date: string) => state.meals.some((item) => item.date === date && item.kind === "plan");
   const changeMonth = (month: string) => {
@@ -735,9 +793,9 @@ function FoodView({ state, today, openMeal, deleteMeal, openGoal }: { state: App
   const selectedNutritionMeals = state.meals.filter((item) => item.date === selectedDate && item.kind === nutritionMode && !item.skipped);
   const selectedNutrition = nutritionTotal(selectedNutritionMeals);
   const goal = state.nutritionGoal;
-  const nutritionTone = !selectedNutritionMeals.length ? "none" : selectedNutrition.sugar > goal.sugarMax * 1.25 || selectedNutrition.calories > goal.caloriesMax * 1.15 || selectedNutrition.protein < goal.proteinMin * 0.65 ? "attention" : selectedNutrition.calories >= goal.caloriesMin && selectedNutrition.calories <= goal.caloriesMax && selectedNutrition.protein >= goal.proteinMin && selectedNutrition.sugar <= goal.sugarMax && selectedNutrition.fiber >= goal.fiberMin ? "balanced" : "partial";
+  const nutritionTone = assessNutrition(selectedNutrition, selectedNutritionMeals.length, new Set(selectedNutritionMeals.map((item) => item.mealType)).size >= 3, state.profile, goal);
   const nutritionLabel = nutritionTone === "balanced" ? "잘했어요" : nutritionTone === "attention" ? "아쉬워요" : nutritionTone === "partial" ? "괜찮아요" : nutritionMode === "plan" ? "계획 없음" : "기록 없음";
-  const calorieGuide = selectedNutrition.calories < goal.caloriesMin ? `목표 하한까지 ${Math.round(goal.caloriesMin - selectedNutrition.calories)} kcal` : selectedNutrition.calories <= goal.caloriesMax ? "칼로리 목표 범위 안" : `목표 상한보다 ${Math.round(selectedNutrition.calories - goal.caloriesMax)} kcal 많음`;
+  const calorieGuide = state.profile.mode === "여행" && state.profile.travelLevel === "가볍게 기록" ? "여행 중에는 기록을 남긴 것만으로 충분해요" : state.profile.mode === "여행" && (state.profile.travelLevel ?? "균형 유지") === "균형 유지" ? "여행 중에는 단백질·당류·식이섬유 중심으로 살펴봐요" : selectedNutrition.calories < goal.caloriesMin ? `목표 하한까지 ${Math.round(goal.caloriesMin - selectedNutrition.calories)} kcal` : selectedNutrition.calories <= goal.caloriesMax ? "칼로리 목표 범위 안" : `목표 상한보다 ${Math.round(selectedNutrition.calories - goal.caloriesMax)} kcal 많음`;
   return <div className="section-stack"><section className="card pixel-calendar-card"><div className="calendar-heading food-calendar-heading"><div><span className="eyebrow">식단 밸런스</span><div className="food-month-actions"><MonthNavigator value={selectedMonth} onChange={changeMonth} onToday={goToday} /><button className="primary-button food-plan-button" onClick={() => openMeal("plan", undefined, undefined, selectedDate)}>식사 계획</button></div></div></div><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <button type="button" key={date} onClick={() => setSelectedDate(date)} className={`calendar-day ${mealStatus(date)} ${hasMealPlan(date) ? "meal-planned" : ""} ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`}><b>{Number(date.slice(-2))}</b></button> : <span className="calendar-blank" key={`blank-${index}`} />)}</div><div className="calendar-legend"><span><i className="balanced" />잘했어요</span><span><i className="partial" />괜찮아요</span><span><i className="attention" />아쉬워요</span><span><b className="plan-heart">♥</b>계획</span></div></section>
     <section className="card daily-nutrition-card">
       <CardTitle title={`${dateLabel(selectedDate)} 영양`} aside={<button className="text-button" onClick={openGoal}>목표 설정</button>} />
@@ -785,12 +843,14 @@ function WorkoutView({ state, today, openWorkout, deleteWorkout, openGoal }: { s
   </div>;
 }
 
-function ChangeView({ state, setModal, openDetail }: { state: AppState; setModal: (modal: Modal) => void; openDetail: (record: BodyRecord) => void }) {
+function ChangeView({ state, today, setModal, openDetail }: { state: AppState; today: string; setModal: (modal: Modal) => void; openDetail: (record: BodyRecord) => void }) {
   const latest = state.bodyRecords[0];
   const records = state.bodyRecords.slice(0, 7).reverse();
   const oldest = records[0];
   const measuredAt = latest ? `${latest.date.replaceAll("-", ".")} · ${latest.time}` : "기록 없음";
-  return <div className="section-stack"><section className="card change-overview"><div><span className="eyebrow">최근 측정 흐름</span><h2>체지방 {oldest && latest ? `${signed(latest.bodyFatMass - oldest.bodyFatMass)}kg` : "-"} · 골격근 {oldest && latest ? `${signed(latest.skeletalMuscle - oldest.skeletalMuscle)}kg` : "-"}</h2></div><button className="primary-button" onClick={() => setModal("body")}>인바디 입력</button></section>
+  const timing = goalTiming(state.profile, today);
+  const goalCopy = state.profile.mode === "여행" ? `${state.profile.travelLevel ?? "균형 유지"} · ${timing.daysLeft}일 남음` : `체지방 ${signed(state.profile.targetBodyFatChange)}kg · 골격근 ${signed(state.profile.targetMuscleChange)}kg`;
+  return <div className="section-stack"><section className="card change-overview"><div><span className="eyebrow">{state.profile.mode} {timing.week}주차</span><h2>체지방 {oldest && latest ? `${signed(latest.bodyFatMass - oldest.bodyFatMass)}kg` : "-"} · 골격근 {oldest && latest ? `${signed(latest.skeletalMuscle - oldest.skeletalMuscle)}kg` : "-"}</h2><p>{goalCopy}</p></div><div className="change-overview-actions"><button className="ghost-button" onClick={() => setModal("profile-goal")}>목표 수정</button><button className="primary-button" onClick={() => setModal("body")}>인바디 입력</button></div></section>
     <div className="metric-grid change-metric-grid"><MetricCard label="체지방량" value={String(latest?.bodyFatMass ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="골격근량" value={String(latest?.skeletalMuscle ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="체중" value={String(latest?.weight ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="내장지방" value={String(latest?.visceralFat ?? "-")} unit="Lv" hint={measuredAt} /></div>
     <section className="card chart-card"><CardTitle title="최근 체지방량" aside="kg · 최근 7회" /><FatTrendChart records={records} /></section>
     <section className="card"><CardTitle title="측정 기록" aside={`${state.bodyRecords.length}개`} /><div className="data-table">{state.bodyRecords.slice(0, 8).map((record) => <button type="button" key={record.id} onClick={() => openDetail(record)} aria-label={`${record.date} 인바디 상세 보기`}><span><strong>{record.date}</strong><small>{record.time} · {record.measurementTiming ?? record.condition.split(" · ")[0]} · {record.device ?? record.condition.split(" · ")[1]}</small></span><span>{record.bodyFatMass}<small>kg 지방</small></span><span>{record.skeletalMuscle}<small>kg 골격근</small></span><b aria-hidden="true">›</b></button>)}</div></section>
@@ -1188,6 +1248,18 @@ function NutritionGoalSheet({ goal, close, save }: { goal: AppState["nutritionGo
     <RangeFields label="지방" minName="fatMin" maxName="fatMax" minValue={goal.fatMin} maxValue={goal.fatMax} unit="g" />
     <div className="two-fields"><Field label="당류 상한 (g)"><input type="number" name="sugarMax" min="0" step="0.1" defaultValue={goal.sugarMax} required /></Field><Field label="식이섬유 하한 (g)"><input type="number" name="fiberMin" min="0" step="0.1" defaultValue={goal.fiberMin} required /></Field></div>
     <button className="primary-button submit-button" type="submit">영양 목표 저장</button>
+  </form></Sheet>;
+}
+
+function ProfileGoalSheet({ profile, today, close, save }: { profile: AppState["profile"]; today: string; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void }) {
+  const [mode, setMode] = useState<AppState["profile"]["mode"]>(profile.mode);
+  const travelLevels: NonNullable<AppState["profile"]["travelLevel"]>[] = ["가볍게 기록", "균형 유지", "목표 유지"];
+  return <Sheet title="목표와 모드" close={close}><form className="form-stack profile-goal-form" onSubmit={save}>
+    <div className="profile-mode-tabs">{(["감량기", "유지기", "여행"] as AppState["profile"]["mode"][]).map((item) => <label key={item} className={mode === item ? "active" : ""}><input type="radio" name="mode" value={item} checked={mode === item} onChange={() => setMode(item)} /><span>{item === "여행" ? "여행 모드" : item}</span></label>)}</div>
+    <div className="two-fields sheet-leading-fields"><Field label="시작일"><input type="date" name="goalStartDate" defaultValue={profile.goalStartDate ?? today} required /></Field><Field label="종료일"><input type="date" name="goalEndDate" defaultValue={profile.goalEndDate} required /></Field></div>
+    {mode === "여행" ? <section className="travel-level-picker"><strong>여행 중 관리 수준</strong>{travelLevels.map((level) => <label key={level} className={(profile.travelLevel ?? "균형 유지") === level ? "selected-default" : ""}><input type="radio" name="travelLevel" value={level} defaultChecked={(profile.travelLevel ?? "균형 유지") === level} /><span><b>{level}</b><small>{level === "가볍게 기록" ? "먹은 것과 활동만 편하게 남겨요" : level === "균형 유지" ? "단백질과 식이섬유, 과식 여부만 살펴요" : "평소 영양 목표를 여행 중에도 이어가요"}</small></span></label>)}</section> : <section className="body-goal-fields"><strong>기간 동안의 변화 목표</strong><div className="two-fields"><Field label="체지방량 변화 (kg)"><input type="number" name="targetBodyFatChange" step="0.1" defaultValue={profile.targetBodyFatChange} required /></Field><Field label="골격근량 변화 (kg)"><input type="number" name="targetMuscleChange" step="0.1" defaultValue={profile.targetMuscleChange} required /></Field></div></section>}
+    {mode === "여행" && <><input type="hidden" name="targetBodyFatChange" value={profile.targetBodyFatChange} /><input type="hidden" name="targetMuscleChange" value={profile.targetMuscleChange} /></>}
+    <button className="primary-button submit-button" type="submit">목표 저장</button>
   </form></Sheet>;
 }
 

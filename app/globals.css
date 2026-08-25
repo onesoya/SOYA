@@ -115,6 +115,32 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .nutrition-goal-form { gap: 16px; }
 .nutrition-goal-range { padding: 12px; border: 1px solid var(--line); background: var(--cream); display: grid; gap: 9px; }
 .nutrition-goal-range > strong { font-size: 10px; }
+.goal-summary-card { display: grid; gap: 14px; }
+.goal-mode-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.goal-mode-line > strong { font-size: 10px; }
+.goal-mode-badge { padding: 7px 9px; border: 1px solid var(--ink); background: var(--coral); color: white; font-size: 9px; font-weight: 850; }
+.goal-target-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--line); }
+.goal-target-grid > div { min-width: 0; padding: 11px; display: grid; gap: 5px; }
+.goal-target-grid > div + div { border-left: 1px solid var(--line); }
+.goal-target-grid span, .travel-level span { color: var(--muted); font-size: 8px; }
+.goal-target-grid strong, .travel-level strong { font-size: 13px; }
+.travel-level { padding: 12px; border: 1px solid var(--line); background: var(--sage-soft); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.goal-progress { display: grid; gap: 7px; }
+.goal-progress small { color: var(--muted); font-size: 7px; text-align: right; }
+.profile-mode-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--ink); }
+.profile-mode-tabs label { min-width: 0; min-height: 44px; display: grid; place-items: center; color: var(--muted); cursor: pointer; }
+.profile-mode-tabs label + label { border-left: 1px solid var(--ink); }
+.profile-mode-tabs label.active { background: var(--coral); color: white; }
+.profile-mode-tabs input { position: absolute; opacity: 0; pointer-events: none; }
+.profile-mode-tabs span { font-size: 9px; font-weight: 850; }
+.body-goal-fields, .travel-level-picker { padding: 12px; border: 1px solid var(--line); background: var(--cream); display: grid; gap: 10px; }
+.body-goal-fields > strong, .travel-level-picker > strong { font-size: 10px; }
+.travel-level-picker label { min-width: 0; padding: 10px; border: 1px solid var(--line); background: var(--paper); display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.travel-level-picker label:has(input:checked) { border-color: var(--coral); box-shadow: inset 0 0 0 1px var(--coral); }
+.travel-level-picker input { flex: 0 0 auto; width: 18px; height: 18px; accent-color: var(--coral); }
+.travel-level-picker label > span { min-width: 0; display: grid; gap: 5px; }
+.travel-level-picker b { font-size: 9px; }
+.travel-level-picker small { color: var(--muted); font-size: 7px; line-height: 1.6; }
 .micro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 19px; }
 .micro-stat { padding: 13px; background: var(--cream); border-radius: 16px; display: grid; gap: 4px; }
 .micro-stat span, .micro-stat small { color: var(--muted); font-size: 9px; }
@@ -758,6 +784,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
 }
 .change-overview h2 { margin: 8px 0 5px; font-size: clamp(18px, 3vw, 25px); }
 .change-overview p { margin: 0; color: var(--muted); font-size: 10px; }
+.change-overview-actions { flex: 0 0 auto; display: flex; gap: 9px; }
 .trend-chart-wrap { width: 100%; overflow-x: auto; }
 .trend-chart { display: block; width: 100%; min-width: 520px; height: auto; overflow: visible; }
 .chart-grid-line { stroke: #ded5ca; stroke-width: 1; stroke-dasharray: 4 5; }
@@ -839,7 +866,8 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .daily-nutrient-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .nutrition-summary-heading { align-items: flex-end; }
   .change-overview { align-items: flex-start; flex-direction: column; }
-  .change-overview .primary-button { align-self: stretch; }
+  .change-overview-actions { width: 100%; }
+  .change-overview-actions button { flex: 1; }
   .change-metric-grid { grid-template-columns: 1fr 1fr; }
   .change-metric-grid .metric-card:last-child { grid-column: auto; }
   .workout-metrics { grid-template-columns: 1fr 1fr; }

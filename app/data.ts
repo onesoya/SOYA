@@ -107,11 +107,13 @@ export type Consultation = {
 
 export type AppState = {
   profile: {
-    mode: "감량기" | "유지기";
+    mode: "감량기" | "유지기" | "여행";
     goalWeek: number;
+    goalStartDate?: string;
     goalEndDate: string;
     targetBodyFatChange: number;
     targetMuscleChange: number;
+    travelLevel?: "가볍게 기록" | "균형 유지" | "목표 유지";
   };
   nutritionGoal: {
     caloriesMin: number;
@@ -149,6 +151,7 @@ export const initialState: AppState = {
   profile: {
     mode: "감량기",
     goalWeek: 1,
+    goalStartDate: "2026-08-14",
     goalEndDate: "2026-10-25",
     targetBodyFatChange: -2.5,
     targetMuscleChange: 0.3,
