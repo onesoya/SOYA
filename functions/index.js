@@ -11,6 +11,29 @@ initializeApp();
 const db = getFirestore();
 const openAiApiKey = defineSecret("OPENAI_API_KEY");
 const monthlyConsultationLimit = 6;
+const solInputUsdPerMillion = 4;
+const solOutputUsdPerMillion = 20;
+
+function currentUsageMonth() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" }).format(new Date());
+}
+
+function usageSummary(data = {}) {
+  const used = Math.max(0, Number(data.count || 0));
+  const inputTokens = Math.max(0, Number(data.inputTokens || 0));
+  const outputTokens = Math.max(0, Number(data.outputTokens || 0));
+  const estimatedUsd = inputTokens / 1_000_000 * solInputUsdPerMillion
+    + outputTokens / 1_000_000 * solOutputUsdPerMillion;
+  return {
+    used,
+    limit: monthlyConsultationLimit,
+    remaining: Math.max(0, monthlyConsultationLimit - used),
+    inputTokens,
+    outputTokens,
+    estimatedUsd: Number(estimatedUsd.toFixed(6)),
+    krwReferenceRate: 1400,
+  };
+}
 
 function localClock(date, timezone) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -160,6 +183,17 @@ function safeText(value, maxLength) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
+export const getAiUsageSummary = onCall({
+  region: "asia-northeast3",
+  memory: "128MiB",
+  timeoutSeconds: 30,
+}, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Google 로그인 후 확인할 수 있어요.");
+  const month = currentUsageMonth();
+  const snapshot = await db.collection("aiUsage").doc(`${request.auth.uid}_${month}`).get();
+  return { month, ...usageSummary(snapshot.data()) };
+});
+
 export const createWeeklyConsultation = onCall({
   region: "asia-northeast3",
   memory: "256MiB",
@@ -176,7 +210,7 @@ export const createWeeklyConsultation = onCall({
   if (kind === "weekly" && (!weekJson || weekJson.length > 50000)) throw new HttpsError("invalid-argument", "상담할 주간 기록을 확인해주세요.");
   if (kind === "followup" && (!question || !previousConsultation)) throw new HttpsError("invalid-argument", "이어갈 질문을 입력해주세요.");
 
-  const month = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" }).format(new Date());
+  const month = currentUsageMonth();
   const usageRef = db.collection("aiUsage").doc(`${request.auth.uid}_${month}`);
   const used = await db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(usageRef);
@@ -218,7 +252,7 @@ export const createWeeklyConsultation = onCall({
       outputTokens: FieldValue.increment(outputTokens),
       lastUsedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
-    return { text, source: "openai", model: "gpt-5.6-sol", reasoningEffort: "high", used, limit: monthlyConsultationLimit, inputTokens, outputTokens };
+    return { text, source: "openai", model: "gpt-5.6-sol", reasoningEffort: "high", ...usageSummary({ count: used, inputTokens, outputTokens }) };
   } catch (error) {
     await usageRef.set({ count: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     console.error("SOYA consultation failed", error);

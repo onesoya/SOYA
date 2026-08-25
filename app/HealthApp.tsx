@@ -28,7 +28,7 @@ import {
   type User,
 } from "./firebase-client";
 import { loadUserState, saveUserState } from "./firebase-state";
-import { requestAiConsultation } from "./firebase-ai";
+import { requestAiConsultation, requestAiUsageSummary, type AiUsageSummary } from "./firebase-ai";
 import {
   disablePushNotifications,
   enablePushNotifications,
@@ -1745,7 +1745,7 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [followUpQuestion, setFollowUpQuestion] = useState("");
   const [consultationError, setConsultationError] = useState("");
-  const [aiUsage, setAiUsage] = useState<{ used: number; limit: number }>();
+  const [aiUsage, setAiUsage] = useState<AiUsageSummary>();
   const [reviewStart, setReviewStart] = useState(weekStart(todayKey()));
   const savedReview = (state.weeklyReviews ?? []).find((item) => item.weekStart === reviewStart);
   const [reviewNote, setReviewNote] = useState(savedReview?.note ?? "");
@@ -1758,6 +1758,14 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
     setReviewNote(reviewForWeek?.note ?? "");
     setReviewEditing(!reviewForWeek);
   }, [reviewStart, state.weeklyReviews]);
+
+  useEffect(() => {
+    let active = true;
+    requestAiUsageSummary().then((usage) => {
+      if (active) setAiUsage(usage);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   const review = useMemo(() => {
     const inWeek = (date: string) => date >= reviewStart && date <= reviewEnd;
@@ -1959,7 +1967,16 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
         },
       });
       commit((current) => ({ ...current, consultations: [{ id: id("consult"), date: todayKey(), weekStart: reviewStart, weekEnd: reviewEnd, text: data.text, source: "openai", model: data.model }, ...current.consultations] }));
-      setAiUsage({ used: data.used, limit: data.limit });
+      setAiUsage((current) => ({
+        month: current?.month ?? todayKey().slice(0, 7),
+        used: data.used,
+        limit: data.limit,
+        remaining: data.remaining,
+        inputTokens: (current?.inputTokens ?? 0) + data.inputTokens,
+        outputTokens: (current?.outputTokens ?? 0) + data.outputTokens,
+        estimatedUsd: (current?.estimatedUsd ?? 0) + data.estimatedUsd,
+        krwReferenceRate: data.krwReferenceRate,
+      }));
       setFollowUpOpen(false);
       setFollowUpQuestion("");
     } catch (error) {
@@ -1975,7 +1992,16 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
       const data = await requestAiConsultation({ kind: "followup", question, previousConsultation: latest.text });
       const updatedText = `${latest.text}\n\n◆ 나의 질문\n${question}\n\n◆ ChatGPT 답변\n${data.text}`;
       commit((current) => ({ ...current, consultations: current.consultations.map((item) => item.id === latest.id ? { ...item, text: updatedText, source: "openai", model: data.model } : item) }));
-      setAiUsage({ used: data.used, limit: data.limit });
+      setAiUsage((current) => ({
+        month: current?.month ?? todayKey().slice(0, 7),
+        used: data.used,
+        limit: data.limit,
+        remaining: data.remaining,
+        inputTokens: (current?.inputTokens ?? 0) + data.inputTokens,
+        outputTokens: (current?.outputTokens ?? 0) + data.outputTokens,
+        estimatedUsd: (current?.estimatedUsd ?? 0) + data.estimatedUsd,
+        krwReferenceRate: data.krwReferenceRate,
+      }));
       setFollowUpQuestion("");
       setFollowUpOpen(false);
     } catch (error) {
@@ -2014,6 +2040,11 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
       <div className="weekly-review-next"><button type="button" className="primary-button" onClick={() => openWeeklyPlan(addDays(reviewStart, 7))}>다음 주 계획하기</button></div>
     </section>
     <section className="section-hero consult-hero"><div><span className="eyebrow">주간 상담</span><h2>정리된 기록으로<br />함께 조정해요.</h2></div><button className="primary-button" onClick={requestReview} disabled={loading}>{loading ? "기록을 살펴보는 중…" : "✦ 상담 시작"}</button></section>
+    <section className="card ai-usage-card">
+      <div className="ai-usage-heading"><strong>이번 달 AI 사용</strong><span>{aiUsage ? `${aiUsage.used}/${aiUsage.limit}회` : "확인 중"}</span></div>
+      <div className="ai-usage-values"><article><small>남은 상담</small><strong>{aiUsage ? `${aiUsage.remaining}회` : "-"}</strong></article><article><small>예상 비용</small><strong>{aiUsage ? `약 ${Math.round(aiUsage.estimatedUsd * aiUsage.krwReferenceRate).toLocaleString()}원` : "-"}</strong></article></div>
+      <div className="ai-usage-track"><i style={{ width: `${aiUsage ? Math.min(100, aiUsage.used / aiUsage.limit * 100) : 0}%` }} /></div>
+    </section>
     {consultationError && <p className="consultation-error" role="alert">{consultationError}</p>}
     <section className="card consultation-card"><CardTitle title={latest ? "최근 상담" : "첫 상담을 준비했어요"} aside={latest ? latest.date : ""} />{latest ? <><div className="consultation-meta"><span className={`source-badge ${latest.source}`}>{latest.source === "openai" ? latest.model === "gpt-5.6-sol" ? "GPT-5.6 Sol · High" : latest.model || "ChatGPT 상담" : "AI 연결 전 미리보기"}</span>{aiUsage && <small>이번 달 {aiUsage.used}/{aiUsage.limit}회</small>}</div><div className="consultation-text">{latest.text}</div><div className="consult-buttons"><button className="delete-text-button" onClick={() => deleteConsultation(latest)}>삭제</button><button className="ghost-button" onClick={() => setFollowUpOpen((current) => !current)}>대화 이어가기</button><button className="primary-button" onClick={() => openWeeklyPlan(addDays(latest.weekStart ?? reviewStart, 7))}>다음 주 계획하기</button></div>{followUpOpen && <div className="consult-followup"><ClearableFieldControl><textarea value={followUpQuestion} onChange={(event) => setFollowUpQuestion(event.target.value)} maxLength={1000} placeholder="상담 내용에서 더 묻고 싶은 점을 적어주세요." aria-label="ChatGPT에게 이어서 질문" /></ClearableFieldControl><div><small>{followUpQuestion.length}/1000</small><button type="button" className="primary-button" onClick={requestFollowUp} disabled={!followUpQuestion.trim() || followUpLoading}>{followUpLoading ? "답변을 기다리는 중…" : "질문 보내기"}</button></div></div>}</> : <EmptyState text="체성분·식사·운동 기록을 바탕으로 이번 주를 함께 정리해요." action="첫 상담 시작" onClick={requestReview} />}</section>
     <section className="card consultation-history"><CardTitle title="과거 상담" aside={`${Math.max(0, state.consultations.length - 1)}개`} />{state.consultations.length > 1 ? <div className="history-list">{state.consultations.slice(1).map((item) => <button key={item.id} onClick={() => openDetail(item)} aria-label={`${item.date} 상담 보기`}><strong>{item.date}</strong><b aria-hidden="true">›</b></button>)}</div> : <p className="history-empty">상담이 쌓이면 이전 내용을 여기에서 다시 볼 수 있어요.</p>}</section>

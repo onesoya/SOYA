@@ -276,6 +276,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .change-hero { background: #efe4c9; }
 .consult-hero { background: #292621; color: white; }
 .consult-hero p { color: #c8c0b7; }
+.ai-usage-card { display: grid; gap: 13px; }
+.ai-usage-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ai-usage-heading strong { color: var(--coral); font-size: 12px; }
+.ai-usage-heading span { color: var(--muted); font-size: 9px; font-weight: 850; }
+.ai-usage-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--line); }
+.ai-usage-values article { min-width: 0; padding: 13px 14px; display: grid; gap: 6px; }
+.ai-usage-values article + article { border-left: 1px solid var(--line); }
+.ai-usage-values small { color: var(--muted); font-size: 8px; }
+.ai-usage-values strong { font-size: 14px; }
+.ai-usage-track { height: 7px; border: 1px solid var(--line); background: var(--cream); overflow: hidden; }
+.ai-usage-track i { display: block; height: 100%; background: var(--coral); transition: width .25s ease; }
 .hero-actions { display: flex; gap: 8px; }
 
 .week-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
