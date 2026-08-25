@@ -23,6 +23,15 @@ type Modal = null | "quick" | "body" | "body-detail" | "meal-plan" | "meal-actua
 type Consultation = AppState["consultations"][number];
 type BleedingState = Exclude<CycleEntry["state"], "없음">;
 type CycleRange = { id: string; start: string; end: string; states?: Record<string, BleedingState> };
+type CycleHistory = {
+  start: string;
+  end: string;
+  cycleLength?: number;
+  mainBleedingDays: number;
+  brownBefore: number;
+  brownAfter: number;
+  irregularDays: number;
+};
 type WeeklyWorkoutDraft = {
   id: string;
   type: WorkoutEntry["type"];
@@ -284,6 +293,42 @@ function cycleRangeAround(entries: CycleEntry[], date: string): CycleRange | und
     end: dates.at(-1)!,
     states: Object.fromEntries(periodEntries.map((entry) => [entry.date, entry.state as BleedingState])),
   };
+}
+
+function cycleHistories(entries: CycleEntry[]): CycleHistory[] {
+  const byDate = new Map(entries.map((entry) => [entry.date, entry]));
+  const starts = entries
+    .filter((entry) => entry.state === "본 출혈" && byDate.get(addDays(entry.date, -1))?.state !== "본 출혈")
+    .map((entry) => entry.date)
+    .sort();
+
+  return starts.map((start, index) => {
+    const nextStart = starts[index + 1];
+    let brownBefore = 0;
+    let cursor = addDays(start, -1);
+    while (byDate.get(cursor)?.state === "갈색 출혈") {
+      brownBefore += 1;
+      cursor = addDays(cursor, -1);
+    }
+
+    let end = start;
+    cursor = start;
+    while (byDate.get(cursor) && byDate.get(cursor)?.state !== "없음") {
+      end = cursor;
+      cursor = addDays(cursor, 1);
+    }
+    const bleedingEntries = entries.filter((entry) => entry.date >= start && entry.date <= end);
+    const intervalEnd = nextStart ? addDays(nextStart, -1) : end;
+    return {
+      start,
+      end,
+      cycleLength: nextStart ? daysBetween(start, nextStart) : undefined,
+      mainBleedingDays: bleedingEntries.filter((entry) => entry.state === "본 출혈").length,
+      brownBefore,
+      brownAfter: bleedingEntries.filter((entry) => entry.state === "갈색 출혈").length,
+      irregularDays: entries.filter((entry) => entry.date >= start && entry.date <= intervalEnd && entry.state === "부정출혈").length,
+    };
+  }).reverse();
 }
 
 function weekDates(start: string) {
@@ -809,6 +854,17 @@ export function HealthApp() {
     setModal(null);
   };
 
+  const deleteCycleRange = (date: string) => {
+    const range = cycleRangeAround(state.cycles, date);
+    if (!range) return;
+    if (!window.confirm(`${range.start} 주기 기록 전체를 삭제할까요?\n이 기간의 월경·컨디션 기록도 함께 삭제됩니다.`)) return;
+    const dates = new Set(cycleRangeDates(range.start, range.end));
+    commit((current) => ({
+      ...current,
+      cycles: normalizeCycleCoverage(current.cycles.filter((item) => item.periodId === range.id ? false : !dates.has(item.date))),
+    }));
+  };
+
   const saveWeeklyPlan = (start: string, draft: WeeklyDraft) => {
     const dates = new Set(weekDates(start));
     const meals: MealEntry[] = [];
@@ -925,7 +981,7 @@ export function HealthApp() {
         )}
         {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openGoal={() => setModal("nutrition-goal")} updateTravelDayLevel={updateTravelDayLevel} />}
         {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} updateTravelDayLevel={updateTravelDayLevel} />}
-        {tab === "menstrual" && <MenstrualView state={state} today={today} openRecord={(date) => { setCycleRangeDraft(undefined); setCycleDate(date); setModal("cycle"); }} editRange={(date) => { const range = cycleRangeAround(state.cycles, date); if (range) { setCycleRangeDraft(range); setCycleDate(date); setModal("cycle"); } }} />}
+        {tab === "menstrual" && <MenstrualView state={state} today={today} openRecord={(date) => { setCycleRangeDraft(undefined); setCycleDate(date); setModal("cycle"); }} editRange={(date) => { const range = cycleRangeAround(state.cycles, date); if (range) { setCycleRangeDraft(range); setCycleDate(date); setModal("cycle"); } }} deleteRange={deleteCycleRange} />}
         {tab === "change" && <ChangeConsultView state={state} today={today} setModal={setModal} commit={commit} openWeeklyPlan={() => setModal("weekly-plan")} deleteConsultation={deleteConsultation} openBodyDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} openConsultationDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
       </main>
 
@@ -1111,11 +1167,16 @@ function WorkoutView({ state, today, openWorkout, deleteWorkout, openGoal, updat
   </div>;
 }
 
-function MenstrualView({ state, today, openRecord, editRange }: { state: AppState; today: string; openRecord: (date: string) => void; editRange: (date: string) => void }) {
+function MenstrualView({ state, today, openRecord, editRange, deleteRange }: { state: AppState; today: string; openRecord: (date: string) => void; editRange: (date: string) => void; deleteRange: (date: string) => void }) {
   const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(today);
   const cells = monthCells(`${selectedMonth}-01`);
   const prediction = menstrualPrediction(state.cycles, today);
+  const histories = cycleHistories(state.cycles);
+  const cycleYears = [...new Set(histories.map((history) => history.start.slice(0, 4)))];
+  const [cycleYear, setCycleYear] = useState(() => cycleYears.includes(today.slice(0, 4)) ? today.slice(0, 4) : cycleYears[0] ?? "전체");
+  const visibleHistories = cycleYear === "전체" ? histories : histories.filter((history) => history.start.startsWith(cycleYear));
+  const averageMainBleeding = histories.length ? Math.round(histories.reduce((sum, history) => sum + history.mainBleedingDays, 0) / histories.length * 10) / 10 : undefined;
   const selected = state.cycles.find((entry) => entry.date === selectedDate);
   const selectedPhase = menstrualPhase(state.cycles, selectedDate);
   const changeMonth = (month: string) => {
@@ -1125,6 +1186,11 @@ function MenstrualView({ state, today, openRecord, editRange }: { state: AppStat
   const goToday = () => {
     setSelectedMonth(today.slice(0, 7));
     setSelectedDate(today);
+  };
+  const jumpToCycle = (date: string) => {
+    setSelectedMonth(date.slice(0, 7));
+    setSelectedDate(date);
+    document.querySelector(".menstrual-calendar-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   return <div className="section-stack menstrual-view">
     <section className="card pixel-calendar-card menstrual-calendar-card">
@@ -1145,7 +1211,10 @@ function MenstrualView({ state, today, openRecord, editRange }: { state: AppStat
       <div><span className="eyebrow">{dateLabel(selectedDate)}의 주기</span><strong>{selectedPhase.label}</strong><p>{selectedPhase.detail}</p></div>
       {selectedPhase.cycleDay && <b>DAY {selectedPhase.cycleDay}</b>}
     </section>
-    <div className="metric-grid menstrual-metrics"><MetricCard label="평균 주기" value={prediction.lastStart ? String(prediction.cycleLength) : "-"} unit="일" hint={prediction.basedOnCycles ? `최근 ${prediction.basedOnCycles + 1}주기 기준` : prediction.lastStart ? "기록 1회 · 28일 기준" : "본 출혈 기록 필요"} /><MetricCard label="다음 예상 배란일" value={prediction.nextOvulation ? prediction.nextOvulation.slice(5).replace("-", ".") : "-"} unit="" hint={prediction.nextPeriod ? `다음 월경 예상 ${prediction.nextPeriod.slice(5).replace("-", ".")}` : "기록이 쌓이면 계산"} /></div>
+    <div className="metric-grid menstrual-metrics"><MetricCard label="평균 주기" value={prediction.lastStart ? String(prediction.cycleLength) : "-"} unit="일" hint={prediction.basedOnCycles ? `최근 ${prediction.basedOnCycles + 1}주기 기준` : prediction.lastStart ? "기록 1회 · 28일 기준" : "본 출혈 기록 필요"} /><MetricCard label="다음 예상 배란일" value={prediction.nextOvulation ? prediction.nextOvulation.slice(5).replace("-", ".") : "-"} unit="" hint={prediction.nextPeriod ? `다음 월경 예상 ${prediction.nextPeriod.slice(5).replace("-", ".")}` : "기록이 쌓이면 계산"} /><MetricCard label="기록된 주기" value={histories.length ? String(histories.length) : "-"} unit="회" hint={histories.length ? `${histories.at(-1)?.start.slice(0, 4)}년부터` : "본 출혈 기록 필요"} /><MetricCard label="평균 본 출혈" value={averageMainBleeding ? String(averageMainBleeding) : "-"} unit="일" hint="전체 주기 기준" /></div>
+    <section className="card cycle-history-card"><CardTitle title="주기별 기록" aside={cycleYears.length ? <select className="cycle-year-select" value={cycleYear} onChange={(event) => setCycleYear(event.target.value)} aria-label="주기 기록 연도"><option value="전체">전체</option>{cycleYears.map((year) => <option key={year} value={year}>{year}년</option>)}</select> : undefined} />
+      {visibleHistories.length ? <div className="cycle-history-list">{visibleHistories.map((history) => <article className="cycle-history-item" key={history.start}><div className="cycle-history-heading"><div><small>{history.cycleLength ? `주기 ${history.cycleLength}일` : "최근 주기"}</small><strong>{history.start.replaceAll("-", ".")} ~ {history.end.replaceAll("-", ".")}</strong></div><div className="cycle-history-actions"><button type="button" onClick={() => jumpToCycle(history.start)}>달력</button><button type="button" onClick={() => editRange(history.start)}>출혈 구분</button><button type="button" className="delete" onClick={() => deleteRange(history.start)}>삭제</button></div></div><div className="cycle-history-facts"><span className="main">본 출혈 <b>{history.mainBleedingDays}일</b></span>{history.brownBefore > 0 && <span className="brown">앞 갈색 <b>{history.brownBefore}일</b></span>}{history.brownAfter > 0 && <span className="brown">뒤 갈색 <b>{history.brownAfter}일</b></span>}{history.irregularDays > 0 && <span className="irregular">부정출혈 <b>{history.irregularDays}일</b></span>}</div></article>)}</div> : <EmptyState text={histories.length ? `${cycleYear}년의 주기 기록이 없어요.` : "기간 기록을 저장하면 주기별로 정리해드려요."} showIcon={false} />}
+    </section>
     <section className="card menstrual-day-detail"><CardTitle title={dateLabel(selectedDate)} aside={<div className="cycle-detail-actions">{selected && selected.state !== "없음" && <button className="text-button" onClick={() => editRange(selectedDate)}>주기 출혈 구분</button>}<button className="text-button" onClick={() => openRecord(selectedDate)}>{selected ? "하루 수정" : "기록하기"}</button></div>} />
       {selected ? <><div className="menstrual-summary"><strong>{selected.state === "없음" ? "출혈 없음" : selected.state}</strong>{selected.flow && selected.flow !== "없음" && <span>월경량 {selected.flow}</span>}{selected.pain && selected.pain !== "없음" && <span>월경통 {selected.pain}</span>}{(selected.symptoms ?? []).map((symptom) => <span key={symptom}>{symptom}</span>)}</div><div className="menstrual-detail-grid"><div><span>에너지</span><strong>{selected.energy ? conditionLabels[selected.energy - 1] : "-"}</strong></div><div><span>식욕</span><strong>{selected.appetite ? conditionLabels[selected.appetite - 1] : "-"}</strong></div>{(selected.sexCount ?? 0) > 0 && <div><span>사랑 기록</span><strong>{selected.sexCount}회 · {selected.contraception}</strong></div>}</div>{selected.note && <p className="menstrual-note">{selected.note}</p>}</> : <EmptyState text="이날의 월경과 컨디션 기록이 없어요." action="기록하기" onClick={() => openRecord(selectedDate)} showIcon={false} />}
     </section>

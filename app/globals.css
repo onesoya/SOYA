@@ -780,6 +780,24 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .menstrual-summary > * { padding: 7px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--cream); font-size: 9px; }
 .menstrual-summary strong { background: #f4d8d2; }
 .cycle-detail-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.cycle-history-card { display: grid; gap: 14px; }
+.cycle-year-select { min-width: 92px; height: 36px; padding: 0 28px 0 10px; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); font-family: inherit; font-size: 9px; font-weight: 850; }
+.cycle-history-list { border: 1px solid var(--line); background: white; display: grid; }
+.cycle-history-item { padding: 14px; border-bottom: 1px solid var(--line); display: grid; gap: 11px; }
+.cycle-history-item:last-child { border-bottom: 0; }
+.cycle-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cycle-history-heading > div:first-child { min-width: 0; display: grid; gap: 4px; }
+.cycle-history-heading small { color: var(--coral); font-size: 8px; font-weight: 850; }
+.cycle-history-heading strong { font-size: 10px; overflow-wrap: anywhere; }
+.cycle-history-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 5px; }
+.cycle-history-actions button { min-height: 30px; padding: 5px 7px; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); font-family: inherit; font-size: 7px; font-weight: 850; cursor: pointer; }
+.cycle-history-actions button.delete { border-color: #c46d64; color: #a94f46; }
+.cycle-history-facts { display: flex; flex-wrap: wrap; gap: 6px; }
+.cycle-history-facts span { padding: 6px 8px; border: 1px solid var(--line); color: var(--ink); font-size: 7px; }
+.cycle-history-facts span.main { background: #f7d2ce; }
+.cycle-history-facts span.brown { background: #ead7c7; }
+.cycle-history-facts span.irregular { background: repeating-linear-gradient(135deg, #fff 0 5px, #f2cfca 5px 8px); }
+.cycle-history-facts b { font-size: 8px; }
 .menstrual-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 12px; }
 .menstrual-detail-grid > div { padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: white; display: grid; gap: 5px; }
 .menstrual-detail-grid span { color: var(--muted); font-size: 8px; }
@@ -1029,6 +1047,9 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .body-phase-filter button { min-width: 0; padding-inline: 4px; font-size: 7px; }
   .data-table > button { grid-template-columns: minmax(0, 1fr) 58px 58px 8px; gap: 5px; }
   .history-list button { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .cycle-history-heading { align-items: flex-start; flex-direction: column; }
+  .cycle-history-actions { width: 100%; }
+  .cycle-history-actions button { flex: 1; }
   .weekly-meal-grid { grid-template-columns: minmax(0, 1fr); }
   .sheet header { top: -12px; }
   .sheet-leading-fields { grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 10px; }
