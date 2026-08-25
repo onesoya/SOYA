@@ -1259,11 +1259,14 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
   const [reviewStart, setReviewStart] = useState(weekStart(todayKey()));
   const savedReview = (state.weeklyReviews ?? []).find((item) => item.weekStart === reviewStart);
   const [reviewNote, setReviewNote] = useState(savedReview?.note ?? "");
+  const [reviewEditing, setReviewEditing] = useState(!savedReview);
   const latest = state.consultations[0];
   const reviewEnd = addDays(reviewStart, 6);
 
   useEffect(() => {
-    setReviewNote((state.weeklyReviews ?? []).find((item) => item.weekStart === reviewStart)?.note ?? "");
+    const reviewForWeek = (state.weeklyReviews ?? []).find((item) => item.weekStart === reviewStart);
+    setReviewNote(reviewForWeek?.note ?? "");
+    setReviewEditing(!reviewForWeek);
   }, [reviewStart, state.weeklyReviews]);
 
   const review = useMemo(() => {
@@ -1328,12 +1331,17 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
   const conditionLabel = (value: number) => value ? conditionLabels[Math.min(4, Math.max(0, Math.round(value) - 1))] : "기록 없음";
   const saveReview = () => {
     const note = reviewNote.trim();
+    if (!note) return;
     const weeklyReview: WeeklyReview = { id: savedReview?.id ?? id("weekly-review"), weekStart: reviewStart, note, updatedAt: todayKey() };
     commit((current) => ({ ...current, weeklyReviews: [...(current.weeklyReviews ?? []).filter((item) => item.weekStart !== reviewStart), weeklyReview].sort((a, b) => b.weekStart.localeCompare(a.weekStart)) }));
+    setReviewNote(note);
+    setReviewEditing(false);
   };
   const deleteReview = () => {
     if (!savedReview || !window.confirm(`${reviewStart} 주간 메모를 삭제할까요?`)) return;
     commit((current) => ({ ...current, weeklyReviews: (current.weeklyReviews ?? []).filter((item) => item.id !== savedReview.id) }));
+    setReviewNote("");
+    setReviewEditing(true);
   };
   const requestReview = async () => {
     setLoading(true);
@@ -1355,8 +1363,8 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
         <article className="weekly-review-panel condition"><div className="weekly-panel-title"><span>월경·컨디션</span><small>{review.conditionDays}일 기록</small></div><strong>에너지 {conditionLabel(review.energy)}</strong><b>식욕 {conditionLabel(review.appetite)}</b><p>{review.symptoms || review.phaseLabel}</p></article>
       </div>
       <div className="weekly-goal-progress"><div><span>목표 진행</span><strong>{Math.round(review.timing.progress)}%</strong></div><div><i style={{ width: `${review.timing.progress}%` }} /></div><p>체지방 {signed(state.profile.targetBodyFatChange)}kg · 골격근 {signed(state.profile.targetMuscleChange)}kg</p></div>
-      <Field label="이번 주 메모"><textarea className="weekly-review-note" value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="잘된 점, 힘들었던 점, 다음 주에 바꾸고 싶은 점" /></Field>
-      <div className="weekly-review-actions">{savedReview && <button type="button" className="delete-text-button" onClick={deleteReview}>메모 삭제</button>}<button type="button" className="ghost-button" onClick={saveReview}>{savedReview ? "메모 수정 저장" : "주간 메모 저장"}</button><button type="button" className="primary-button" onClick={() => openWeeklyPlan(addDays(reviewStart, 7))}>다음 주 계획하기</button></div>
+      {savedReview && !reviewEditing ? <section className="weekly-saved-note"><span>이번 주 메모</span><p>{savedReview.note}</p><div><button type="button" className="ghost-button" onClick={() => { setReviewNote(savedReview.note); setReviewEditing(true); }}>주간 메모 수정</button><button type="button" className="delete-button" onClick={deleteReview}>주간 메모 삭제</button></div></section> : <section className="weekly-note-editor"><Field label="이번 주 메모"><textarea className="weekly-review-note" value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="잘된 점, 힘들었던 점, 다음 주에 바꾸고 싶은 점" /></Field><div>{savedReview && <button type="button" className="ghost-button" onClick={() => { setReviewNote(savedReview.note); setReviewEditing(false); }}>취소</button>}<button type="button" className="ghost-button weekly-note-save" onClick={saveReview} disabled={!reviewNote.trim()}>{savedReview ? "수정 저장" : "주간 메모 저장"}</button></div></section>}
+      <div className="weekly-review-next"><button type="button" className="primary-button" onClick={() => openWeeklyPlan(addDays(reviewStart, 7))}>다음 주 계획하기</button></div>
     </section>
     <section className="section-hero consult-hero"><div><span className="eyebrow">주간 상담</span><h2>정리된 기록으로<br />함께 조정해요.</h2></div><button className="primary-button" onClick={requestReview} disabled={loading}>{loading ? "기록을 살펴보는 중…" : "✦ 상담 시작"}</button></section>
     <section className="card consultation-card"><CardTitle title={latest ? "최근 상담" : "첫 상담을 준비했어요"} aside={latest ? latest.date : ""} />{latest ? <><span className={`source-badge ${latest.source}`}>{latest.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span><div className="consultation-text">{latest.text}</div><div className="consult-buttons"><button className="delete-text-button" onClick={() => deleteConsultation(latest)}>삭제</button><button className="ghost-button">대화 이어가기</button><button className="primary-button" onClick={() => openWeeklyPlan(addDays(reviewStart, 7))}>다음 주 계획하기</button></div></> : <EmptyState text="체성분·식사·운동 기록을 바탕으로 이번 주를 함께 정리해요." action="첫 상담 시작" onClick={requestReview} />}</section>

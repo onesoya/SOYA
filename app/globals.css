@@ -303,9 +303,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .weekly-goal-progress i { display: block; height: 100%; background: var(--coral); }
 .weekly-goal-progress p { margin: 0; color: var(--muted); font-size: 8px; }
 .field textarea.weekly-review-note { min-height: 78px; }
-.weekly-review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; }
-.weekly-review-actions .delete-text-button { margin-right: auto; }
-.weekly-review-actions .ghost-button, .weekly-review-actions .primary-button { min-height: 44px; }
+.weekly-note-editor { display: grid; gap: 10px; }
+.weekly-note-editor > div { display: flex; justify-content: flex-end; gap: 8px; }
+.weekly-note-editor .ghost-button { min-height: 42px; }
+.weekly-note-save:disabled { opacity: .45; cursor: default; }
+.weekly-saved-note { padding: 15px; border: 1px solid var(--line); background: var(--cream); display: grid; gap: 10px; }
+.weekly-saved-note > span { color: var(--muted); font-size: 9px; font-weight: 850; }
+.weekly-saved-note > p { margin: 0; white-space: pre-line; color: var(--ink); font-size: 11px; line-height: 1.75; }
+.weekly-saved-note > div { display: flex; justify-content: flex-end; gap: 8px; }
+.weekly-saved-note .ghost-button, .weekly-saved-note .delete-button { min-height: 42px; }
+.weekly-review-next { display: flex; justify-content: flex-end; }
+.weekly-review-next .primary-button { min-height: 44px; }
 
 .fab { position: fixed; z-index: 30; right: max(28px, calc((100vw - 1440px) / 2 + 28px)); bottom: 30px; width: 58px; height: 58px; border: 0; border-radius: 20px 20px 20px 7px; background: var(--coral); color: white; box-shadow: 0 18px 35px rgba(227, 111, 95, .34); font-size: 30px; font-weight: 300; cursor: pointer; }
 .mobile-nav { display: none; }
@@ -1082,9 +1090,8 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .weekly-review-grid { grid-template-columns: minmax(0, 1fr); }
   .weekly-review-panel { min-height: 132px; }
   .weekly-review-nav strong { font-size: 9px; }
-  .weekly-review-actions { display: grid; grid-template-columns: 1fr 1fr; }
-  .weekly-review-actions .delete-text-button { grid-column: 1 / -1; justify-self: start; }
-  .weekly-review-actions .primary-button { grid-column: 1 / -1; }
+  .weekly-note-editor > div, .weekly-saved-note > div { flex-wrap: wrap; }
+  .weekly-review-next .primary-button { width: 100%; }
   .cycle-history-heading { align-items: flex-start; flex-direction: column; }
   .cycle-history-actions { width: 100%; }
   .cycle-history-actions button { flex: 1; }
