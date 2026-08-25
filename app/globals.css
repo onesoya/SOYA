@@ -820,6 +820,8 @@ h1, h2, h3, strong, b { font-weight: 700; }
   width: 93px;
   display: grid;
   align-items: stretch;
+  justify-content: stretch;
+  grid-template-columns: minmax(0, 1fr);
   gap: 5px;
 }
 .food-calendar-actions > .food-calendar-library-button {
