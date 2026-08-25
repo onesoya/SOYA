@@ -27,6 +27,20 @@ export type FoodLibraryItem = {
   confidence?: "높음" | "보통" | "추정" | "낮음";
 };
 
+export type MealFoodComponent = {
+  id: string;
+  foodLibraryId?: string;
+  name: string;
+  quantity?: number;
+  unit?: FoodUnit;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  sugar: number;
+  fiber: number;
+};
+
 export type BodyRecord = {
   id: string;
   date: string;
@@ -58,6 +72,7 @@ export type MealEntry = {
   servings?: number;
   quantity?: number;
   servingLabel?: string;
+  components?: MealFoodComponent[];
   skipped?: boolean;
 };
 

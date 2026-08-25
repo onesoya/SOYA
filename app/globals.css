@@ -274,6 +274,22 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .saved-food-results span { grid-column: 1; color: var(--muted); font-size: 7px; }
 .saved-food-results em { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--coral); font-size: 7px; font-style: normal; font-weight: 850; }
 .saved-food-empty { margin: 4px 0; padding: 10px; color: var(--muted); font-size: 9px; text-align: center; }
+.meal-component-box { border: 1px solid var(--ink); background: var(--paper); box-shadow: 3px 3px 0 rgba(51, 46, 43, .12); }
+.meal-component-heading { min-height: 38px; padding: 0 11px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.meal-component-heading strong { font-size: 10px; }
+.meal-component-heading span { color: var(--coral); font-size: 8px; font-weight: 850; }
+.meal-component-list { display: grid; }
+.meal-component-list article { min-width: 0; min-height: 54px; padding: 8px 10px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; }
+.meal-component-list article:last-child { border-bottom: 0; }
+.meal-component-main { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(104px, .55fr); align-items: center; gap: 9px; }
+.manual-component .meal-component-main { grid-template-columns: minmax(0, 1fr); }
+.meal-component-main > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.meal-component-main > input { width: 100%; min-width: 0; height: 38px; padding: 0 9px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 10px; }
+.component-quantity { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 33px; align-items: center; border: 1px solid var(--line); background: white; }
+.component-quantity input { width: 100%; min-width: 0; height: 36px; padding: 0 7px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 10px; }
+.component-quantity b { color: var(--muted); font-size: 8px; text-align: center; }
+.meal-component-list .delete-text-button { margin: 0; }
+.meal-component-empty { margin: 0; padding: 18px 10px; color: var(--muted); font-size: 9px; text-align: center; }
 .amount-with-unit { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 42px; align-items: center; border: 1px solid #827568; background: white; box-shadow: 3px 3px 0 rgba(51, 46, 43, .12); }
 .amount-with-unit input { min-width: 0; border: 0 !important; box-shadow: none !important; }
 .amount-with-unit b { color: var(--muted); font-size: 9px; text-align: center; }

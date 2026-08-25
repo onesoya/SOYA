@@ -10,6 +10,7 @@ import {
   FoodLibraryItem,
   FoodUnit,
   initialState,
+  MealFoodComponent,
   mealLabels,
   MealEntry,
   MealType,
@@ -364,10 +365,28 @@ export function HealthApp() {
     const data = new FormData(event.currentTarget);
     const editingId = String(data.get("editingId") || "");
     const mealType = String(data.get("mealType")) as MealType;
-    const libraryId = String(data.get("foodLibraryId") || "");
+    let components: MealFoodComponent[] = [];
+    try {
+      const parsed = JSON.parse(String(data.get("components") || "[]")) as MealFoodComponent[];
+      components = parsed.filter((item) => item.name.trim()).map((item) => ({
+        ...item,
+        name: item.name.trim(),
+        calories: Number(item.calories) || 0,
+        protein: Number(item.protein) || 0,
+        carbs: Number(item.carbs) || 0,
+        fat: Number(item.fat) || 0,
+        sugar: Number(item.sugar) || 0,
+        fiber: Number(item.fiber) || 0,
+      }));
+    } catch {
+      components = [];
+    }
+    if (!components.length) return;
+    const singleComponent = components.length === 1 ? components[0] : undefined;
+    const libraryId = singleComponent?.foodLibraryId ?? "";
     const libraryItem = (state.foodLibrary ?? []).find((item) => item.id === libraryId);
     const basis = libraryItem ? foodBasis(libraryItem) : undefined;
-    const quantity = libraryItem ? Math.max(0.1, number(data.get("quantity")) || basis!.amount) : undefined;
+    const quantity = libraryItem ? Math.max(0.1, singleComponent?.quantity || basis!.amount) : undefined;
     const servings = libraryItem && basis ? quantity! / basis.amount : undefined;
     const meal: MealEntry = {
       id: editingId || id("meal"), date: String(data.get("date")), mealType, kind,
@@ -379,6 +398,7 @@ export function HealthApp() {
       servings,
       quantity,
       servingLabel: libraryItem ? foodBasisLabel(libraryItem) : undefined,
+      components,
     };
     commit((current) => ({
       ...current,
@@ -805,58 +825,93 @@ function MealSheet({ today, kind, library, draft, presetType, close, save }: { t
   const initialFood = library.find((item) => item.id === draft?.foodLibraryId);
   const initialBasis = initialFood ? foodBasis(initialFood) : undefined;
   const initialQuantity = draft?.quantity ?? (initialBasis ? (draft?.servings ?? 1) * initialBasis.amount : 1);
-  const copiedPlanFood = kind === "actual" && draft?.kind === "plan" && initialFood;
-  const [search, setSearch] = useState("");
-  const [selectedFoodId, setSelectedFoodId] = useState(initialFood?.id ?? "");
-  const [quantity, setQuantity] = useState(initialQuantity);
-  const [title, setTitle] = useState(draft?.title ?? "");
-  const [nutrients, setNutrients] = useState({
-    calories: copiedPlanFood ? String(roundNutrient(initialFood.calories * initialQuantity / initialBasis!.amount)) : draft?.calories ? String(draft.calories) : "",
-    protein: copiedPlanFood ? String(roundNutrient(initialFood.protein * initialQuantity / initialBasis!.amount)) : draft?.protein ? String(draft.protein) : "",
-    carbs: copiedPlanFood ? String(roundNutrient(initialFood.carbs * initialQuantity / initialBasis!.amount)) : draft?.carbs ? String(draft.carbs) : "",
-    fat: copiedPlanFood ? String(roundNutrient(initialFood.fat * initialQuantity / initialBasis!.amount)) : draft?.fat ? String(draft.fat) : "",
-    sugar: copiedPlanFood ? String(roundNutrient(initialFood.sugar * initialQuantity / initialBasis!.amount)) : draft?.sugar ? String(draft.sugar) : "",
-    fiber: copiedPlanFood ? String(roundNutrient(initialFood.fiber * initialQuantity / initialBasis!.amount)) : draft?.fiber ? String(draft.fiber) : "",
-  });
-  const selectedFood = library.find((item) => item.id === selectedFoodId);
-  const results = library.filter((item) => item.name.toLocaleLowerCase("ko").includes(search.trim().toLocaleLowerCase("ko"))).slice(0, 8);
-
-  const foodTitle = (food: FoodLibraryItem, amount: number) => `${food.name} ${amount}${foodBasis(food).unit}`.trim();
-  const calculate = (food: FoodLibraryItem, amount: number) => ({
-    calories: String(roundNutrient(food.calories * amount / foodBasis(food).amount)),
-    protein: String(roundNutrient(food.protein * amount / foodBasis(food).amount)),
-    carbs: String(roundNutrient(food.carbs * amount / foodBasis(food).amount)),
-    fat: String(roundNutrient(food.fat * amount / foodBasis(food).amount)),
-    sugar: String(roundNutrient(food.sugar * amount / foodBasis(food).amount)),
-    fiber: String(roundNutrient(food.fiber * amount / foodBasis(food).amount)),
-  });
-  const chooseFood = (food: FoodLibraryItem) => {
-    const amount = foodBasis(food).amount;
-    setSelectedFoodId(food.id);
-    setQuantity(amount);
-    setTitle(foodTitle(food, amount));
-    if (kind === "actual") setNutrients(calculate(food, amount));
+  const makeFoodComponent = (food: FoodLibraryItem, amount = foodBasis(food).amount, componentId = id("meal-food")): MealFoodComponent => {
+    const factor = amount / foodBasis(food).amount;
+    return {
+      id: componentId,
+      foodLibraryId: food.id,
+      name: food.name,
+      quantity: amount,
+      unit: foodBasis(food).unit,
+      calories: roundNutrient(food.calories * factor),
+      protein: roundNutrient(food.protein * factor),
+      carbs: roundNutrient(food.carbs * factor),
+      fat: roundNutrient(food.fat * factor),
+      sugar: roundNutrient(food.sugar * factor),
+      fiber: roundNutrient(food.fiber * factor),
+    };
   };
-  const changeQuantity = (value: number) => {
-    const next = Math.max(0.1, value || foodBasis(selectedFood!).amount);
-    setQuantity(next);
-    if (!selectedFood) return;
-    setTitle(foodTitle(selectedFood, next));
-    if (kind === "actual") setNutrients(calculate(selectedFood, next));
+  const manualComponent = (name = "", values?: Pick<MealEntry, "calories" | "protein" | "carbs" | "fat" | "sugar" | "fiber">): MealFoodComponent => ({
+    id: id("meal-food"), name,
+    calories: values?.calories ?? 0, protein: values?.protein ?? 0, carbs: values?.carbs ?? 0,
+    fat: values?.fat ?? 0, sugar: values?.sugar ?? 0, fiber: values?.fiber ?? 0,
+  });
+  const initialComponents = draft?.components?.length
+    ? draft.components.map((item) => ({ ...item, id: item.id || id("meal-food") }))
+    : initialFood
+      ? [makeFoodComponent(initialFood, initialQuantity)]
+      : draft?.title
+        ? [manualComponent(draft.title, draft.kind === "actual" ? draft : undefined)]
+        : [];
+  const sumComponents = (items: MealFoodComponent[]) => items.reduce((sum, item) => ({
+    calories: roundNutrient(sum.calories + item.calories),
+    protein: roundNutrient(sum.protein + item.protein),
+    carbs: roundNutrient(sum.carbs + item.carbs),
+    fat: roundNutrient(sum.fat + item.fat),
+    sugar: roundNutrient(sum.sugar + item.sugar),
+    fiber: roundNutrient(sum.fiber + item.fiber),
+  }), { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0 });
+  const copiedPlan = kind === "actual" && draft?.kind === "plan";
+  const initialTotals = sumComponents(initialComponents);
+  const [search, setSearch] = useState("");
+  const [components, setComponents] = useState<MealFoodComponent[]>(initialComponents);
+  const [nutrients, setNutrients] = useState({
+    calories: copiedPlan ? String(initialTotals.calories || "") : draft?.calories ? String(draft.calories) : String(initialTotals.calories || ""),
+    protein: copiedPlan ? String(initialTotals.protein || "") : draft?.protein ? String(draft.protein) : String(initialTotals.protein || ""),
+    carbs: copiedPlan ? String(initialTotals.carbs || "") : draft?.carbs ? String(draft.carbs) : String(initialTotals.carbs || ""),
+    fat: copiedPlan ? String(initialTotals.fat || "") : draft?.fat ? String(draft.fat) : String(initialTotals.fat || ""),
+    sugar: copiedPlan ? String(initialTotals.sugar || "") : draft?.sugar ? String(draft.sugar) : String(initialTotals.sugar || ""),
+    fiber: copiedPlan ? String(initialTotals.fiber || "") : draft?.fiber ? String(draft.fiber) : String(initialTotals.fiber || ""),
+  });
+  const results = library.filter((item) => item.name.toLocaleLowerCase("ko").includes(search.trim().toLocaleLowerCase("ko"))).slice(0, 8);
+  const syncComponents = (next: MealFoodComponent[]) => {
+    setComponents(next);
+    if (kind !== "actual") return;
+    const totals = sumComponents(next);
+    setNutrients(Object.fromEntries(Object.entries(totals).map(([key, value]) => [key, String(value || "")])) as typeof nutrients);
+  };
+  const addFood = (food: FoodLibraryItem) => syncComponents([...components, makeFoodComponent(food)]);
+  const addManual = () => syncComponents([...components, manualComponent()]);
+  const removeComponent = (componentId: string) => syncComponents(components.filter((item) => item.id !== componentId));
+  const changeName = (componentId: string, name: string) => setComponents((current) => current.map((item) => item.id === componentId ? { ...item, name } : item));
+  const changeQuantity = (component: MealFoodComponent, value: number) => {
+    const nextAmount = Math.max(0.1, value || component.quantity || 1);
+    const food = library.find((item) => item.id === component.foodLibraryId);
+    if (food) {
+      syncComponents(components.map((item) => item.id === component.id ? makeFoodComponent(food, nextAmount, item.id) : item));
+      return;
+    }
+    const factor = component.quantity ? nextAmount / component.quantity : 1;
+    syncComponents(components.map((item) => item.id === component.id ? {
+      ...item,
+      quantity: nextAmount,
+      calories: roundNutrient(item.calories * factor), protein: roundNutrient(item.protein * factor), carbs: roundNutrient(item.carbs * factor),
+      fat: roundNutrient(item.fat * factor), sugar: roundNutrient(item.sugar * factor), fiber: roundNutrient(item.fiber * factor),
+    } : item));
   };
   const setNutrient = (key: keyof typeof nutrients, value: string) => setNutrients((current) => ({ ...current, [key]: value }));
+  const title = components.filter((item) => item.name.trim()).map((item) => item.quantity && item.unit ? `${item.name.trim()} ${item.quantity}${item.unit}` : item.name.trim()).join(", ");
 
   return <Sheet title={editing ? (kind === "plan" ? "식사 계획 수정" : "먹은 식사 수정") : kind === "plan" ? "식사 계획" : "먹은 식사 기록"} close={close}>
     <form className="form-stack meal-form" onSubmit={(event) => save(event, kind)}>
       <input type="hidden" name="editingId" value={editing ? draft.id : ""} />
-      <input type="hidden" name="foodLibraryId" value={selectedFoodId} />
+      <input type="hidden" name="components" value={JSON.stringify(components)} />
+      <input type="hidden" name="title" value={title} />
       <div className="two-fields sheet-leading-fields"><Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><Field label="끼니"><select name="mealType" defaultValue={defaultType}>{Object.entries(mealLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field></div>
-      <section className="saved-food-picker"><div className="saved-food-picker-heading"><strong>음식 보관함에서 고르기</strong>{selectedFood && <button type="button" onClick={() => setSelectedFoodId("")}>직접 입력</button>}</div>{library.length ? <><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="음식 또는 세트 검색" /><div className="saved-food-results">{results.map((food) => <button type="button" key={food.id} className={selectedFoodId === food.id ? "selected" : ""} onClick={() => chooseFood(food)}><strong>{food.name}</strong><span>{foodBasisLabel(food)} · {food.calories}kcal</span>{food.kind === "set" && <em>세트</em>}</button>)}</div></> : <p className="saved-food-empty">저장된 음식 없음</p>}</section>
-      {selectedFood && <Field label={`${kind === "plan" ? "계획한 양" : "먹은 양"} · 기준 ${foodBasisLabel(selectedFood)}`}><div className="amount-with-unit"><input type="number" name="quantity" value={quantity} min="0.1" step="0.1" onChange={(event) => changeQuantity(Number(event.target.value))} /><b>{foodBasis(selectedFood).unit}</b></div></Field>}
-      {!selectedFood && <input type="hidden" name="quantity" value="" />}
-      <Field label={kind === "plan" ? "먹고 싶은 음식" : "먹은 음식"}><textarea className="meal-food-input" rows={2} name="title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="예: 무가당 그릭요거트 200g" required /></Field>
+      <section className="saved-food-picker"><div className="saved-food-picker-heading"><strong>음식 보관함에서 추가</strong><button type="button" onClick={addManual}>직접 추가</button></div>{library.length ? <><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="음식 또는 세트 검색" /><div className="saved-food-results">{results.map((food) => <button type="button" key={food.id} onClick={() => addFood(food)}><strong>{food.name}</strong><span>{foodBasisLabel(food)} · {food.calories}kcal</span><em>추가</em></button>)}</div></> : <p className="saved-food-empty">저장된 음식 없음 · 직접 추가를 이용해주세요.</p>}</section>
+      <section className="meal-component-box"><div className="meal-component-heading"><strong>{kind === "plan" ? "계획한 음식" : "먹은 음식"}</strong><span>{components.length}개</span></div>{components.length ? <div className="meal-component-list">{components.map((component) => <article key={component.id} className={component.foodLibraryId ? "library-component" : "manual-component"}><div className="meal-component-main">{component.foodLibraryId ? <strong>{component.name}</strong> : <input value={component.name} onChange={(event) => changeName(component.id, event.target.value)} placeholder="음식 이름" aria-label="음식 이름" />}{component.foodLibraryId && component.quantity && component.unit && <div className="component-quantity"><input type="number" min="0.1" step="0.1" value={component.quantity} onChange={(event) => changeQuantity(component, Number(event.target.value))} aria-label={`${component.name} 양`} /><b>{component.unit}</b></div>}</div><button type="button" className="delete-text-button" onClick={() => removeComponent(component.id)}>삭제</button></article>)}</div> : <p className="meal-component-empty">음식을 추가해주세요.</p>}</section>
       {kind === "actual" && <div className="macro-grid"><Field label="칼로리"><input type="number" name="calories" min="0" value={nutrients.calories} onChange={(event) => setNutrient("calories", event.target.value)} placeholder="kcal" /></Field><Field label="단백질"><input type="number" name="protein" min="0" step="0.1" value={nutrients.protein} onChange={(event) => setNutrient("protein", event.target.value)} placeholder="g" /></Field><Field label="탄수화물"><input type="number" name="carbs" min="0" step="0.1" value={nutrients.carbs} onChange={(event) => setNutrient("carbs", event.target.value)} placeholder="g" /></Field><Field label="지방"><input type="number" name="fat" min="0" step="0.1" value={nutrients.fat} onChange={(event) => setNutrient("fat", event.target.value)} placeholder="g" /></Field><Field label="당류"><input type="number" name="sugar" min="0" step="0.1" value={nutrients.sugar} onChange={(event) => setNutrient("sugar", event.target.value)} placeholder="g" /></Field><Field label="식이섬유"><input type="number" name="fiber" min="0" step="0.1" value={nutrients.fiber} onChange={(event) => setNutrient("fiber", event.target.value)} placeholder="g" /></Field></div>}
-      <button className="primary-button submit-button" type="submit">{editing ? "수정 저장" : kind === "plan" ? "계획 저장" : "식사 기록 저장"}</button>
+      <button className="primary-button submit-button" type="submit" disabled={!title}>{editing ? "수정 저장" : kind === "plan" ? "계획 저장" : "식사 기록 저장"}</button>
     </form>
   </Sheet>;
 }
