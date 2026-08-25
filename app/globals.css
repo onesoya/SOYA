@@ -116,6 +116,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .nutrition-goal-range { padding: 12px; border: 1px solid var(--line); background: var(--cream); display: grid; gap: 9px; }
 .nutrition-goal-range > strong { font-size: 10px; }
 .goal-summary-card { display: grid; gap: 14px; }
+.home-cycle-card { position: relative; width: 100%; min-height: 142px; padding: 22px; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); box-shadow: 4px 4px 0 rgba(51,46,43,.16); font-family: inherit; text-align: left; cursor: pointer; display: grid; align-content: center; gap: 7px; }
+.home-cycle-card > span { color: var(--coral); font-size: 9px; font-weight: 850; }
+.home-cycle-card > strong { font-size: 17px; }
+.home-cycle-card > p { max-width: 90%; margin: 0; color: var(--muted); font-size: 9px; line-height: 1.65; white-space: normal; }
+.home-cycle-card > b { position: absolute; right: 18px; top: 50%; transform: translateY(-50%); font-size: 20px; }
+.home-cycle-card.phase-focus, .menstrual-phase-card.phase-focus { background: #edf3e7; }
+.home-cycle-card.phase-bleeding, .menstrual-phase-card.phase-bleeding { background: #f8dedb; }
+.home-cycle-card.phase-premenstrual, .menstrual-phase-card.phase-premenstrual { background: #fff0dc; }
+.home-cycle-card.phase-ovulation, .menstrual-phase-card.phase-ovulation { background: #f0e7f1; }
 .goal-mode-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .goal-mode-line > strong { font-size: 10px; }
 .goal-mode-badge { padding: 7px 9px; border: 1px solid var(--ink); background: var(--coral); color: white; font-size: 9px; font-weight: 850; }
@@ -760,6 +769,11 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .love-heart.outline { color: transparent; -webkit-text-stroke: 1.3px #a83f4b; text-shadow: none; }
 .love-heart.filled { color: #a83f4b; text-shadow: 1px 1px 0 var(--paper); }
 .menstrual-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.menstrual-phase-card { min-height: 126px; padding: 20px 22px; border-color: var(--ink); border-radius: 0; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.menstrual-phase-card > div { min-width: 0; display: grid; gap: 7px; }
+.menstrual-phase-card strong { font-size: 18px; }
+.menstrual-phase-card p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.65; }
+.menstrual-phase-card > b { flex: 0 0 auto; padding: 9px 10px; border: 1px solid var(--ink); background: var(--paper); color: var(--coral); font-size: 9px; }
 .menstrual-metrics .metric-card { min-height: 132px; }
 .menstrual-metrics .metric-card:last-child { grid-column: auto; }
 .menstrual-summary { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; }

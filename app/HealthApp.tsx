@@ -170,6 +170,48 @@ function menstrualPrediction(entries: CycleEntry[], today: string) {
   return { cycleLength, lastStart, nextPeriod, nextOvulation, fertileDates, ovulationDates, basedOnCycles: intervals.length };
 }
 
+type MenstrualPhase = {
+  key: "record-needed" | "bleeding" | "focus" | "ovulation" | "premenstrual" | "middle";
+  label: string;
+  detail: string;
+  cycleDay?: number;
+};
+
+function menstrualPhase(entries: CycleEntry[], date: string): MenstrualPhase {
+  const entriesToDate = entries.filter((entry) => entry.date <= date);
+  const prediction = menstrualPrediction(entriesToDate, date);
+  if (!prediction.lastStart) {
+    return { key: "record-needed", label: "주기 기록이 필요해요", detail: "본 출혈 시작일을 기록하면 주기 구간을 계산해요." };
+  }
+
+  const current = entries.find((entry) => entry.date === date);
+  const cycleDay = Math.max(1, daysBetween(prediction.lastStart, date) + 1);
+  if (current?.state === "본 출혈") {
+    return { key: "bleeding", label: "월경 중", detail: `주기 ${cycleDay}일차 · 오늘의 에너지와 통증을 함께 살펴봐요.`, cycleDay };
+  }
+
+  const currentCycleBleeding = entriesToDate
+    .filter((entry) => entry.state === "본 출혈" && entry.date >= prediction.lastStart)
+    .map((entry) => entry.date)
+    .sort();
+  const lastBleedingDate = currentCycleBleeding.at(-1) ?? prediction.lastStart;
+  const daysAfterBleeding = daysBetween(lastBleedingDate, date);
+  if (daysAfterBleeding >= 1 && daysAfterBleeding <= 7) {
+    return { key: "focus", label: "월경 후 집중 관찰", detail: `주기 ${cycleDay}일차 · SOYA가 체성분 흐름을 집중해서 보여주는 구간이에요.`, cycleDay };
+  }
+
+  if (prediction.fertileDates.has(date)) {
+    return { key: "ovulation", label: prediction.ovulationDates.has(date) ? "배란 예상일" : "배란 예상 구간", detail: `주기 ${cycleDay}일차 · 기록을 바탕으로 계산한 예상 구간이에요.`, cycleDay };
+  }
+
+  const daysToNextPeriod = prediction.nextPeriod ? daysBetween(date, prediction.nextPeriod) : undefined;
+  if (daysToNextPeriod !== undefined && daysToNextPeriod >= 0 && daysToNextPeriod <= 7) {
+    return { key: "premenstrual", label: "월경 전 영향권", detail: `예상 월경 ${daysToNextPeriod === 0 ? "당일" : `${daysToNextPeriod}일 전`} · 체성분과 식욕·에너지를 함께 봐요.`, cycleDay };
+  }
+
+  return { key: "middle", label: "주기 중간", detail: `주기 ${cycleDay}일차 · 평소 흐름과 비교해 기록해요.`, cycleDay };
+}
+
 function monthCells(anchor: string) {
   const [year, month] = anchor.split("-").map(Number);
   const firstWeekday = new Date(year, month - 1, 1).getDay();
@@ -865,6 +907,7 @@ function TodayView(props: TodayViewProps) {
   const latest = todayBody ?? state.bodyRecords[0];
   const prev = state.bodyRecords.find((item: BodyRecord) => item.id !== latest?.id);
   const cycle = state.cycles.find((item: CycleEntry) => item.date === today);
+  const phase = menstrualPhase(state.cycles, today);
   const workoutGoal = state.workoutGoal ?? initialState.workoutGoal!;
   const cardio = weeklyCardio(state, today);
   const targetTiming = goalTiming(state.profile, today);
@@ -883,6 +926,13 @@ function TodayView(props: TodayViewProps) {
       {travelToday && <><div className="travel-level"><span>여행 모드 · 기본</span><strong>{state.profile.travelLevel ?? "균형 유지"}</strong></div><TravelDayControl date={today} level={todayTravelLevel} defaultLevel={state.profile.travelLevel ?? "균형 유지"} onChange={updateTravelDayLevel} /></>}
       <div className="goal-progress"><div className="progress-track"><i style={{ width: `${targetTiming.progress}%` }} /></div><small>{targetTiming.startKey.replaceAll("-", ".")} → {state.profile.goalEndDate.replaceAll("-", ".")}</small></div>
     </section>
+
+    <button type="button" className={`card home-cycle-card phase-${phase.key}`} onClick={() => setTab("menstrual")}>
+      <span>오늘의 주기</span>
+      <strong>{phase.label}</strong>
+      <p>{phase.detail}</p>
+      <b aria-hidden="true">›</b>
+    </button>
 
     <section className="card records-card">
       <CardTitle title="오늘 기록" aside={`${completedCount}/${totalCount}`} />
@@ -999,6 +1049,7 @@ function MenstrualView({ state, today, openRecord }: { state: AppState; today: s
   const cells = monthCells(`${selectedMonth}-01`);
   const prediction = menstrualPrediction(state.cycles, today);
   const selected = state.cycles.find((entry) => entry.date === selectedDate);
+  const selectedPhase = menstrualPhase(state.cycles, selectedDate);
   const changeMonth = (month: string) => {
     setSelectedMonth(month);
     if (!selectedDate.startsWith(month)) setSelectedDate(`${month}-01`);
@@ -1021,6 +1072,10 @@ function MenstrualView({ state, today, openRecord }: { state: AppState; today: s
         const description = [entry ? cycleSummary(entry) : "", fertile ? "예상 가임기" : "", ovulation ? "예상 배란일" : ""].filter(Boolean).join(", ");
         return <button type="button" key={date} className={`calendar-day menstrual-day ${stateClass} ${date === today ? "today" : ""} ${date === selectedDate ? "selected" : ""}`} onClick={() => setSelectedDate(date)} aria-label={`${date}${description ? `, ${description}` : ""}`}><b>{Number(date.slice(-2))}</b>{fertile && <span className={`fertile-flower ${ovulation ? "ovulation" : ""}`} aria-hidden="true">✿</span>}{love && <span className={`love-heart ${love}`} aria-hidden="true">♥</span>}</button>;
       })}</div>
+    </section>
+    <section className={`card menstrual-phase-card phase-${selectedPhase.key}`}>
+      <div><span className="eyebrow">{dateLabel(selectedDate)}의 주기</span><strong>{selectedPhase.label}</strong><p>{selectedPhase.detail}</p></div>
+      {selectedPhase.cycleDay && <b>DAY {selectedPhase.cycleDay}</b>}
     </section>
     <div className="metric-grid menstrual-metrics"><MetricCard label="평균 주기" value={prediction.lastStart ? String(prediction.cycleLength) : "-"} unit="일" hint={prediction.basedOnCycles ? `최근 ${prediction.basedOnCycles + 1}주기 기준` : prediction.lastStart ? "기록 1회 · 28일 기준" : "본 출혈 기록 필요"} /><MetricCard label="다음 예상 배란일" value={prediction.nextOvulation ? prediction.nextOvulation.slice(5).replace("-", ".") : "-"} unit="" hint={prediction.nextPeriod ? `다음 월경 예상 ${prediction.nextPeriod.slice(5).replace("-", ".")}` : "기록이 쌓이면 계산"} /></div>
     <section className="card menstrual-day-detail"><CardTitle title={dateLabel(selectedDate)} aside={<button className="text-button" onClick={() => openRecord(selectedDate)}>{selected ? "수정" : "기록하기"}</button>} />
