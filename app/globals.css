@@ -400,7 +400,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .sheet header { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 22px; }
 .sheet header h2 { margin: 0; font-size: 24px; letter-spacing: -.8px; }
 .sheet header p { margin: 7px 0 0; color: var(--muted); font-size: 11px; }
-.sheet header button { width: 36px; height: 36px; border: 0; border-radius: 12px; background: var(--cream); cursor: pointer; font-size: 22px; }
+.sheet-heading { min-width: 0; flex: 1; }
+.sheet-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.sheet-title-action { min-height: 31px; padding: 0 10px; border: 1px solid var(--coral); background: transparent; color: var(--coral); font-family: inherit; font-size: 8px; font-weight: 850; cursor: pointer; }
+.sheet-close-button { width: 36px; height: 36px; border: 0; border-radius: 12px; background: var(--cream); cursor: pointer; font-size: 22px; }
 .sheet-section-title { margin: 20px 0 10px; color: var(--muted); font-size: 11px; }
 .quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
 .quick-grid.two { grid-template-columns: repeat(2, 1fr); }
@@ -549,9 +552,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .step-overlap-check label { cursor: pointer; }
 .step-overlap-check strong { font-size: 10px; line-height: 1.55; }
 .submit-button { width: 100%; min-height: 52px; margin-top: 6px; }
-.body-record-heading-actions { display: flex; align-items: center; gap: 10px; }
-.body-record-heading-actions > span { color: var(--muted); font-size: 9px; }
-.body-record-heading-actions > button { padding: 0; border: 0; background: transparent; color: var(--coral); font-family: inherit; font-size: 8px; font-weight: 850; cursor: pointer; }
 .body-bulk-editor, .body-bulk-review { display: grid; gap: 14px; }
 .body-bulk-summary { padding: 12px; border: 1px solid var(--line); background: var(--cream); display: grid; gap: 5px; }
 .body-bulk-summary strong { font-size: 10px; }
@@ -737,7 +737,7 @@ html, body {
 }
 
 .desktop-nav nav button, .source-badge, .soft-badge, .confidence,
-.check, .sheet header button { border-radius: 3px; }
+.check, .sheet-close-button, .sheet-title-action { border-radius: 3px; }
 .desktop-nav nav button.active { border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--coral); }
 .primary-button, .secondary-button, .fab { border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); }
 .ghost-button { border: 1px solid currentColor; }
@@ -1163,7 +1163,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
   background: var(--paper);
   border-bottom: 1px solid var(--line);
 }
-.sheet header button { position: sticky; top: 0; flex: 0 0 auto; }
+.sheet-close-button { position: sticky; top: 0; flex: 0 0 auto; }
 
 .history-list { display: grid; }
 .history-list button {
@@ -1234,8 +1234,6 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .change-overview { align-items: flex-start; flex-direction: column; }
   .change-overview-actions { width: 100%; }
   .change-overview-actions button { flex: 1; }
-  .body-record-heading-actions { gap: 7px; }
-  .body-record-heading-actions > button { font-size: 7px; }
   .change-metric-grid { grid-template-columns: 1fr 1fr; }
   .change-metric-grid .metric-card:last-child { grid-column: auto; }
   .workout-metrics { grid-template-columns: 1fr 1fr; }
