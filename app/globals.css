@@ -1012,8 +1012,8 @@ h1, h2, h3, strong, b { font-weight: 700; }
   cursor: pointer;
 }
 .calendar-day b { font-size: 10px; }
-.food-calendar-card .calendar-day > b,
-.menstrual-calendar-card .calendar-day > b { transform: translateY(-7px); }
+.calendar-day-with-spacer { align-content: center; gap: 5px; }
+.calendar-day-spacer { min-height: 10px; }
 .calendar-day.balanced { background: #dcebd8; color: #263323; }
 .calendar-day.partial { background: #f6e5a9; color: #3a311b; }
 .calendar-day.attention { background: #f3c0b7; color: #43201b; }
