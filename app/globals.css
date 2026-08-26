@@ -154,6 +154,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .goal-progress small { color: var(--muted); font-size: 7px; text-align: right; }
 .profile-layer-section { padding: 12px; border: 1px solid var(--ink); background: var(--paper); display: grid; gap: 11px; }
 .profile-layer-section > strong { font-size: 10px; }
+.profile-age-note { margin: -2px 0 0; color: var(--muted); font-size: 9px; line-height: 1.55; }
 .profile-mode-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--ink); }
 .profile-mode-tabs label { min-width: 0; min-height: 44px; display: grid; place-items: center; color: var(--muted); cursor: pointer; }
 .profile-mode-tabs label + label { border-left: 1px solid var(--ink); }
@@ -785,13 +786,15 @@ html, body {
 .brand-mark { width: 46px; height: 46px; }
 .loading-mark { width: 64px; height: 64px; padding: 0; background: var(--paper); }
 .topbar-heading { position: relative; display: flex; align-items: center; gap: 13px; }
-.topbar-tiger-button { width: 76px; height: 76px; flex: none; display: grid; place-items: center; padding: 0; border: 0; background: transparent; line-height: 0; cursor: pointer; }
+.topbar-tiger-button { width: 76px; height: 76px; flex: none; display: grid; place-items: center; padding: 0; border: 0; background: transparent; line-height: 0; }
 .topbar-tiger { width: 48px; height: 48px; display: block; object-fit: cover; image-rendering: pixelated; border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--coral); }
-.account-popover { position: absolute; z-index: 70; top: 60px; left: 0; width: 190px; padding: 14px; border: 2px solid var(--ink); background: var(--paper); box-shadow: 4px 4px 0 var(--ink); }
-.account-popover p { margin: 0 0 12px; font-size: 12px; font-weight: 850; }
-.account-popover > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-.account-popover button { min-height: 34px; border: 1px solid var(--ink); background: var(--cream); font-size: 10px; font-weight: 850; cursor: pointer; }
+.account-menu-wrap { position: relative; flex: 0 0 auto; }
+.account-menu-button { min-height: 42px; max-width: 96px; padding: 0 10px; overflow: hidden; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-family: inherit; font-size: 10px; font-weight: 850; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.account-popover { position: absolute; z-index: 70; top: calc(100% + 9px); right: 0; width: 176px; padding: 11px; border: 2px solid var(--ink); background: var(--paper); box-shadow: 4px 4px 0 var(--ink); display: grid; gap: 7px; }
+.account-popover > strong { padding: 3px 3px 7px; border-bottom: 1px solid var(--line); overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.account-popover button { min-height: 36px; border: 1px solid var(--ink); background: var(--cream); font-family: inherit; font-size: 9px; font-weight: 850; cursor: pointer; }
 .account-popover .logout-button { background: var(--coral); color: white; }
+.mobile-nav-shield { display: none; }
 
 .card, .next-card, .metric-card, .consult-checks > div,
 .week-days button, .mobile-nav, .sheet, .quick-button,
@@ -1053,7 +1056,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .love-heart { position: absolute; right: 4px; bottom: 2px; z-index: 2; font-family: Arial, sans-serif; font-size: 13px; line-height: 1; }
 .love-heart.outline { color: transparent; -webkit-text-stroke: 1.3px #a83f4b; text-shadow: none; }
 .love-heart.filled { color: #a83f4b; text-shadow: 1px 1px 0 var(--paper); }
-.predicted-period-drop { position: absolute; right: 5px; top: 5px; z-index: 3; width: 8px; height: 8px; border: 1px solid var(--ink); border-radius: 55% 55% 55% 0; background: var(--coral); transform: rotate(-45deg); box-shadow: inset 2px 2px 0 rgba(255,255,255,.55); }
+.predicted-period-drop { position: absolute; right: 5px; top: 5px; z-index: 3; width: 9px; height: 11px; background: var(--coral); clip-path: polygon(50% 0, 82% 33%, 95% 56%, 89% 78%, 70% 96%, 50% 100%, 30% 96%, 11% 78%, 5% 56%, 18% 33%); filter: drop-shadow(1px 1px 0 var(--ink)); }
 .menstrual-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .menstrual-phase-card { min-height: 126px; padding: 20px 22px; border-color: var(--ink); border-radius: 0; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .menstrual-phase-card > div { min-width: 0; display: grid; gap: 7px; }
@@ -1072,7 +1075,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .cycle-history-card > summary span { font-size: 16px; font-weight: 900; }
 .cycle-history-card > summary i { font-style: normal; font-size: 18px; transition: transform .18s ease; }
 .cycle-history-card[open] > summary i { transform: rotate(180deg); }
-.cycle-history-controls { display: flex; justify-content: flex-end; }
+.cycle-history-controls { display: flex; justify-content: flex-end; margin: 5px 0 3px; }
 .cycle-year-select { min-width: 92px; height: 36px; padding: 0 28px 0 10px; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); font-family: inherit; font-size: 9px; font-weight: 850; }
 .cycle-history-list { border: 1px solid var(--line); background: white; display: grid; }
 .cycle-history-item { padding: 14px; border-bottom: 1px solid var(--line); display: grid; gap: 11px; }
@@ -1099,10 +1102,11 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .selected-day-records { display: grid; grid-template-columns: minmax(0, 2fr) minmax(120px, 1fr); gap: 10px; }
 .selected-day-records > div { min-width: 0; padding: 12px; border: 1px solid var(--line); background: white; }
 .selected-day-records .menstrual-summary { margin-top: 0; }
-.selected-day-love { align-content: start; display: grid; gap: 6px; }
-.selected-day-love > span { color: var(--coral); font-size: 8px; font-weight: 850; }
-.selected-day-love > strong { font-size: 10px; line-height: 1.5; }
-.selected-day-love > p { margin: 2px 0 0; color: var(--muted); font-size: 8px; line-height: 1.55; }
+.selected-day-love { align-content: start; display: grid; gap: 7px; }
+.selected-day-love summary { color: var(--coral); font-size: 10px; font-weight: 850; cursor: pointer; }
+.selected-day-love > div { display: grid; gap: 6px; padding-top: 5px; border-top: 1px solid var(--line); }
+.selected-day-love strong { font-size: 11px; line-height: 1.5; }
+.selected-day-love p { margin: 2px 0 0; color: var(--muted); font-size: 9px; line-height: 1.55; }
 .selected-day-empty { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.6; }
 .prediction-note { margin: -3px 2px 0; color: var(--muted); font-size: 8px; line-height: 1.65; }
 .cycle-record-tabs { margin: -4px 0 18px; padding: 4px; border: 2px solid var(--ink); border-radius: 999px; background: var(--cream); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
@@ -1322,14 +1326,42 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .history-list b { color: var(--coral); font-size: 9px; }
 .history-empty { margin: 0; padding: 16px 0 4px; line-height: 1.7; }
 
+/* Readable type scale for compact pixel UI */
+.sheet-title-action { font-size: 10px; }
+.field > span, .measure-field > div:first-child > span { font-size: 11px; }
+.calendar-legend { font-size: 10px; }
+.menstrual-phase-card p { font-size: 10px; }
+.menstrual-summary > * { font-size: 10px; }
+.cycle-history-heading small { font-size: 9px; }
+.cycle-history-heading strong { font-size: 11px; }
+.cycle-history-actions button { min-height: 34px; font-size: 8px; }
+.cycle-history-facts span { font-size: 8px; }
+.cycle-history-facts b { font-size: 9px; }
+.menstrual-detail-grid span { font-size: 9px; }
+.menstrual-detail-grid strong { font-size: 11px; }
+.prediction-note { font-size: 9px; }
+.love-record-form { gap: 16px; }
+.love-date-picker { padding: 13px; border: 1px solid var(--ink); background: var(--cream); display: grid; gap: 10px; }
+.love-date-picker > .month-navigator { width: max-content; max-width: 100%; margin: 0; }
+.love-date-picker .calendar-weekdays { margin: 2px 0 0; }
+.love-date-picker .calendar-weekdays span { font-size: 8px; }
+.love-date-picker .month-grid { gap: 5px; }
+.love-date-cell { position: relative; min-width: 0; min-height: 44px; padding: 5px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); display: grid; place-content: center; gap: 2px; font-family: inherit; cursor: pointer; }
+.love-date-cell b { font-size: 10px; }
+.love-date-cell span { position: absolute; right: 3px; bottom: 2px; color: #a83f4b; font-family: Arial, sans-serif; font-size: 10px; }
+.love-date-cell.selected { border-color: var(--ink); background: #f7d2ce; box-shadow: inset 0 0 0 2px var(--coral); }
+.love-date-cell.recorded:not(.selected) { background: #fff4f1; }
+.love-date-picker > p { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.6; overflow-wrap: anywhere; }
+
 @media (max-width: 900px) {
   .main-content { padding-bottom: 190px; }
-  .mobile-nav { left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: max(13px, calc(env(safe-area-inset-bottom) + 5px)); height: 78px; padding: 6px 12px; border-radius: 999px; overflow: hidden; background: var(--paper); }
+  .mobile-nav-shield { position: fixed; z-index: 39; left: 0; right: 0; bottom: 0; height: max(53px, calc(env(safe-area-inset-bottom) + 44px)); display: block; background: var(--cream); pointer-events: auto; }
+  .mobile-nav { left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: max(7px, calc(env(safe-area-inset-bottom) + 1px)); height: 78px; padding: 6px 12px; border-radius: 999px; overflow: hidden; background: var(--paper); }
   .mobile-nav button { gap: 1px; min-width: 0; grid-template-rows: 40px 15px; align-content: center; overflow: visible; -webkit-tap-highlight-color: transparent; }
   .mobile-nav .nav-pixel-icon { width: var(--nav-icon-size, 32px); height: var(--nav-icon-size, 32px); }
   .mobile-nav button:nth-child(3) .nav-pixel-icon { margin-top: 0; margin-bottom: 0; transform: translateY(1px); }
   .mobile-nav button small { font-family: Galmuri9, Galmuri11, sans-serif; font-size: 10px; line-height: 1.15; }
-  .fab { right: max(20px, env(safe-area-inset-right)); bottom: calc(103px + env(safe-area-inset-bottom)); width: 42px; height: 42px; }
+  .fab { right: max(20px, env(safe-area-inset-right)); bottom: calc(97px + env(safe-area-inset-bottom)); width: 42px; height: 42px; }
 }
 
 @media (max-width: 620px) {
@@ -1340,6 +1372,9 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .date-text { margin-bottom: 5px; font-size: 10px; }
   .topbar { gap: 9px; }
   .header-actions { gap: 6px; }
+  .save-state { display: none; }
+  .account-menu-button { min-height: 40px; max-width: 76px; padding-inline: 7px; font-size: 9px; }
+  .account-popover { width: 164px; }
   .reminder-button { width: 38px; height: 40px; }
   .header-library-button { max-width: 82px; min-height: 40px; padding: 0 8px; font-size: 8px; line-height: 1.45; white-space: normal; }
   .pixel-calendar-card {

@@ -176,6 +176,7 @@ export type ReminderSettings = {
 export type AppState = {
   lastBackupAt?: string;
   profile: {
+    nickname?: string;
     mode: "감량기" | "유지기";
     goalWeek: number;
     goalStartDate?: string;
@@ -230,6 +231,7 @@ export const mealLabels: Record<MealType, string> = {
 
 export const initialState: AppState = {
   profile: {
+    nickname: "소야",
     mode: "감량기",
     goalWeek: 1,
     goalStartDate: "2026-08-14",
