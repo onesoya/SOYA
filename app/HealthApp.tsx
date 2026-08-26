@@ -104,6 +104,22 @@ type BulkBodyDraft = {
 type BackupEnvelope = { format: "SOYA_BACKUP"; version: 1; exportedAt: string; state: AppState };
 type RestoreMode = "merge" | "replace";
 type CsvKind = "body" | "circumference" | "meals" | "workouts" | "activity" | "cycles";
+type OnboardingDraft = {
+  nickname: string;
+  birthDate: string;
+  heightCm: string;
+  sex: NonNullable<AppState["profile"]["sex"]>;
+  mode: AppState["profile"]["mode"];
+  goalStartDate: string;
+  goalEndDate: string;
+  targetBodyFatChange: string;
+  targetMuscleChange: string;
+  nutritionGoal: Record<keyof AppState["nutritionGoal"], string>;
+  cardioSessions: string;
+  cardioMinutes: string;
+  menstrualTrackingEnabled: boolean;
+  remindersEnabled: boolean;
+};
 type NextAction =
   | { type: "body"; eyebrow: string; title: string; detail: string; time: string; due: boolean }
   | { type: "workout"; eyebrow: string; title: string; detail: string; time: string; due: boolean }
@@ -202,6 +218,11 @@ function normalizeAppState(value: unknown): AppState {
   const savedProfile = saved.profile && typeof saved.profile === "object" ? saved.profile : initialState.profile;
   const savedMode = String(savedProfile.mode ?? initialState.profile.mode);
   const legacyTravel = savedMode === "여행";
+  const hasExistingRecords = [saved.bodyRecords, saved.meals, saved.workouts, saved.cycles, saved.consultations]
+    .some((records) => Array.isArray(records) && records.length > 0);
+  const onboardingCompleted = typeof savedProfile.onboardingCompleted === "boolean"
+    ? savedProfile.onboardingCompleted
+    : hasExistingRecords || Boolean(savedProfile.nickname?.trim());
   const reminders = saved.reminderSettings && typeof saved.reminderSettings === "object" ? saved.reminderSettings : defaultReminders;
   const legacyLoveRecords: LoveRecord[] = (Array.isArray(saved.cycles) ? saved.cycles : [])
     .filter((entry) => (entry.sexCount ?? 0) > 0 && (entry.contraception === "피임함" || entry.contraception === "피임하지 않음"))
@@ -212,6 +233,8 @@ function normalizeAppState(value: unknown): AppState {
     profile: {
       ...initialState.profile,
       ...savedProfile,
+      onboardingCompleted,
+      menstrualTrackingEnabled: savedProfile.menstrualTrackingEnabled ?? true,
       mode: savedMode === "유지기" ? "유지기" : "감량기",
       travelActive: savedProfile.travelActive ?? legacyTravel,
       travelStartDate: savedProfile.travelStartDate ?? (legacyTravel ? savedProfile.goalStartDate : undefined),
@@ -730,6 +753,109 @@ function assessNutrition(total: NutritionTotal, mealCount: number, complete: boo
   if (total.sugar > goal.sugarMax * 1.25 || total.calories > calorieMax * 1.15 || total.protein < goal.proteinMin * 0.65) return "attention";
   if (total.calories >= calorieMin && total.calories <= calorieMax && total.protein >= goal.proteinMin && total.sugar <= goal.sugarMax && total.fiber >= goal.fiberMin) return "balanced";
   return "partial";
+}
+
+function OnboardingFlow({ state, today, googleName, complete }: { state: AppState; today: string; googleName: string; complete: (draft: OnboardingDraft) => void }) {
+  const [step, setStep] = useState(0);
+  const suggestedName = googleName.trim().split(/\s+/)[0] ?? "";
+  const [draft, setDraft] = useState<OnboardingDraft>(() => ({
+    nickname: state.profile.nickname?.trim() || suggestedName,
+    birthDate: state.profile.birthDate ?? "",
+    heightCm: state.profile.heightCm ? String(state.profile.heightCm) : "",
+    sex: state.profile.sex ?? "여성",
+    mode: state.profile.mode ?? "감량기",
+    goalStartDate: today,
+    goalEndDate: state.profile.goalEndDate >= today ? state.profile.goalEndDate : addDays(today, 56),
+    targetBodyFatChange: String(state.profile.targetBodyFatChange ?? -2),
+    targetMuscleChange: String(state.profile.targetMuscleChange ?? 0),
+    nutritionGoal: Object.fromEntries(Object.entries(state.nutritionGoal).map(([key, value]) => [key, String(value)])) as OnboardingDraft["nutritionGoal"],
+    cardioSessions: String(state.workoutGoal?.cardioSessions ?? 2),
+    cardioMinutes: String(state.workoutGoal?.cardioMinutes ?? 90),
+    menstrualTrackingEnabled: state.profile.menstrualTrackingEnabled ?? true,
+    remindersEnabled: true,
+  }));
+  const titles = ["나를 알려주세요", "관리 방향을 정해요", "영양 목표를 확인해요", "운동 목표를 정해요", "기록 준비를 마쳐요"];
+  const subtitles = ["SOYA가 기록을 내 기준에 맞춰 보여드려요.", "목표는 나중에 언제든 다시 바꿀 수 있어요.", "추천값에서 시작하고 사용하며 조정해도 좋아요.", "개인 유산소의 한 주 기준을 정해요.", "알림과 월경 기록은 선택해서 사용할 수 있어요."];
+  const update = <K extends keyof OnboardingDraft>(key: K, value: OnboardingDraft[K]) => setDraft((current) => ({ ...current, [key]: value }));
+  const updateNutrition = (key: keyof AppState["nutritionGoal"], value: string) => setDraft((current) => ({ ...current, nutritionGoal: { ...current.nutritionGoal, [key]: value } }));
+  const positive = (value: string) => Number(value) > 0;
+  const nutritionValid = positive(draft.nutritionGoal.caloriesMin) && Number(draft.nutritionGoal.caloriesMax) >= Number(draft.nutritionGoal.caloriesMin)
+    && positive(draft.nutritionGoal.proteinMin) && Number(draft.nutritionGoal.proteinMax) >= Number(draft.nutritionGoal.proteinMin)
+    && positive(draft.nutritionGoal.carbsMin) && Number(draft.nutritionGoal.carbsMax) >= Number(draft.nutritionGoal.carbsMin)
+    && positive(draft.nutritionGoal.fatMin) && Number(draft.nutritionGoal.fatMax) >= Number(draft.nutritionGoal.fatMin)
+    && positive(draft.nutritionGoal.sugarMax) && positive(draft.nutritionGoal.fiberMin);
+  const canContinue = [
+    Boolean(draft.nickname.trim() && draft.birthDate && positive(draft.heightCm)),
+    Boolean(draft.goalStartDate && draft.goalEndDate && draft.goalEndDate >= draft.goalStartDate),
+    nutritionValid,
+    positive(draft.cardioSessions) && positive(draft.cardioMinutes),
+    true,
+  ][step];
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canContinue) return;
+    if (step < titles.length - 1) setStep((current) => current + 1);
+    else complete(draft);
+  };
+
+  return <main className="onboarding-screen">
+    <section className="onboarding-card">
+      <header className="onboarding-brand">
+        <Image src="/tiger-icon-192.png" width={72} height={72} alt="SOYA 호랑이" priority />
+        <div><span>처음 만나는 SOYA</span><strong>내 기록의 기준을 만들어요</strong></div>
+      </header>
+      <div className="onboarding-progress" aria-label={`${titles.length}단계 중 ${step + 1}단계`}>
+        {titles.map((_, index) => <i key={index} className={index <= step ? "active" : ""} />)}
+        <small>{step + 1} / {titles.length}</small>
+      </div>
+      <form onSubmit={submit}>
+        <div className="onboarding-copy"><span>STEP {step + 1}</span><h1>{titles[step]}</h1><p>{subtitles[step]}</p></div>
+
+        {step === 0 && <div className="onboarding-fields two-column">
+          <Field label="앱에서 부를 이름"><input value={draft.nickname} onChange={(event) => update("nickname", event.target.value)} placeholder="예: 소야" required /></Field>
+          <Field label="생년월일"><input type="date" value={draft.birthDate} max={today} onChange={(event) => update("birthDate", event.target.value)} required /></Field>
+          <Field label="키 (cm)"><input type="number" inputMode="decimal" min="1" step="0.1" value={draft.heightCm} onChange={(event) => update("heightCm", event.target.value)} required /></Field>
+          <Field label="성별"><select value={draft.sex} onChange={(event) => update("sex", event.target.value as OnboardingDraft["sex"])}><option>여성</option><option>남성</option><option>기타</option></select></Field>
+        </div>}
+
+        {step === 1 && <div className="onboarding-fields">
+          <div className="onboarding-choice-grid"><button type="button" className={draft.mode === "감량기" ? "selected" : ""} onClick={() => update("mode", "감량기")}><strong>감량기</strong><small>체지방량 감소와 골격근량 변화에 집중</small></button><button type="button" className={draft.mode === "유지기" ? "selected" : ""} onClick={() => update("mode", "유지기")}><strong>유지기</strong><small>현재 상태와 자유로운 식생활의 균형</small></button></div>
+          <div className="two-column"><Field label="시작일"><input type="date" value={draft.goalStartDate} onChange={(event) => update("goalStartDate", event.target.value)} required /></Field><Field label="목표일"><input type="date" min={draft.goalStartDate} value={draft.goalEndDate} onChange={(event) => update("goalEndDate", event.target.value)} required /></Field></div>
+          <div className="two-column"><Field label="체지방량 변화 목표 (kg)"><input type="number" inputMode="decimal" step="0.1" value={draft.targetBodyFatChange} onChange={(event) => update("targetBodyFatChange", event.target.value)} required /></Field><Field label="골격근량 변화 목표 (kg)"><input type="number" inputMode="decimal" step="0.1" value={draft.targetMuscleChange} onChange={(event) => update("targetMuscleChange", event.target.value)} required /></Field></div>
+        </div>}
+
+        {step === 2 && <div className="onboarding-fields nutrition-onboarding-grid">
+          <OnboardingRange label="칼로리" unit="kcal" minValue={draft.nutritionGoal.caloriesMin} maxValue={draft.nutritionGoal.caloriesMax} setMin={(value) => updateNutrition("caloriesMin", value)} setMax={(value) => updateNutrition("caloriesMax", value)} />
+          <OnboardingRange label="단백질" unit="g" minValue={draft.nutritionGoal.proteinMin} maxValue={draft.nutritionGoal.proteinMax} setMin={(value) => updateNutrition("proteinMin", value)} setMax={(value) => updateNutrition("proteinMax", value)} />
+          <OnboardingRange label="탄수화물" unit="g" minValue={draft.nutritionGoal.carbsMin} maxValue={draft.nutritionGoal.carbsMax} setMin={(value) => updateNutrition("carbsMin", value)} setMax={(value) => updateNutrition("carbsMax", value)} />
+          <OnboardingRange label="지방" unit="g" minValue={draft.nutritionGoal.fatMin} maxValue={draft.nutritionGoal.fatMax} setMin={(value) => updateNutrition("fatMin", value)} setMax={(value) => updateNutrition("fatMax", value)} />
+          <Field label="당류 상한 (g)"><input type="number" min="1" inputMode="decimal" value={draft.nutritionGoal.sugarMax} onChange={(event) => updateNutrition("sugarMax", event.target.value)} required /></Field>
+          <Field label="식이섬유 하한 (g)"><input type="number" min="1" inputMode="decimal" value={draft.nutritionGoal.fiberMin} onChange={(event) => updateNutrition("fiberMin", event.target.value)} required /></Field>
+        </div>}
+
+        {step === 3 && <div className="onboarding-fields">
+          <div className="onboarding-workout-visual"><span aria-hidden="true">▰━▰</span><p>PT는 계획과 기록에서 따로 남기고,<br />여기서는 개인 유산소의 주간 목표를 정해요.</p></div>
+          <div className="two-column"><Field label="최소 주간 횟수 (회)"><input type="number" min="1" step="1" inputMode="numeric" value={draft.cardioSessions} onChange={(event) => update("cardioSessions", event.target.value)} required /></Field><Field label="주간 누적시간 (분)"><input type="number" min="1" step="5" inputMode="numeric" value={draft.cardioMinutes} onChange={(event) => update("cardioMinutes", event.target.value)} required /></Field></div>
+        </div>}
+
+        {step === 4 && <div className="onboarding-fields onboarding-toggle-list">
+          <button type="button" className={draft.menstrualTrackingEnabled ? "selected" : ""} onClick={() => update("menstrualTrackingEnabled", !draft.menstrualTrackingEnabled)}><span><strong>월경 기록 사용</strong><small>주기와 출혈·컨디션을 함께 기록해요</small></span><i>{draft.menstrualTrackingEnabled ? "사용" : "나중에"}</i></button>
+          <button type="button" className={draft.remindersEnabled ? "selected" : ""} onClick={() => update("remindersEnabled", !draft.remindersEnabled)}><span><strong>기본 알림 준비</strong><small>아침·식사·운동·주간 계획 알림 시간을 준비해요</small></span><i>{draft.remindersEnabled ? "사용" : "나중에"}</i></button>
+          <article className="onboarding-apple-note"><span className="pixel-heart" aria-hidden="true">♥</span><div><strong>Apple 건강 연결은 선택이에요</strong><p>SOYA 시작 후 ‘하루의 움직임’에서 언제든 연결할 수 있어요.</p></div></article>
+        </div>}
+
+        {!canContinue && step < 4 && <p className="onboarding-validation">필요한 내용을 모두 입력해주세요.</p>}
+        <footer className="onboarding-actions">
+          {step > 0 ? <button type="button" className="ghost-button" onClick={() => setStep((current) => current - 1)}>이전</button> : <span />}
+          <button type="submit" className="primary-button" disabled={!canContinue}>{step === titles.length - 1 ? "SOYA 시작하기" : "다음"}</button>
+        </footer>
+      </form>
+    </section>
+  </main>;
+}
+
+function OnboardingRange({ label, unit, minValue, maxValue, setMin, setMax }: { label: string; unit: string; minValue: string; maxValue: string; setMin: (value: string) => void; setMax: (value: string) => void }) {
+  return <fieldset className="onboarding-range"><legend>{label} ({unit})</legend><label><span>최소</span><ClearableFieldControl><input type="number" min="1" inputMode="decimal" value={minValue} onChange={(event) => setMin(event.target.value)} required /></ClearableFieldControl></label><b>~</b><label><span>최대</span><ClearableFieldControl><input type="number" min="1" inputMode="decimal" value={maxValue} onChange={(event) => setMax(event.target.value)} required /></ClearableFieldControl></label></fieldset>;
 }
 
 export function HealthApp() {
@@ -1640,6 +1766,48 @@ export function HealthApp() {
     setModal(null);
   };
 
+  const completeOnboarding = (draft: OnboardingDraft) => {
+    const nutritionGoal = Object.fromEntries(
+      Object.entries(draft.nutritionGoal).map(([key, value]) => [key, Math.max(0, Number(value) || 0)]),
+    ) as AppState["nutritionGoal"];
+    commit((current) => ({
+      ...current,
+      profile: {
+        ...current.profile,
+        onboardingCompleted: true,
+        menstrualTrackingEnabled: draft.menstrualTrackingEnabled,
+        nickname: draft.nickname.trim(),
+        birthDate: draft.birthDate,
+        heightCm: Math.max(1, Number(draft.heightCm) || 1),
+        sex: draft.sex,
+        mode: draft.mode,
+        goalWeek: 1,
+        goalStartDate: draft.goalStartDate,
+        goalEndDate: draft.goalEndDate,
+        targetBodyFatChange: Number(draft.targetBodyFatChange) || 0,
+        targetMuscleChange: Number(draft.targetMuscleChange) || 0,
+      },
+      nutritionGoal,
+      workoutGoal: {
+        cardioSessions: Math.max(0, Number(draft.cardioSessions) || 0),
+        cardioMinutes: Math.max(0, Number(draft.cardioMinutes) || 0),
+      },
+      reminderSettings: {
+        ...(current.reminderSettings ?? defaultReminders),
+        bodyEnabled: draft.remindersEnabled,
+        mealEnabled: {
+          breakfast: draft.remindersEnabled,
+          lunch: draft.remindersEnabled,
+          dinner: draft.remindersEnabled,
+          snack: false,
+        },
+        workoutEnabled: draft.remindersEnabled,
+        weeklyEnabled: draft.remindersEnabled,
+        cycleEnabled: draft.remindersEnabled && draft.menstrualTrackingEnabled,
+      },
+    }));
+  };
+
   const startGoogleSignIn = async () => {
     setAuthMessage("");
     setAuthSigningIn(true);
@@ -1658,6 +1826,8 @@ export function HealthApp() {
   if (!authUser) return <main className="login-screen"><section className="login-card"><Image className="login-tiger" src="/tiger-icon-192.png" width={112} height={112} alt="SOYA 호랑이" /><span className="eyebrow">나만의 건강 기록</span><h1>SOYA</h1><p>내 기록은 내 Google 계정에만<br />안전하게 저장돼요.</p><button type="button" className="google-login-button" onClick={() => void startGoogleSignIn()}><span aria-hidden="true">G</span>Google로 로그인</button>{authMessage && <small className="login-error">{authMessage}</small>}</section></main>;
 
   if (!loaded) return <div className="loading-screen"><Image className="loading-mark" src="/tiger-icon-192.png" width={64} height={64} alt="" /><p>오늘의 기록을 준비하고 있어요</p></div>;
+
+  if (!state.profile.onboardingCompleted) return <OnboardingFlow state={state} today={today} googleName={authUser.displayName ?? ""} complete={completeOnboarding} />;
 
   return (
     <div className="app-shell">

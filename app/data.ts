@@ -198,6 +198,8 @@ export type ReminderSettings = {
 export type AppState = {
   lastBackupAt?: string;
   profile: {
+    onboardingCompleted?: boolean;
+    menstrualTrackingEnabled?: boolean;
     nickname?: string;
     mode: "감량기" | "유지기";
     goalWeek: number;
@@ -253,6 +255,8 @@ export const mealLabels: Record<MealType, string> = {
 
 export const initialState: AppState = {
   profile: {
+    onboardingCompleted: true,
+    menstrualTrackingEnabled: true,
     nickname: "소야",
     mode: "감량기",
     goalWeek: 1,
@@ -328,7 +332,15 @@ export const initialState: AppState = {
 export function createFreshState(): AppState {
   return {
     ...initialState,
-    profile: { ...initialState.profile, travelDailyLevels: {} },
+    profile: {
+      ...initialState.profile,
+      onboardingCompleted: false,
+      menstrualTrackingEnabled: true,
+      nickname: "",
+      birthDate: undefined,
+      heightCm: undefined,
+      travelDailyLevels: {},
+    },
     nutritionGoal: { ...initialState.nutritionGoal },
     workoutGoal: initialState.workoutGoal ? { ...initialState.workoutGoal } : undefined,
     reminderSettings: initialState.reminderSettings
