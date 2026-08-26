@@ -455,6 +455,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .weekly-nutrition-values span { min-width: 0; color: var(--muted); font-size: 8px; }
 .weekly-nutrition-values b { display: block; margin-bottom: 2px; color: var(--ink); font-size: 12px; }
 .weekly-goal-progress { display: grid; gap: 11px; padding: 14px; border: 1px solid var(--line); background: var(--paper); }
+.goal-summary-card > .weekly-goal-progress { margin-top: 1px; }
+.change-goal-progress-card > .weekly-goal-progress { padding: 0; border: 0; background: transparent; }
 .weekly-goal-progress-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .weekly-goal-progress-heading strong { color: var(--coral); font-size: 11px; font-weight: 900; }
 .weekly-goal-progress-heading small { color: var(--muted); font-size: 7px; }
@@ -527,6 +529,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .clearable-field-control > textarea { padding-right: 42px; }
 .field-clear-button { position: absolute; right: 9px; top: 50%; z-index: 2; width: 27px; height: 27px; padding: 0; border: 0; border-radius: 50%; background: var(--cream); color: var(--muted); font-family: inherit; font-size: 16px; line-height: 27px; text-align: center; transform: translateY(-50%); cursor: pointer; }
 .clearable-field-control:has(textarea) .field-clear-button { top: 10px; transform: none; }
+.measure-field .clearable-field-control { width: 105px; }
+.measure-field .clearable-field-control > input { width: 100%; }
+.body-bulk-metrics .clearable-field-control { flex: 1 1 auto; }
+.component-quantity .clearable-field-control,
+.amount-with-unit .clearable-field-control { width: 100%; }
+.component-quantity .field-clear-button,
+.amount-with-unit .field-clear-button { right: 3px; width: 22px; height: 22px; font-size: 13px; line-height: 22px; }
 .field input[type="date"], .field input[type="time"] {
   display: block;
   inline-size: 100%;
@@ -569,7 +578,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .saved-food-picker-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .saved-food-picker-heading strong { font-size: 10px; }
 .saved-food-picker-heading button { border: 0; padding: 0; background: transparent; color: var(--coral); font-size: 8px; font-weight: 850; cursor: pointer; }
-.saved-food-picker > input { width: 100%; min-width: 0; height: 42px; border: 1px solid var(--line); border-radius: 0; padding: 0 11px; background: white; color: var(--ink); font: inherit; font-size: 10px; }
+.saved-food-picker > .clearable-field-control > input { width: 100%; min-width: 0; height: 42px; border: 1px solid var(--line); border-radius: 0; padding: 0 42px 0 11px; background: white; color: var(--ink); font: inherit; font-size: 10px; }
 .saved-food-results { max-height: 192px; overflow-y: auto; display: grid; gap: 6px; }
 .saved-food-results > button { min-width: 0; padding: 9px 10px; border: 1px solid var(--line); background: var(--paper); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; color: var(--ink); text-align: left; cursor: pointer; }
 .saved-food-results > button.selected { border-color: var(--coral); box-shadow: inset 0 0 0 1px var(--coral); }
@@ -589,7 +598,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .meal-component-main { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(104px, .55fr); align-items: center; gap: 9px; }
 .manual-component .meal-component-main { grid-template-columns: minmax(0, 1fr); }
 .meal-component-main > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
-.meal-component-main > input { width: 100%; min-width: 0; height: 38px; padding: 0 9px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 10px; }
+.meal-component-main > .clearable-field-control > input { width: 100%; min-width: 0; height: 38px; padding: 0 38px 0 9px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 10px; }
 .component-quantity { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 33px; align-items: center; border: 1px solid var(--line); background: white; }
 .component-quantity input { width: 100%; min-width: 0; height: 36px; padding: 0 7px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 10px; }
 .component-quantity b { color: var(--muted); font-size: 8px; text-align: center; }
@@ -610,7 +619,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .official-food-search-heading strong { font-size: 10px; }
 .official-food-search-heading span { color: var(--sage); font-size: 7px; font-weight: 850; }
 .official-food-search-bar { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
-.official-food-search-bar input { width: 100%; min-width: 0; height: 42px; padding: 0 10px; border: 1px solid var(--line); border-radius: 0; background: white; color: var(--ink); font: inherit; font-size: 10px; }
+.official-food-search-bar .clearable-field-control > input { width: 100%; min-width: 0; height: 42px; padding: 0 42px 0 10px; border: 1px solid var(--line); border-radius: 0; background: white; color: var(--ink); font: inherit; font-size: 10px; }
 .official-food-search-bar button { min-width: 58px; border: 1px solid var(--ink); background: var(--paper); color: var(--coral); font-size: 9px; font-weight: 850; cursor: pointer; }
 .official-food-search-bar button:disabled { opacity: .45; cursor: not-allowed; }
 .official-food-search > p { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.6; }
@@ -630,7 +639,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .food-library-browser-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .food-library-browser-heading strong { font-size: 11px; }
 .food-library-browser-heading span { color: var(--coral); font-size: 8px; font-weight: 850; }
-.food-library-browser > input { width: 100%; min-width: 0; height: 42px; padding: 0 11px; border: 1px solid var(--line); border-radius: 0; background: white; color: var(--ink); font: inherit; font-size: 10px; }
+.food-library-browser > .clearable-field-control > input { width: 100%; min-width: 0; height: 42px; padding: 0 42px 0 11px; border: 1px solid var(--line); border-radius: 0; background: white; color: var(--ink); font: inherit; font-size: 10px; }
 .food-library-list { display: grid; }
 .food-library-list > p { margin: 10px 0 0; color: var(--muted); font-size: 9px; text-align: center; }
 .food-library-list article { padding: 13px 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
@@ -770,6 +779,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .two-fields { grid-template-columns: 1fr 1fr; }
   .macro-grid { grid-template-columns: 1fr 1fr; }
   .measure-field > div:last-child { min-width: 120px; }
+  .measure-field .clearable-field-control { width: 88px; }
   .measure-field input { width: 88px; }
   .food-set-row { grid-template-columns: minmax(0, 1fr) minmax(110px, .65fr); }
   .food-set-row .delete-text-button { grid-column: 1 / -1; min-height: 28px; justify-self: end; }
@@ -1256,7 +1266,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .weekly-meal-items { display: grid; gap: 6px; }
 .weekly-meal-item { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 30px; gap: 5px; }
 .weekly-meal-item.single { grid-template-columns: minmax(0, 1fr); }
-.weekly-meal-item input { width: 100%; min-width: 0; height: 42px; border: 1px solid var(--ink); border-radius: 0; padding: 0 10px; background: white; color: var(--ink); font: inherit; font-size: 10px; }
+.weekly-meal-item .clearable-field-control > input { width: 100%; min-width: 0; height: 42px; border: 1px solid var(--ink); border-radius: 0; padding: 0 38px 0 10px; background: white; color: var(--ink); font: inherit; font-size: 10px; }
 .weekly-meal-item button { width: 30px; height: 42px; border: 1px solid var(--ink); background: var(--cream); color: var(--ink); font-size: 17px; cursor: pointer; }
 .weekly-workout-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 20px 0 10px; }
 .weekly-workout-heading h4 { margin: 0; }
@@ -1524,9 +1534,9 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .body-bulk-metrics input { font-size: 16px; }
   .body-bulk-preview-list article { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .field input, .field select, .field textarea { font-size: 16px; }
-  .official-food-search-bar input,
-  .saved-food-picker > input,
-  .food-library-browser > input { font-size: 16px; }
+  .official-food-search-bar .clearable-field-control > input,
+  .saved-food-picker > .clearable-field-control > input,
+  .food-library-browser > .clearable-field-control > input { font-size: 16px; }
   .reminder-section { padding: 11px; }
   .reminder-row { grid-template-columns: 20px minmax(0, 1fr) 84px; padding: 8px 11px 8px 8px; }
   .reminder-row.weekly { grid-template-columns: 20px minmax(0, 1fr) 84px; grid-template-rows: auto auto; gap: 6px 8px; }
