@@ -73,8 +73,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .pixel-bell::after { content: ""; position: absolute; left: 4px; bottom: -5px; width: 4px; height: 3px; background: var(--ink); }
 .header-library-button { min-height: 42px; padding: 0 12px; border: 1px solid var(--ink); background: var(--paper); color: var(--coral); box-shadow: 3px 3px 0 var(--ink); font-size: 9px; font-weight: 850; white-space: nowrap; cursor: pointer; }
 
-.dashboard-grid { display: grid; grid-template-columns: 1.08fr 0.92fr; gap: 18px; align-items: start; }
+.dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
 .full-card { grid-column: 1 / -1; }
+.home-layout-row { min-width: 0; display: grid; grid-template-columns: 1.08fr .92fr; gap: 18px; align-items: stretch; }
+.home-layout-stack { min-width: 0; display: grid; gap: 18px; }
+.home-layout-primary-stack { grid-template-rows: auto minmax(142px, 1fr); }
+.home-layout-secondary-stack { grid-template-rows: auto minmax(0, 1fr); }
+.home-layout-row > .card,
+.home-layout-stack > .card { min-width: 0; height: 100%; }
 .card, .next-card { background: var(--paper); border: 1px solid rgba(232, 225, 215, 0.9); border-radius: 26px; box-shadow: var(--shadow); }
 .card { padding: 24px; }
 .next-card { padding: 28px 30px; min-height: 172px; display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; background: linear-gradient(120deg, #2d2924 0%, #413a33 100%); color: white; overflow: hidden; position: relative; }
@@ -149,7 +155,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .home-cycle-card > b { position: absolute; right: 18px; top: 50%; transform: translateY(-50%); font-size: 20px; }
 .home-cycle-card.phase-focus, .menstrual-phase-card.phase-focus { background: #edf3e7; }
 .home-cycle-card.phase-bleeding, .menstrual-phase-card.phase-bleeding { background: #f8dedb; }
-.home-cycle-card.phase-premenstrual, .menstrual-phase-card.phase-premenstrual { background: #fff0dc; }
+.home-cycle-card.phase-premenstrual, .menstrual-phase-card.phase-premenstrual, .menstrual-phase-card.phase-predicted-period { background: #fff0dc; }
 .home-cycle-card.phase-ovulation, .menstrual-phase-card.phase-ovulation { background: #f0e7f1; }
 .goal-mode-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .goal-mode-line > strong { font-size: 10px; }
@@ -746,7 +752,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .app-shell { display: block; }
   .desktop-nav { display: none; }
   .main-content { padding: 24px 18px 130px; }
-  .dashboard-grid { grid-template-columns: 1fr; }
+  .dashboard-grid, .home-layout-row { grid-template-columns: 1fr; }
+  .home-layout-primary-stack, .home-layout-secondary-stack { grid-template-rows: auto; }
   .full-card { grid-column: auto; }
   .mobile-nav { position: fixed; z-index: 40; left: 10px; right: 10px; bottom: 9px; height: 72px; padding: 5px 7px calc(5px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(5, 1fr); background: rgba(255, 253, 249, .94); border: 1px solid var(--line); border-radius: 23px; box-shadow: 0 16px 50px rgba(55, 39, 26, .15); backdrop-filter: blur(16px); }
   .mobile-nav button { border: 0; background: transparent; display: grid; place-content: center; justify-items: center; gap: 3px; color: #9a9287; cursor: pointer; }
@@ -754,6 +761,35 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .mobile-nav button small { font-size: 9px; font-weight: 800; }
   .mobile-nav button.active { color: var(--coral); }
   .fab { right: 18px; bottom: 94px; width: 54px; height: 54px; border-radius: 19px 19px 19px 6px; }
+}
+
+@media (min-width: 901px) {
+  .main-content small { font-size: 11px !important; line-height: 1.5; }
+  .main-content .card-title > div,
+  .main-content .text-button,
+  .main-content .nutrient > div:first-child,
+  .main-content .weekly-line > div:first-child,
+  .main-content .weekly-line strong { font-size: 12px; }
+  .main-content .goal-mode-line > strong,
+  .main-content .goal-target-grid span,
+  .main-content .travel-level span,
+  .main-content .weekly-goal-progress-heading strong,
+  .main-content .weekly-goal-progress-grid span,
+  .main-content .home-cycle-card > span,
+  .main-content .home-cycle-card > p,
+  .main-content .metric-card > span,
+  .main-content .metric-card p,
+  .main-content .calendar-legend,
+  .main-content .energy-guide-mini span,
+  .main-content .energy-guide-mini button,
+  .main-content .activity-energy-panel button { font-size: 11px; }
+  .main-content .goal-mode-badge,
+  .main-content .nutrient strong,
+  .main-content .micro-stat span,
+  .main-content .micro-stat small { font-size: 11px; }
+  .main-content .calendar-day b { font-size: 11px; }
+  .main-content .record-row strong { font-size: 14px; }
+  .main-content .side-note { font-size: 13px; }
 }
 
 @media (max-width: 620px) {

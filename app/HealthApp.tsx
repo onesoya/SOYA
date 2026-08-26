@@ -1664,7 +1664,7 @@ export function HealthApp() {
       <aside className="desktop-nav">
         <div className="brand"><Image className="brand-mark" src="/tiger-icon-192.png" width={46} height={46} alt="" /><div><strong>SOYA</strong><small>온전히 나를 위한 기록</small></div></div>
         <nav>{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}><NavPixelIcon tab={item.id} />{item.label}</button>)}</nav>
-        <div className="side-note"><span>{state.profile.mode} {goalClock.week}주차{travelToday ? " · 여행 중" : ""}</span><strong>{travelToday ? state.profile.travelLevel ?? "균형 유지" : "체중보다 변화를 봐요"}</strong></div>
+        <div className="side-note"><span>{state.profile.mode} {goalClock.week}주차{travelToday ? " · 여행 중" : ""}</span>{travelToday && <strong>{state.profile.travelLevel ?? "균형 유지"}</strong>}</div>
       </aside>
 
       <main className="main-content">
@@ -1791,51 +1791,59 @@ function TodayView(props: TodayViewProps) {
       {nextAction.type !== "done" && <div className="next-actions"><button className="ghost-button" onClick={skipNextAction}>오늘은 건너뛰기</button><button className="primary-button" onClick={openNextAction}>{nextAction.type === "weekly" ? "계획하기" : "기록하기"} <span>→</span></button></div>}
     </section>
 
-    <section className="card goal-summary-card">
-      <CardTitle title="현재 목표" aside={<button className="text-button" onClick={() => setModal("profile-goal")}>목표 수정</button>} />
-      <div className="goal-mode-line"><span className={`goal-mode-badge mode-${state.profile.mode}`}>{state.profile.mode}</span><strong>{targetTiming.week}주차 · {targetTiming.daysLeft}일 남음</strong></div>
-      <div className="goal-target-grid"><div><span>체지방량</span><strong>{signed(state.profile.targetBodyFatChange)}kg</strong></div><div><span>골격근량</span><strong>{signed(state.profile.targetMuscleChange)}kg</strong></div></div>
-      {travelToday && <><div className="travel-level"><span>여행 모드 · 기본</span><strong>{state.profile.travelLevel ?? "균형 유지"}</strong></div><TravelDayControl date={today} level={todayTravelLevel} defaultLevel={state.profile.travelLevel ?? "균형 유지"} onChange={updateTravelDayLevel} /></>}
-      <BodyGoalProgress state={state} endDate={today} />
-    </section>
+    <div className="home-layout-row home-layout-primary">
+      <div className="home-layout-stack home-layout-primary-stack">
+        <section className="card goal-summary-card">
+          <CardTitle title="현재 목표" aside={<button className="text-button" onClick={() => setModal("profile-goal")}>목표 수정</button>} />
+          <div className="goal-mode-line"><span className={`goal-mode-badge mode-${state.profile.mode}`}>{state.profile.mode}</span><strong>{targetTiming.week}주차 · {targetTiming.daysLeft}일 남음</strong></div>
+          <div className="goal-target-grid"><div><span>체지방량</span><strong>{signed(state.profile.targetBodyFatChange)}kg</strong></div><div><span>골격근량</span><strong>{signed(state.profile.targetMuscleChange)}kg</strong></div></div>
+          {travelToday && <><div className="travel-level"><span>여행 모드 · 기본</span><strong>{state.profile.travelLevel ?? "균형 유지"}</strong></div><TravelDayControl date={today} level={todayTravelLevel} defaultLevel={state.profile.travelLevel ?? "균형 유지"} onChange={updateTravelDayLevel} /></>}
+          <BodyGoalProgress state={state} endDate={today} />
+        </section>
 
-    <button type="button" className={`card home-cycle-card phase-${phase.key}`} onClick={() => setTab("menstrual")}>
-      <span>오늘의 주기</span>
-      <strong>{phase.label}</strong>
-      <p>{phase.detail}</p>
-      <b aria-hidden="true">›</b>
-    </button>
-
-    <section className="card records-card">
-      <CardTitle title="오늘 기록" aside={`${completedCount}/${totalCount}`} />
-      <div className="record-list">
-        {!travelToday && <RecordRow label="인바디" detail={todayBody ? `${todayBody.bodyFatMass}kg 체지방 · ${todayBody.skeletalMuscle}kg 골격근` : "아직 기록하지 않음"} done={Boolean(todayBody)} onClick={() => setModal("body")} />}
-        {(["breakfast", "lunch", "dinner"] as MealType[]).map((type) => { const actual = mealActual(type); const plan = mealPlan(type); return <RecordRow key={type} label={mealLabels[type]} detail={actual ? actual.title : plan ? `계획 · ${plan.title}` : "아직 기록하지 않음"} done={Boolean(actual)} onClick={() => openMeal("actual", type, actual ?? plan, today)} />; })}
-        {plannedWorkout && <RecordRow label="운동" detail={actualWorkouts[0]?.title ?? `계획 · ${plannedWorkout.title}`} done={actualWorkouts.length > 0} onClick={() => openWorkout("actual", plannedWorkout)} />}
-        {cycle && <RecordRow label="몸 상태" detail={cycleSummary(cycle)} done onClick={() => setModal("cycle")} />}
+        <button type="button" className={`card home-cycle-card phase-${phase.key}`} onClick={() => setTab("menstrual")}>
+          <span>오늘의 주기</span>
+          <strong>{phase.label}</strong>
+          <p>{phase.detail}</p>
+          <b aria-hidden="true">›</b>
+        </button>
       </div>
-    </section>
 
-    <section className="card nutrition-card">
+      <section className="card records-card">
+        <CardTitle title="오늘 기록" aside={`${completedCount}/${totalCount}`} />
+        <div className="record-list">
+          {!travelToday && <RecordRow label="인바디" detail={todayBody ? `${todayBody.bodyFatMass}kg 체지방 · ${todayBody.skeletalMuscle}kg 골격근` : "아직 기록하지 않음"} done={Boolean(todayBody)} onClick={() => setModal("body")} />}
+          {(["breakfast", "lunch", "dinner"] as MealType[]).map((type) => { const actual = mealActual(type); const plan = mealPlan(type); return <RecordRow key={type} label={mealLabels[type]} detail={actual ? actual.title : plan ? `계획 · ${plan.title}` : "아직 기록하지 않음"} done={Boolean(actual)} onClick={() => openMeal("actual", type, actual ?? plan, today)} />; })}
+          {plannedWorkout && <RecordRow label="운동" detail={actualWorkouts[0]?.title ?? `계획 · ${plannedWorkout.title}`} done={actualWorkouts.length > 0} onClick={() => openWorkout("actual", plannedWorkout)} />}
+          {cycle && <RecordRow label="몸 상태" detail={cycleSummary(cycle)} done onClick={() => setModal("cycle")} />}
+        </div>
+      </section>
+    </div>
+
+    <div className="home-layout-row home-layout-secondary">
+      <section className="card nutrition-card">
       <CardTitle title="오늘의 영양" aside={<button className="text-button" onClick={() => setModal("nutrition-goal")}>목표 설정</button>} />
       <div className="calorie-total"><strong>{nutrition.calories.toLocaleString()}</strong><span>kcal</span>{!(travelToday && todayTravelLevel === "가볍게 기록") && <small>/ {energy.intakeMin.toLocaleString()}~{energy.intakeMax.toLocaleString()}</small>}</div>
       {!(travelToday && todayTravelLevel === "가볍게 기록") && <div className="energy-guide-mini"><span>{energy.activity ? <><b>걸음 {energy.activity.steps.toLocaleString()}걸음 · 활동 {energy.activityCalories.toLocaleString()} kcal · 총소모 약 {energy.expenditure.toLocaleString()} kcal</b>{energy.activity.source === "apple_health" && energy.activity.importedAt && <small>{new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit" }).format(new Date(energy.activity.importedAt))} 동기화</small>}</> : "활동을 기록하면 오늘의 섭취 범위를 조정해요"}</span><div className="energy-guide-actions"><button type="button" className="health-sync-mini-button" disabled={appleHealthSyncing} onClick={syncAppleHealth}>{appleHealthSyncing ? "동기화 중" : "지금 동기화"}</button><button type="button" onClick={() => openActivity(today)}>{energy.activity ? "수정" : "직접 기록"}</button></div></div>}
       {!(travelToday && todayTravelLevel === "가볍게 기록") && <NutrientBar label="단백질" value={nutrition.protein} min={goal.proteinMin} max={goal.proteinMax} unit="g" tone="coral" />}
       {!(travelToday && todayTravelLevel !== "목표 유지") && <><NutrientBar label="탄수화물" value={nutrition.carbs} min={goal.carbsMin} max={goal.carbsMax} unit="g" tone="gold" /><NutrientBar label="지방" value={nutrition.fat} min={goal.fatMin} max={goal.fatMax} unit="g" tone="sage" /></>}
       <div className="micro-grid"><MicroStat label="당류" value={travelToday && todayTravelLevel === "가볍게 기록" ? `${nutrition.sugar}g` : `${nutrition.sugar} / ${goal.sugarMax}g`} hint={travelToday && todayTravelLevel === "가볍게 기록" ? "기록값" : "상한 기준"} /><MicroStat label="식이섬유" value={travelToday && todayTravelLevel === "가볍게 기록" ? `${nutrition.fiber}g` : `${nutrition.fiber} / ${goal.fiberMin}g`} hint={travelToday && todayTravelLevel === "가볍게 기록" ? "기록값" : "최소 목표"} /></div>
-    </section>
+      </section>
 
-    <section className="card body-card">
-      <CardTitle title="최근 체성분" aside={<button className="text-button" onClick={() => setTab("change")}>변화 보기</button>} />
-      <div className="body-highlight"><div><span>체지방량</span><strong>{latest?.bodyFatMass ?? "-"}<small>kg</small></strong><em>{prev ? `${latest.bodyFatMass - prev.bodyFatMass >= 0 ? "+" : ""}${(latest.bodyFatMass - prev.bodyFatMass).toFixed(1)}kg` : "첫 기록"}</em></div><div><span>골격근량</span><strong>{latest?.skeletalMuscle ?? "-"}<small>kg</small></strong><em>{prev ? `${latest.skeletalMuscle - prev.skeletalMuscle >= 0 ? "+" : ""}${(latest.skeletalMuscle - prev.skeletalMuscle).toFixed(1)}kg` : "첫 기록"}</em></div></div>
-    </section>
+      <div className="home-layout-stack home-layout-secondary-stack">
+        <section className="card body-card">
+          <CardTitle title="최근 체성분" aside={<button className="text-button" onClick={() => setTab("change")}>변화 보기</button>} />
+          <div className="body-highlight"><div><span>체지방량</span><strong>{latest?.bodyFatMass ?? "-"}<small>kg</small></strong><em>{prev ? `${latest.bodyFatMass - prev.bodyFatMass >= 0 ? "+" : ""}${(latest.bodyFatMass - prev.bodyFatMass).toFixed(1)}kg` : "첫 기록"}</em></div><div><span>골격근량</span><strong>{latest?.skeletalMuscle ?? "-"}<small>kg</small></strong><em>{prev ? `${latest.skeletalMuscle - prev.skeletalMuscle >= 0 ? "+" : ""}${(latest.skeletalMuscle - prev.skeletalMuscle).toFixed(1)}kg` : "첫 기록"}</em></div></div>
+        </section>
 
-    <section className="card week-card">
-      <CardTitle title={travelToday && todayTravelLevel !== "목표 유지" ? "이번 주 움직임" : "이번 주"} aside={<button className="text-button" onClick={() => setModal("workout-goal")}>목표 설정</button>} />
-      <div className="weekly-line"><div><span>유산소</span><strong>{cardio.sessions}{travelToday && todayTravelLevel !== "목표 유지" ? "회" : ` / ${workoutGoal.cardioSessions}회`}</strong></div>{!(travelToday && todayTravelLevel !== "목표 유지") && <div className="progress-track"><i style={{ width: `${Math.min(100, cardio.sessions / workoutGoal.cardioSessions * 100)}%` }} /></div>}</div>
-      <div className="weekly-line"><div><span>누적 시간</span><strong>{cardio.minutes}{travelToday && todayTravelLevel !== "목표 유지" ? "분" : ` / ${workoutGoal.cardioMinutes}분`}</strong></div>{!(travelToday && todayTravelLevel !== "목표 유지") && <div className="progress-track"><i style={{ width: `${Math.min(100, cardio.minutes / workoutGoal.cardioMinutes * 100)}%` }} /></div>}</div>
-      <button className="secondary-button" onClick={() => openWorkout("actual")}>운동 기록 추가</button>
-    </section>
+        <section className="card week-card">
+          <CardTitle title={travelToday && todayTravelLevel !== "목표 유지" ? "이번 주 움직임" : "이번 주"} aside={<button className="text-button" onClick={() => setModal("workout-goal")}>목표 설정</button>} />
+          <div className="weekly-line"><div><span>유산소</span><strong>{cardio.sessions}{travelToday && todayTravelLevel !== "목표 유지" ? "회" : ` / ${workoutGoal.cardioSessions}회`}</strong></div>{!(travelToday && todayTravelLevel !== "목표 유지") && <div className="progress-track"><i style={{ width: `${Math.min(100, cardio.sessions / workoutGoal.cardioSessions * 100)}%` }} /></div>}</div>
+          <div className="weekly-line"><div><span>누적 시간</span><strong>{cardio.minutes}{travelToday && todayTravelLevel !== "목표 유지" ? "분" : ` / ${workoutGoal.cardioMinutes}분`}</strong></div>{!(travelToday && todayTravelLevel !== "목표 유지") && <div className="progress-track"><i style={{ width: `${Math.min(100, cardio.minutes / workoutGoal.cardioMinutes * 100)}%` }} /></div>}</div>
+          <button className="secondary-button" onClick={() => openWorkout("actual")}>운동 기록 추가</button>
+        </section>
+      </div>
+    </div>
   </div>;
 }
 
@@ -1936,6 +1944,10 @@ function MenstrualView({ state, today, openRecord, openLove, editRange, deleteRa
   const selected = state.cycles.find((entry) => entry.date === selectedDate);
   const selectedLove = (state.loveRecords ?? []).find((entry) => entry.date === selectedDate);
   const selectedPhase = menstrualPhase(state.cycles, selectedDate);
+  const selectedIsPredictedPeriod = prediction.periodPredictions.includes(selectedDate) && (!selected || selected.state === "없음");
+  const displayedPhase = selectedIsPredictedPeriod
+    ? { key: "predicted-period", label: "예상 월경일", detail: `최근 ${prediction.basedOnCycles || 1}주기 기록을 바탕으로 계산한 예상일이에요.` }
+    : selectedPhase;
   const changeMonth = (month: string) => {
     setSelectedMonth(month);
     if (!selectedDate.startsWith(month)) setSelectedDate(`${month}-01`);
@@ -1972,9 +1984,9 @@ function MenstrualView({ state, today, openRecord, openLove, editRange, deleteRa
         {selectedLove && <details className="selected-day-love"><summary>♥ 사랑 기록</summary><div><strong>{selectedLove.count}회 · {selectedLove.contraception}</strong>{selectedLove.note && <p>{selectedLove.note}</p>}<button className="text-button" type="button" onClick={() => openLove(selectedDate)}>수정</button></div></details>}
       </div>
     </section>
-    <section className={`card menstrual-phase-card phase-${selectedPhase.key}`}>
-      <div><span className="eyebrow">{dateLabel(selectedDate)}의 주기</span><strong>{selectedPhase.label}</strong><p>{selectedPhase.detail}</p></div>
-      {selectedPhase.cycleDay && <b>DAY {selectedPhase.cycleDay}</b>}
+    <section className={`card menstrual-phase-card phase-${displayedPhase.key}`}>
+      <div><span className="eyebrow">{dateLabel(selectedDate)}의 주기</span><strong>{displayedPhase.label}</strong><p>{displayedPhase.detail}</p></div>
+      {!selectedIsPredictedPeriod && selectedPhase.cycleDay && <b>DAY {selectedPhase.cycleDay}</b>}
     </section>
     <div className="metric-grid menstrual-metrics"><MetricCard label="평균 주기" value={prediction.lastStart ? String(prediction.cycleLength) : "-"} unit="일" hint={prediction.basedOnCycles ? `최근 ${prediction.basedOnCycles}주기 기준` : prediction.lastStart ? "기록 1회 · 28일 기준" : "본 출혈 기록 필요"} /><MetricCard label="평균 본 출혈" value={averageMainBleeding ? String(averageMainBleeding) : "-"} unit="일" hint={recentBleedingHistories.length ? `최근 ${recentBleedingHistories.length}주기 기준` : "본 출혈 기록 필요"} /><MetricCard label="다음 예상 월경일" value={prediction.nextPeriod ? prediction.nextPeriod.slice(5).replace("-", ".") : "-"} unit="" hint={prediction.nextPeriod ? `최근 ${prediction.basedOnCycles || 1}주기 기준` : "기록이 쌓이면 계산"} /><MetricCard label="다음 예상 배란일" value={prediction.nextOvulation ? prediction.nextOvulation.slice(5).replace("-", ".") : "-"} unit="" hint={prediction.nextOvulation ? `최근 ${prediction.basedOnCycles || 1}주기 기준 · 예상` : "기록이 쌓이면 계산"} /></div>
     <details className="card cycle-history-card"><summary><span>주기별 기록</span><i aria-hidden="true">⌄</i></summary><div className="cycle-history-controls">{cycleYears.length ? <select className="cycle-year-select" value={cycleYear} onChange={(event) => setCycleYear(event.target.value)} aria-label="주기 기록 연도"><option value="전체">전체</option>{cycleYears.map((year) => <option key={year} value={year}>{year}년</option>)}</select> : undefined}</div>
