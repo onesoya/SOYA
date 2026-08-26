@@ -1504,6 +1504,9 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .body-bulk-metrics input { font-size: 16px; }
   .body-bulk-preview-list article { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .field input, .field select, .field textarea { font-size: 16px; }
+  .official-food-search-bar input,
+  .saved-food-picker > input,
+  .food-library-browser > input { font-size: 16px; }
   .reminder-section { padding: 11px; }
   .reminder-row { grid-template-columns: 20px minmax(0, 1fr) 84px; padding: 8px 11px 8px 8px; }
   .reminder-row.weekly { grid-template-columns: 20px minmax(0, 1fr) 84px; grid-template-rows: auto auto; gap: 6px 8px; }
