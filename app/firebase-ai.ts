@@ -2,6 +2,7 @@
 
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { firebaseApp } from "./firebase-client";
+import type { ConsultationPlanSuggestion } from "./data";
 
 export type AiConsultationResult = {
   text: string;
@@ -15,6 +16,7 @@ export type AiConsultationResult = {
   remaining: number;
   estimatedUsd: number;
   krwReferenceRate: number;
+  planSuggestions?: ConsultationPlanSuggestion[];
 };
 
 export type AiUsageSummary = {

@@ -1249,6 +1249,24 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .week-plan-nav strong { text-align: center; font-size: 11px; }
 .week-plan-jump { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
 .week-plan-jump > button { height: 50px; padding: 0 12px; border: 1px solid var(--coral); background: var(--paper); color: var(--coral); font-size: 9px; font-weight: 850; cursor: pointer; }
+.ai-plan-suggestions { margin: 14px 0; padding: 14px; border: 1px solid var(--ink); background: #fff6e7; box-shadow: 3px 3px 0 rgba(51, 46, 43, .14); }
+.ai-plan-suggestions-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+.ai-plan-suggestions-title > div { display: grid; gap: 4px; }
+.ai-plan-suggestions-title span { color: var(--coral); font-size: 8px; font-weight: 900; }
+.ai-plan-suggestions-title strong { font-size: 11px; }
+.ai-plan-suggestions-title > small { color: var(--muted); font-size: 8px; }
+.ai-plan-suggestion-list { display: grid; gap: 7px; }
+.ai-plan-suggestion-list label { min-width: 0; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: start; gap: 9px; padding: 11px; border: 1px solid var(--line); background: var(--paper); cursor: pointer; }
+.ai-plan-suggestion-list label.selected { border-color: var(--coral); background: #fff0e8; }
+.ai-plan-suggestion-list input { width: 18px; height: 18px; margin: 0; accent-color: var(--coral); }
+.ai-plan-suggestion-list label > span { min-width: 0; display: grid; gap: 5px; }
+.ai-plan-suggestion-list b { font-size: 9px; }
+.ai-plan-suggestion-list small { color: var(--muted); font-size: 8px; line-height: 1.7; }
+.ai-plan-suggestion-list em { padding: 3px 5px; background: var(--cream); color: var(--coral); font-size: 7px; font-style: normal; font-weight: 850; }
+.ai-plan-suggestion-action { display: grid; justify-items: end; gap: 7px; margin-top: 10px; }
+.ai-plan-suggestion-action button { min-height: 40px; padding: 0 13px; border: 1px solid var(--ink); background: var(--coral); color: white; box-shadow: 2px 2px 0 var(--ink); font: inherit; font-size: 8px; font-weight: 900; cursor: pointer; }
+.ai-plan-suggestion-action button:disabled { opacity: .45; cursor: default; }
+.ai-plan-suggestion-action p { margin: 0; color: #557151; font-size: 8px; font-weight: 750; }
 .week-plan-targets { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
 .week-plan-targets span { padding: 6px 8px; border: 1px solid var(--line); background: var(--cream); color: var(--muted); font-size: 8px; font-weight: 750; }
 .week-plan-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin: 14px 0 18px; }

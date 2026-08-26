@@ -192,6 +192,46 @@ function safeText(value, maxLength) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
+function weeklyConsultationOutput(raw) {
+  const fallback = { text: raw, planSuggestions: [] };
+  const cleaned = String(raw || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  try {
+    const parsed = JSON.parse(cleaned);
+    const text = safeText(parsed?.text, 14000);
+    if (!text) return fallback;
+    const mealTypes = new Set(["breakfast", "lunch", "dinner", "snack"]);
+    const workoutTypes = new Set(["PT", "유산소"]);
+    const suggestions = Array.isArray(parsed?.planSuggestions) ? parsed.planSuggestions.slice(0, 4) : [];
+    const planSuggestions = suggestions.map((suggestion, index) => {
+      const meals = (Array.isArray(suggestion?.meals) ? suggestion.meals : []).slice(0, 8).map((meal) => ({
+        dayOffset: Math.min(6, Math.max(0, Math.round(Number(meal?.dayOffset) || 0))),
+        mealType: mealTypes.has(meal?.mealType) ? meal.mealType : "snack",
+        title: safeText(meal?.title, 80),
+      })).filter((meal) => meal.title);
+      const workouts = (Array.isArray(suggestion?.workouts) ? suggestion.workouts : []).slice(0, 5).map((workout) => ({
+        dayOffset: Math.min(6, Math.max(0, Math.round(Number(workout?.dayOffset) || 0))),
+        type: workoutTypes.has(workout?.type) ? workout.type : "유산소",
+        title: safeText(workout?.title, 80),
+        minutes: Math.min(180, Math.max(1, Math.round(Number(workout?.minutes) || 30))),
+        intensity: Math.min(10, Math.max(1, Math.round(Number(workout?.intensity) || 5))),
+        heartRate: safeText(workout?.heartRate, 30),
+        overlapsSteps: Boolean(workout?.overlapsSteps),
+      })).filter((workout) => workout.title);
+      return {
+        id: safeText(suggestion?.id, 40) || `suggestion-${index + 1}`,
+        category: suggestion?.category === "workout" ? "workout" : "meal",
+        title: safeText(suggestion?.title, 80),
+        detail: safeText(suggestion?.detail, 240),
+        meals,
+        workouts,
+      };
+    }).filter((suggestion) => suggestion.title && (suggestion.meals.length || suggestion.workouts.length));
+    return { text, planSuggestions };
+  } catch {
+    return fallback;
+  }
+}
+
 const appleHealthEndpoint = "https://asia-northeast3-soya-e12cd.cloudfunctions.net/importAppleHealth";
 
 function isoTimestamp(value) {
@@ -411,7 +451,7 @@ export const createWeeklyConsultation = onCall({
   });
 
   const instructions = kind === "weekly"
-    ? "당신은 SOYA 앱의 신중한 한국어 주간 코치입니다. 사용자는 체중 자체보다 체지방량 감소와 골격근량 유지·증가를 중요하게 봅니다. 제공된 한 주의 요약만 근거로 삼고, 기록된 사실과 추정을 분명히 구분하세요. 단백질·당류·식이섬유, 운동 수행, 월경 단계와 에너지·식욕을 함께 보되 월경으로 모든 변화를 단정하지 마세요. 의학적 진단이나 치료 지시를 하지 마세요. 답변은 '이번 주 한줄 요약', '잘한 점', '조정할 점', '체성분 흐름', '식사', '운동', '월경·컨디션 고려', '다음 주 행동 3가지' 순서로 구체적이고 따뜻하게 작성하세요. 기록이 부족한 항목은 부족하다고 말하세요."
+    ? "당신은 SOYA 앱의 신중한 한국어 주간 코치입니다. 사용자는 체중 자체보다 체지방량 감소와 골격근량 유지·증가를 중요하게 봅니다. 제공된 한 주의 요약만 근거로 삼고, 기록된 사실과 추정을 분명히 구분하세요. 단백질·당류·식이섬유, 운동 수행, 월경 단계와 에너지·식욕을 함께 보되 월경으로 모든 변화를 단정하지 마세요. 의학적 진단이나 치료 지시를 하지 마세요. 반드시 JSON 하나만 출력하세요. JSON 최상위는 text와 planSuggestions입니다. text에는 '이번 주 한줄 요약', '잘한 점', '조정할 점', '체성분 흐름', '식사', '운동', '월경·컨디션 고려', '다음 주 행동 3가지' 순서의 따뜻하고 구체적인 한국어 상담을 일반 텍스트로 넣으세요. planSuggestions에는 다음 주 계획표에 실제로 넣을 수 있는 제안만 최대 4개 넣으세요. 각 제안은 id, category(meal 또는 workout), title, detail, meals, workouts를 모두 포함합니다. meals 항목은 dayOffset(월요일 0~일요일 6), mealType(breakfast/lunch/dinner/snack), title을 포함합니다. workouts 항목은 dayOffset, type(PT/유산소), title, minutes, intensity(1~10), heartRate, overlapsSteps를 포함합니다. 식단 제안은 계획 단계이므로 음식 종류 중심으로 쓰고, 사용자의 기록과 목표만으로 무리하게 구체화하지 마세요. 운동은 기록된 선호와 주간 목표 안에서만 제안하세요. 해당 종류의 제안이 없으면 meals 또는 workouts는 빈 배열로 두세요. 기록이 부족한 항목은 text에서 부족하다고 말하고 근거 없는 제안은 만들지 마세요. 마크다운 코드블록은 쓰지 마세요."
     : "당신은 SOYA 앱에서 직전 주간 상담을 이어가는 신중한 한국어 코치입니다. 앞선 상담과 사용자의 질문에 직접 답하세요. 제공되지 않은 건강 정보를 만들어내지 말고, 의학적 진단이나 치료 지시를 하지 마세요. 답변은 간결하지만 실제로 실행할 수 있게 구체적으로 작성하세요.";
   const input = kind === "weekly"
     ? `다음은 사용자가 선택한 한 주의 정리된 기록입니다.\n${weekJson}`
@@ -433,8 +473,9 @@ export const createWeeklyConsultation = onCall({
     });
     if (!response.ok) throw new Error(`OpenAI ${response.status}`);
     const data = await response.json();
-    const text = outputText(data);
-    if (!text) throw new Error("Empty OpenAI response");
+    const rawText = outputText(data);
+    if (!rawText) throw new Error("Empty OpenAI response");
+    const result = kind === "weekly" ? weeklyConsultationOutput(rawText) : { text: rawText, planSuggestions: [] };
     const inputTokens = Number(data?.usage?.input_tokens || 0);
     const outputTokens = Number(data?.usage?.output_tokens || 0);
     await usageRef.set({
@@ -442,7 +483,7 @@ export const createWeeklyConsultation = onCall({
       outputTokens: FieldValue.increment(outputTokens),
       lastUsedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
-    return { text, source: "openai", model: "gpt-5.6-sol", reasoningEffort: "high", ...usageSummary({ count: used, inputTokens, outputTokens }) };
+    return { text: result.text, planSuggestions: result.planSuggestions, source: "openai", model: "gpt-5.6-sol", reasoningEffort: "high", ...usageSummary({ count: used, inputTokens, outputTokens }) };
   } catch (error) {
     await usageRef.set({ count: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     console.error("SOYA consultation failed", error);

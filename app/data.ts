@@ -146,6 +146,28 @@ export type Consultation = {
   text: string;
   source: "openai" | "preview";
   model?: string;
+  planSuggestions?: ConsultationPlanSuggestion[];
+};
+
+export type ConsultationPlanSuggestion = {
+  id: string;
+  category: "meal" | "workout";
+  title: string;
+  detail: string;
+  meals: Array<{
+    dayOffset: number;
+    mealType: MealType;
+    title: string;
+  }>;
+  workouts: Array<{
+    dayOffset: number;
+    type: WorkoutEntry["type"];
+    title: string;
+    minutes: number;
+    intensity: number;
+    heartRate: string;
+    overlapsSteps: boolean;
+  }>;
 };
 
 export type WeeklyReview = {
