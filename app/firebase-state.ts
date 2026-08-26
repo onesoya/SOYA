@@ -23,7 +23,8 @@ type RecordKey =
   | "cycles"
   | "loveRecords"
   | "consultations"
-  | "weeklyReviews";
+  | "weeklyReviews"
+  | "trash";
 
 const recordKeys = [
   "bodyRecords",
@@ -36,6 +37,7 @@ const recordKeys = [
   "loveRecords",
   "consultations",
   "weeklyReviews",
+  "trash",
 ] as const satisfies readonly RecordKey[];
 
 const coreKeys = [

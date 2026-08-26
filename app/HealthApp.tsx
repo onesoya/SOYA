@@ -20,6 +20,8 @@ import {
   MealEntry,
   MealType,
   ReminderSettings,
+  TrashItem,
+  TrashPayload,
   TravelLevel,
   WorkoutEntry,
 } from "./data";
@@ -213,6 +215,11 @@ const dateLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { month: "
 const monthLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(new Date(`${value.slice(0, 7)}-01T12:00:00`));
 const signed = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
 
+function moveToTrash(current: AppState, label: string, payload: TrashPayload): AppState {
+  const trashItem: TrashItem = { id: id("trash"), deletedAt: new Date().toISOString(), label, payload };
+  return { ...current, trash: [trashItem, ...(current.trash ?? [])].slice(0, 100) };
+}
+
 function normalizeCircumferenceRecord(value: unknown): CircumferenceRecord | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Partial<CircumferenceRecord> & { waistCm?: number; hipCm?: number };
@@ -262,6 +269,7 @@ function normalizeAppState(value: unknown): AppState {
     consultations: Array.isArray(saved.consultations) ? saved.consultations : [],
     weeklyReviews: Array.isArray(saved.weeklyReviews) ? saved.weeklyReviews : [],
     goalHistory: Array.isArray(saved.goalHistory) ? saved.goalHistory : [],
+    trash: Array.isArray(saved.trash) ? saved.trash : [],
     reminderSettings: {
       ...defaultReminders,
       ...reminders,
@@ -301,7 +309,25 @@ function mergeAppState(current: AppState, imported: AppState): AppState {
     consultations: mergeById(current.consultations, imported.consultations),
     weeklyReviews: mergeById(current.weeklyReviews ?? [], imported.weeklyReviews ?? []),
     goalHistory: mergeById(current.goalHistory ?? [], imported.goalHistory ?? []),
+    trash: mergeById(current.trash ?? [], imported.trash ?? []),
     skippedTasks: [...new Set([...current.skippedTasks, ...imported.skippedTasks])],
+  });
+}
+
+function restoreTrashItem(current: AppState, item: TrashItem): AppState {
+  return normalizeAppState({
+    ...current,
+    bodyRecords: mergeById(current.bodyRecords, item.payload.bodyRecords ?? []),
+    circumferenceRecords: mergeById(current.circumferenceRecords ?? [], item.payload.circumferenceRecords ?? []),
+    foodLibrary: mergeById(current.foodLibrary ?? [], item.payload.foodLibrary ?? []),
+    meals: mergeById(current.meals, item.payload.meals ?? []),
+    workouts: mergeById(current.workouts, item.payload.workouts ?? []),
+    dailyActivities: mergeById(current.dailyActivities ?? [], item.payload.dailyActivities ?? []),
+    cycles: normalizeCycleCoverage(mergeById(current.cycles, item.payload.cycles ?? [])),
+    loveRecords: mergeById(current.loveRecords ?? [], item.payload.loveRecords ?? []),
+    consultations: mergeById(current.consultations, item.payload.consultations ?? []),
+    weeklyReviews: mergeById(current.weeklyReviews ?? [], item.payload.weeklyReviews ?? []),
+    trash: (current.trash ?? []).filter((entry) => entry.id !== item.id),
   });
 }
 
@@ -1490,7 +1516,7 @@ export function HealthApp() {
 
   const deleteActivity = (entry: DailyActivity) => {
     if (!window.confirm(`${entry.date} 하루 활동 기록을 삭제할까요?`)) return;
-    commit((current) => ({ ...current, dailyActivities: (current.dailyActivities ?? []).filter((item) => item.id !== entry.id) }));
+    commit((current) => ({ ...moveToTrash(current, `${entry.date} 하루 활동`, { dailyActivities: [entry] }), dailyActivities: (current.dailyActivities ?? []).filter((item) => item.id !== entry.id) }));
     setActivityDate(undefined);
     setModal(null);
   };
@@ -1580,7 +1606,7 @@ export function HealthApp() {
 
   const deleteMeal = (entry: MealEntry) => {
     if (!window.confirm(`${mealLabels[entry.mealType]} ${entry.kind === "plan" ? "계획" : "기록"}을 삭제할까요?`)) return;
-    commit((current) => ({ ...current, meals: current.meals.filter((item) => item.id !== entry.id) }));
+    commit((current) => ({ ...moveToTrash(current, `${entry.date} ${mealLabels[entry.mealType]} ${entry.kind === "plan" ? "계획" : "기록"}`, { meals: [entry] }), meals: current.meals.filter((item) => item.id !== entry.id) }));
   };
 
   const saveFoodLibraryItem = (event: FormEvent<HTMLFormElement>) => {
@@ -1617,7 +1643,7 @@ export function HealthApp() {
     const dependentMessage = dependentSets.length ? ` 이 음식을 사용한 세트 ${dependentSets.length}개도 함께 삭제돼요.` : "";
     if (!window.confirm(`${item.name}을 음식 보관함에서 삭제할까요?${dependentMessage} 기존 식사 기록은 유지돼요.`)) return;
     const deletingIds = new Set([item.id, ...dependentSets.map((food) => food.id)]);
-    commit((current) => ({ ...current, foodLibrary: (current.foodLibrary ?? []).filter((food) => !deletingIds.has(food.id)) }));
+    commit((current) => ({ ...moveToTrash(current, `음식 보관함 · ${item.name}`, { foodLibrary: [item, ...dependentSets] }), foodLibrary: (current.foodLibrary ?? []).filter((food) => !deletingIds.has(food.id)) }));
   };
 
   const saveFoodSet = (name: string, components: { foodId: string; amount: number }[], editingId?: string) => {
@@ -1648,33 +1674,33 @@ export function HealthApp() {
 
   const deleteWorkout = (entry: WorkoutEntry) => {
     if (!window.confirm(`${entry.title} ${entry.kind === "plan" ? "계획" : "기록"}을 삭제할까요?`)) return;
-    commit((current) => ({ ...current, workouts: current.workouts.filter((item) => item.id !== entry.id) }));
+    commit((current) => ({ ...moveToTrash(current, `${entry.date} ${entry.title} ${entry.kind === "plan" ? "계획" : "기록"}`, { workouts: [entry] }), workouts: current.workouts.filter((item) => item.id !== entry.id) }));
   };
 
   const deleteBody = (record: BodyRecord) => {
     if (!window.confirm(`${record.date} 인바디 기록을 삭제할까요?`)) return;
-    commit((current) => ({ ...current, bodyRecords: current.bodyRecords.filter((item) => item.id !== record.id) }));
+    commit((current) => ({ ...moveToTrash(current, `${record.date} 인바디`, { bodyRecords: [record] }), bodyRecords: current.bodyRecords.filter((item) => item.id !== record.id) }));
     setSelectedBodyRecord(undefined);
     setModal(null);
   };
 
   const deleteCircumference = (record: CircumferenceRecord) => {
     if (!window.confirm(`${record.date} 허리·엉덩이둘레 기록을 삭제할까요?`)) return;
-    commit((current) => ({ ...current, circumferenceRecords: (current.circumferenceRecords ?? []).filter((item) => item.id !== record.id) }));
+    commit((current) => ({ ...moveToTrash(current, `${record.date} 허리·엉덩이둘레`, { circumferenceRecords: [record] }), circumferenceRecords: (current.circumferenceRecords ?? []).filter((item) => item.id !== record.id) }));
     setSelectedCircumferenceRecord(undefined);
     setModal(null);
   };
 
   const deleteConsultation = (consultation: Consultation) => {
     if (!window.confirm(`${consultation.date} 상담을 삭제할까요?`)) return;
-    commit((current) => ({ ...current, consultations: current.consultations.filter((item) => item.id !== consultation.id) }));
+    commit((current) => ({ ...moveToTrash(current, `${consultation.date} 상담`, { consultations: [consultation] }), consultations: current.consultations.filter((item) => item.id !== consultation.id) }));
     setSelectedConsultation(undefined);
     setModal(null);
   };
 
   const deleteCycle = (entry: CycleEntry) => {
     if (!window.confirm(`${entry.date} 월경·컨디션 기록을 삭제할까요?`)) return;
-    commit((current) => ({ ...current, cycles: normalizeCycleCoverage(current.cycles.filter((item) => item.id !== entry.id)) }));
+    commit((current) => ({ ...moveToTrash(current, `${entry.date} 월경·컨디션`, { cycles: [entry] }), cycles: normalizeCycleCoverage(current.cycles.filter((item) => item.id !== entry.id)) }));
     setCycleDate(undefined);
     setCycleRangeDraft(undefined);
     setModal(null);
@@ -1682,7 +1708,7 @@ export function HealthApp() {
 
   const deleteLove = (entry: LoveRecord) => {
     if (!window.confirm(`${entry.date} 사랑 기록을 삭제할까요?`)) return;
-    commit((current) => ({ ...current, loveRecords: (current.loveRecords ?? []).filter((item) => item.id !== entry.id) }));
+    commit((current) => ({ ...moveToTrash(current, `${entry.date} 사랑 기록`, { loveRecords: [entry] }), loveRecords: (current.loveRecords ?? []).filter((item) => item.id !== entry.id) }));
   };
 
   const deleteCycleRange = (date: string) => {
@@ -1690,8 +1716,9 @@ export function HealthApp() {
     if (!range) return;
     if (!window.confirm(`${range.start} 주기 기록 전체를 삭제할까요?\n이 기간의 월경·컨디션 기록도 함께 삭제됩니다.`)) return;
     const dates = new Set(cycleRangeDates(range.start, range.end));
+    const deletedCycles = state.cycles.filter((item) => item.periodId === range.id || dates.has(item.date));
     commit((current) => ({
-      ...current,
+      ...moveToTrash(current, `${range.start} ~ ${range.end} 월경 주기`, { cycles: deletedCycles }),
       cycles: normalizeCycleCoverage(current.cycles.filter((item) => item.periodId === range.id ? false : !dates.has(item.date))),
     }));
   };
@@ -1812,6 +1839,16 @@ export function HealthApp() {
     setModal(null);
   };
 
+  const restoreDeletedItem = (item: TrashItem) => commit((current) => restoreTrashItem(current, item));
+  const permanentlyDeleteTrashItem = (item: TrashItem) => {
+    if (!window.confirm(`${item.label}을 휴지통에서도 완전히 삭제할까요?`)) return;
+    commit((current) => ({ ...current, trash: (current.trash ?? []).filter((entry) => entry.id !== item.id) }));
+  };
+  const emptyTrash = () => {
+    if (!(state.trash ?? []).length || !window.confirm("휴지통의 기록을 모두 완전히 삭제할까요?")) return;
+    commit((current) => ({ ...current, trash: [] }));
+  };
+
   const completeOnboarding = (draft: OnboardingDraft) => {
     const nutritionGoal = Object.fromEntries(
       Object.entries(draft.nutritionGoal).map(([key, value]) => [key, Math.max(0, Number(value) || 0)]),
@@ -1926,7 +1963,7 @@ export function HealthApp() {
       {modal === "love" && <LoveSheet today={today} anchorDate={loveDate ?? today} existing={state.loveRecords ?? []} close={closeModal} save={saveLove} remove={deleteLove} />}
       {modal === "consultation-detail" && selectedConsultation && <ConsultationDetailSheet consultation={selectedConsultation} close={closeModal} remove={() => deleteConsultation(selectedConsultation)} />}
       {modal === "reminders" && <ReminderSettingsSheet settings={state.reminderSettings ?? defaultReminders} pushStatus={pushStatus} pushMessage={pushMessage} enablePush={() => { void enableActualNotifications(); }} disablePush={() => { void disableActualNotifications(); }} close={closeModal} save={saveReminders} />}
-      {modal === "data-management" && <DataManagementSheet state={state} today={today} close={closeAccountChild} backup={backupData} exportCsv={(kind) => exportCsv(state, kind, today)} restore={restoreData} />}
+      {modal === "data-management" && <DataManagementSheet state={state} today={today} close={closeAccountChild} backup={backupData} exportCsv={(kind) => exportCsv(state, kind, today)} restore={restoreData} restoreDeleted={restoreDeletedItem} permanentlyDelete={permanentlyDeleteTrashItem} emptyTrash={emptyTrash} />}
     </div>
   );
 }
@@ -2483,7 +2520,7 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
   };
   const deleteReview = () => {
     if (!savedReview || !window.confirm(`${reviewStart} 주간 메모를 삭제할까요?`)) return;
-    commit((current) => ({ ...current, weeklyReviews: (current.weeklyReviews ?? []).filter((item) => item.id !== savedReview.id) }));
+    commit((current) => ({ ...moveToTrash(current, `${reviewStart} 주간 메모`, { weeklyReviews: [savedReview] }), weeklyReviews: (current.weeklyReviews ?? []).filter((item) => item.id !== savedReview.id) }));
     setReviewNote("");
     setReviewEditing(true);
   };
@@ -3268,7 +3305,7 @@ function WorkoutGoalSheet({ goal, close, save }: { goal: NonNullable<AppState["w
   return <Sheet title="주간 운동 목표" close={close}><form className="form-stack" onSubmit={save}><Field label="개인 유산소 최소 횟수 (회)"><input type="number" name="cardioSessions" min="1" max="14" defaultValue={goal.cardioSessions} required /></Field><Field label="개인 유산소 누적시간 (분)"><input type="number" name="cardioMinutes" min="1" max="1000" defaultValue={goal.cardioMinutes} required /></Field><button className="primary-button submit-button" type="submit">목표 저장</button></form></Sheet>;
 }
 
-function DataManagementSheet({ state, today, close, backup, exportCsv: downloadCsv, restore }: { state: AppState; today: string; close: () => void; backup: () => void; exportCsv: (kind: CsvKind) => void; restore: (state: AppState, mode: RestoreMode) => void }) {
+function DataManagementSheet({ state, today, close, backup, exportCsv: downloadCsv, restore, restoreDeleted, permanentlyDelete, emptyTrash }: { state: AppState; today: string; close: () => void; backup: () => void; exportCsv: (kind: CsvKind) => void; restore: (state: AppState, mode: RestoreMode) => void; restoreDeleted: (item: TrashItem) => void; permanentlyDelete: (item: TrashItem) => void; emptyTrash: () => void }) {
   const [preview, setPreview] = useState<{ state: AppState; name: string }>();
   const [error, setError] = useState("");
   const csvItems: { kind: CsvKind; label: string; count: number }[] = [
@@ -3302,6 +3339,8 @@ function DataManagementSheet({ state, today, close, backup, exportCsv: downloadC
   const lastBackup = state.lastBackupAt
     ? new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(state.lastBackupAt))
     : "아직 백업하지 않음";
+  const trash = [...(state.trash ?? [])].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+  const deletedAtLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 
   const chooseFile = async (file?: File) => {
     setPreview(undefined);
@@ -3343,6 +3382,14 @@ function DataManagementSheet({ state, today, close, backup, exportCsv: downloadC
           <div className="restore-count-grid">{counts.map(([label, count]) => <div key={label}><span>{label}</span><strong>{count}</strong></div>)}</div>
           <div className="restore-actions"><button type="button" className="secondary-button" onClick={() => restore(preview.state, "merge")}>현재 기록과 합치기</button><button type="button" className="danger-button" onClick={replaceAll}>전체 교체</button></div>
         </div>}
+      </section>
+
+      <section className="data-management-section trash-section">
+        <div className="data-section-heading"><div><strong>최근 삭제한 기록</strong><small>실수로 지운 기록을 다시 살릴 수 있어요 · 최대 100개</small></div><span>{trash.length}개</span></div>
+        {trash.length ? <>
+          <div className="trash-list">{trash.map((item) => <article key={item.id}><div><strong>{item.label}</strong><small>{deletedAtLabel(item.deletedAt)} 삭제</small></div><div><button type="button" className="trash-restore-button" onClick={() => restoreDeleted(item)}>복원</button><button type="button" className="trash-delete-button" onClick={() => permanentlyDelete(item)}>영구 삭제</button></div></article>)}</div>
+          <button type="button" className="trash-empty-button" onClick={emptyTrash}>휴지통 비우기</button>
+        </> : <p className="trash-empty-copy">최근 삭제한 기록이 없어요.</p>}
       </section>
     </div>
   </Sheet>;

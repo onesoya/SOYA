@@ -426,6 +426,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .restore-actions { display: grid; grid-template-columns: 1.2fr .8fr; gap: 8px; }
 .restore-actions button { min-height: 44px; }
 .danger-button { border: 1px solid var(--coral); background: var(--paper); color: var(--coral); font: inherit; font-size: 8px; font-weight: 800; cursor: pointer; }
+.trash-list { max-height: 320px; overflow-y: auto; border-top: 1px solid var(--line); }
+.trash-list article { min-width: 0; padding: 11px 0; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.trash-list article > div:first-child { min-width: 0; display: grid; gap: 4px; }
+.trash-list article strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.trash-list article small, .trash-empty-copy { color: var(--muted); font-size: 8px; line-height: 1.5; }
+.trash-list article > div:last-child { flex: 0 0 auto; display: flex; align-items: center; gap: 5px; }
+.trash-list button, .trash-empty-button { min-height: 32px; padding: 0 9px; font: inherit; font-size: 8px; font-weight: 800; cursor: pointer; }
+.trash-restore-button { border: 1px solid var(--ink); background: var(--paper); color: var(--ink); }
+.trash-delete-button, .trash-empty-button { border: 1px solid #c46d64; background: var(--paper); color: #a94f46; }
+.trash-empty-button { justify-self: end; }
+.trash-empty-copy { margin: 0; padding: 12px; border: 1px dashed var(--line); text-align: center; }
 .travel-reminder-section > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .travel-reminder-section > div:first-child small { color: var(--muted); font-size: 7px; }
 .travel-reminder-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--ink); }

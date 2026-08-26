@@ -177,6 +177,26 @@ export type WeeklyReview = {
   updatedAt: string;
 };
 
+export type TrashPayload = {
+  bodyRecords?: BodyRecord[];
+  circumferenceRecords?: CircumferenceRecord[];
+  foodLibrary?: FoodLibraryItem[];
+  meals?: MealEntry[];
+  workouts?: WorkoutEntry[];
+  dailyActivities?: DailyActivity[];
+  cycles?: CycleEntry[];
+  loveRecords?: LoveRecord[];
+  consultations?: Consultation[];
+  weeklyReviews?: WeeklyReview[];
+};
+
+export type TrashItem = {
+  id: string;
+  deletedAt: string;
+  label: string;
+  payload: TrashPayload;
+};
+
 export type TravelLevel = "가볍게 기록" | "균형 유지" | "목표 유지";
 
 export type ReminderSettings = {
@@ -282,6 +302,7 @@ export type AppState = {
   consultations: Consultation[];
   weeklyReviews?: WeeklyReview[];
   goalHistory?: GoalHistoryEntry[];
+  trash?: TrashItem[];
   reminderSettings?: ReminderSettings;
   skippedTasks: string[];
 };
@@ -363,6 +384,7 @@ export const initialState: AppState = {
   consultations: [],
   weeklyReviews: [],
   goalHistory: [],
+  trash: [],
   skippedTasks: [],
 };
 
@@ -402,6 +424,7 @@ export function createFreshState(): AppState {
     consultations: [],
     weeklyReviews: [],
     goalHistory: [],
+    trash: [],
     skippedTasks: [],
     lastBackupAt: undefined,
   };
