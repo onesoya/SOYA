@@ -386,10 +386,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .reminder-row strong { font-size: 9px; }
 .reminder-row small { color: var(--muted); font-size: 7px; }
 .reminder-check { width: 18px; height: 18px; margin: 0; accent-color: var(--coral); }
-.reminder-time, .reminder-row.weekly select, .reminder-lead-select { justify-self: end; box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; height: 36px; padding-inline: 5px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 9px; line-height: 1; text-align: center; }
+.reminder-time, .reminder-row.weekly select, .reminder-lead-select { justify-self: end; box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; height: 36px; padding-inline: 4px; border: 1px solid var(--line); background: white; color: var(--ink); font: inherit; font-size: 8px; line-height: 1; text-align: center; white-space: nowrap; }
 .reminder-row.weekly select, .reminder-lead-select { text-align-last: center; }
 .reminder-time:disabled, .reminder-row.weekly select:disabled, .reminder-lead-select:disabled { opacity: .4; }
-.reminder-row.weekly { grid-template-columns: 20px minmax(0, 1fr) 68px 86px; }
+.reminder-row.weekly, .reminder-row.cycle-relative { grid-template-columns: 20px minmax(0, 1fr) 66px 92px; }
 .push-permission-section > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .push-permission-section > div > span { color: var(--muted); font-size: 8px; }
 .push-permission-section.enabled > div > span { color: var(--coral); }
@@ -1908,13 +1908,9 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .saved-food-picker > .clearable-field-control > input,
   .food-library-browser > .clearable-field-control > input { font-size: 16px; }
   .reminder-section { padding: 11px; }
-  .reminder-row { grid-template-columns: 20px minmax(0, 1fr) 84px; padding: 8px 11px 8px 8px; }
-  .reminder-row.weekly { grid-template-columns: 20px minmax(0, 1fr) 84px; grid-template-rows: auto auto; gap: 6px 8px; }
-  .reminder-row.weekly > .reminder-check { grid-row: 1 / span 2; }
-  .reminder-row.weekly > span { grid-row: 1 / span 2; }
-  .reminder-row.weekly > select { grid-column: 3; grid-row: 1; }
-  .reminder-row.weekly > .reminder-time { grid-column: 3; grid-row: 2; }
-  .reminder-time, .reminder-row.weekly select, .reminder-lead-select { width: 84px; max-width: 84px; padding-inline: 3px; font-size: 10px; }
+  .reminder-row { grid-template-columns: 20px minmax(0, 1fr) 90px; padding: 8px 10px 8px 8px; }
+  .reminder-row.weekly, .reminder-row.cycle-relative { grid-template-columns: 20px minmax(0, 1fr) 62px 88px; gap: 7px; }
+  .reminder-time, .reminder-row.weekly select, .reminder-lead-select { width: 100%; max-width: 100%; padding-inline: 2px; font-size: 8px; }
   .daily-activity-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .daily-activity-stats > div { padding: 9px 7px; }
   .daily-activity-stats strong { font-size: 12px; }

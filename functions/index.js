@@ -128,10 +128,25 @@ function remindersFor(data, clock) {
     add("weekly", settings.weeklyTime, "다음 주를 함께 계획할까요?", "식단과 운동을 미리 준비해요.");
   }
 
-  if (travelBehavior !== "핵심만" && settings.cycleEnabled) {
-    if (data.cycle?.nextOvulation === clock.day) add("cycle_ovulation", settings.cycleTime, "오늘은 예상 배란일이에요", "기록을 바탕으로 계산한 예상일이에요.");
-    if (data.cycle?.nextPeriod === clock.day) add("cycle_period", settings.cycleTime, "오늘은 예상 월경일이에요", "출혈이 시작되면 SOYA에 기록해주세요.");
-    if (data.cycle?.nextPeriod && addDays(data.cycle.nextPeriod, 3) === clock.day) add("cycle_late", settings.cycleTime, "예상 월경일이 3일 지났어요", "아직 기록하지 않았다면 오늘 상태를 확인해주세요.");
+  if (travelBehavior !== "핵심만") {
+    const legacyCycleEnabled = settings.cycleEnabled ?? true;
+    const legacyCycleTime = settings.cycleTime || "09:00";
+    const ovulationEnabled = settings.ovulationEnabled ?? legacyCycleEnabled;
+    const ovulationLeadDays = Math.max(0, Math.min(7, Number(settings.ovulationLeadDays) || 0));
+    const periodEnabled = settings.periodEnabled ?? legacyCycleEnabled;
+    const periodLeadDays = Math.max(0, Math.min(7, Number(settings.periodLeadDays) || 0));
+    const latePeriodEnabled = settings.latePeriodEnabled ?? legacyCycleEnabled;
+    const latePeriodDays = Math.max(1, Math.min(14, Number(settings.latePeriodDays) || 3));
+
+    if (ovulationEnabled && data.cycle?.nextOvulation && addDays(data.cycle.nextOvulation, -ovulationLeadDays) === clock.day) {
+      add("cycle_ovulation", settings.ovulationTime || legacyCycleTime, ovulationLeadDays ? `예상 배란일이 ${ovulationLeadDays}일 남았어요` : "오늘은 예상 배란일이에요", "기록을 바탕으로 계산한 예상일이에요.");
+    }
+    if (periodEnabled && data.cycle?.nextPeriod && addDays(data.cycle.nextPeriod, -periodLeadDays) === clock.day) {
+      add("cycle_period", settings.periodTime || legacyCycleTime, periodLeadDays ? `예상 월경일이 ${periodLeadDays}일 남았어요` : "오늘은 예상 월경일이에요", "출혈이 시작되면 SOYA에 기록해주세요.");
+    }
+    if (latePeriodEnabled && data.cycle?.nextPeriod && addDays(data.cycle.nextPeriod, latePeriodDays) === clock.day) {
+      add("cycle_late", settings.latePeriodTime || legacyCycleTime, `예상 월경일이 ${latePeriodDays}일 지났어요`, "아직 기록하지 않았다면 오늘 상태를 확인해주세요.");
+    }
   }
 
   return reminders;

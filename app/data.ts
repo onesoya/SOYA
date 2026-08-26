@@ -214,8 +214,17 @@ export type ReminderSettings = {
   weeklyEnabled: boolean;
   weeklyDay: number;
   weeklyTime: string;
-  cycleEnabled: boolean;
-  cycleTime: string;
+  ovulationEnabled: boolean;
+  ovulationLeadDays: number;
+  ovulationTime: string;
+  periodEnabled: boolean;
+  periodLeadDays: number;
+  periodTime: string;
+  latePeriodEnabled: boolean;
+  latePeriodDays: number;
+  latePeriodTime: string;
+  cycleEnabled?: boolean;
+  cycleTime?: string;
   travelBehavior: "기본 유지" | "핵심만" | "모두 끄기";
 };
 
@@ -362,8 +371,15 @@ export const initialState: AppState = {
     weeklyEnabled: true,
     weeklyDay: 0,
     weeklyTime: "10:00",
-    cycleEnabled: true,
-    cycleTime: "09:00",
+    ovulationEnabled: true,
+    ovulationLeadDays: 0,
+    ovulationTime: "09:00",
+    periodEnabled: true,
+    periodLeadDays: 0,
+    periodTime: "09:00",
+    latePeriodEnabled: true,
+    latePeriodDays: 3,
+    latePeriodTime: "09:00",
     travelBehavior: "핵심만",
   },
   bodyRecords: [

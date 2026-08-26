@@ -262,6 +262,8 @@ function normalizeAppState(value: unknown): AppState {
     ? savedProfile.onboardingCompleted
     : hasExistingRecords || Boolean(savedProfile.nickname?.trim());
   const reminders = saved.reminderSettings && typeof saved.reminderSettings === "object" ? saved.reminderSettings : defaultReminders;
+  const legacyCycleEnabled = reminders.cycleEnabled ?? defaultReminders.ovulationEnabled;
+  const legacyCycleTime = reminders.cycleTime ?? defaultReminders.ovulationTime;
   const legacyLoveRecords: LoveRecord[] = (Array.isArray(saved.cycles) ? saved.cycles : [])
     .filter((entry) => (entry.sexCount ?? 0) > 0 && (entry.contraception === "피임함" || entry.contraception === "피임하지 않음"))
     .map((entry) => ({ id: `love-legacy-${entry.id}`, date: entry.date, count: entry.sexCount ?? 1, contraception: entry.contraception as LoveRecord["contraception"] }));
@@ -295,6 +297,12 @@ function normalizeAppState(value: unknown): AppState {
     reminderSettings: {
       ...defaultReminders,
       ...reminders,
+      ovulationEnabled: reminders.ovulationEnabled ?? legacyCycleEnabled,
+      ovulationTime: reminders.ovulationTime ?? legacyCycleTime,
+      periodEnabled: reminders.periodEnabled ?? legacyCycleEnabled,
+      periodTime: reminders.periodTime ?? legacyCycleTime,
+      latePeriodEnabled: reminders.latePeriodEnabled ?? legacyCycleEnabled,
+      latePeriodTime: reminders.latePeriodTime ?? legacyCycleTime,
       mealEnabled: { ...defaultReminders.mealEnabled, ...reminders.mealEnabled },
       mealTimes: { ...defaultReminders.mealTimes, ...reminders.mealTimes },
     },
@@ -533,11 +541,13 @@ function pushSyncPayload(state: AppState, today: string): PushSyncPayload {
   const nextWeekStart = weekStart(today, 1);
   const nextWeekEnd = addDays(nextWeekStart, 6);
   const prediction = menstrualPrediction(state.cycles, today);
+  const reminderSettings = state.reminderSettings ?? defaultReminders;
+  const latePeriodDays = Math.max(1, Number(reminderSettings.latePeriodDays) || defaultReminders.latePeriodDays);
   let expectedPeriod = prediction.lastStart ? addDays(prediction.lastStart, prediction.cycleLength) : undefined;
-  while (expectedPeriod && addDays(expectedPeriod, 3) < today) expectedPeriod = addDays(expectedPeriod, prediction.cycleLength);
+  while (expectedPeriod && addDays(expectedPeriod, latePeriodDays) < today) expectedPeriod = addDays(expectedPeriod, prediction.cycleLength);
 
   return {
-    settings: state.reminderSettings ?? defaultReminders,
+    settings: reminderSettings,
     workoutPlans: state.workouts
       .filter((entry) => entry.kind === "plan" && entry.date >= today && entry.date <= addDays(today, 30))
       .map((entry) => ({ id: entry.id, date: entry.date, title: entry.title, startTime: entry.startTime })),
@@ -3808,12 +3818,17 @@ function ReminderSettingsSheet({ settings, pushStatus, pushMessage, enablePush, 
   const updateMealEnabled = (mealType: MealType, enabled: boolean) => setDraft((current) => ({ ...current, mealEnabled: { ...current.mealEnabled, [mealType]: enabled } }));
   const updateMealTime = (mealType: MealType, time: string) => setDraft((current) => ({ ...current, mealTimes: { ...current.mealTimes, [mealType]: time } }));
   const row = (label: string, enabled: boolean, toggle: (enabled: boolean) => void, time: string, changeTime: (time: string) => void) => <label className={`reminder-row ${enabled ? "active" : ""}`}><input className="reminder-check" type="checkbox" checked={enabled} onChange={(event) => toggle(event.target.checked)} /><span><strong>{label}</strong><small>{enabled ? time : "알림 끔"}</small></span><input className="reminder-time" type="time" value={time} disabled={!enabled} onChange={(event) => changeTime(event.target.value)} aria-label={`${label} 알림 시간`} /></label>;
+  const cycleRow = ({ label, enabled, enabledKey, days, daysKey, time, timeKey, direction }: { label: string; enabled: boolean; enabledKey: "ovulationEnabled" | "periodEnabled" | "latePeriodEnabled"; days: number; daysKey: "ovulationLeadDays" | "periodLeadDays" | "latePeriodDays"; time: string; timeKey: "ovulationTime" | "periodTime" | "latePeriodTime"; direction: "before" | "after" }) => {
+    const dayLabel = direction === "before" ? (days === 0 ? "당일" : `${days}일 전`) : `${days}일 뒤`;
+    const choices = direction === "before" ? Array.from({ length: 8 }, (_, index) => index) : Array.from({ length: 14 }, (_, index) => index + 1);
+    return <div className={`reminder-row cycle-relative ${enabled ? "active" : ""}`}><input className="reminder-check" type="checkbox" checked={enabled} onChange={(event) => update(enabledKey, event.target.checked)} aria-label={`${label} 알림 사용`} /><span><strong>{label}</strong><small>{enabled ? `${dayLabel} · ${time}` : "알림 끔"}</small></span><select className="reminder-lead-select" value={days} disabled={!enabled} onChange={(event) => update(daysKey, Number(event.target.value))} aria-label={`${label} 알림 날짜`}>{choices.map((value) => <option value={value} key={value}>{direction === "before" ? (value === 0 ? "당일" : `${value}일 전`) : `${value}일 뒤`}</option>)}</select><input className="reminder-time" type="time" value={time} disabled={!enabled} onChange={(event) => update(timeKey, event.target.value)} aria-label={`${label} 알림 시간`} /></div>;
+  };
   const workoutLeadLabel = draft.workoutLeadMinutes === 0 ? "운동 시작 정시" : `운동 시작 ${draft.workoutLeadMinutes}분 전`;
   return <Sheet title="알림 설정" close={close}><form className="form-stack reminder-settings-form" onSubmit={(event) => { event.preventDefault(); save(draft); }}>
     <section className={`reminder-section push-permission-section ${pushStatus}`}><div><strong>실제 알림</strong><span>{pushStatus === "enabled" ? "켜짐" : pushStatus === "working" ? "연결 중" : "꺼짐"}</span></div><p>{pushMessage || (pushStatus === "enabled" ? "앱을 닫아도 설정한 시간에 알림이 와요." : pushStatus === "blocked" ? "아이폰 설정에서 SOYA 알림을 허용해주세요." : pushStatus === "unsupported" ? "아이폰 홈 화면에 추가한 SOYA에서 켤 수 있어요." : "아이폰 홈 화면의 SOYA에서 한 번만 켜주세요.")}</p>{pushStatus === "enabled" ? <button type="button" className="push-toggle-button off" onClick={disablePush}>실제 알림 끄기</button> : pushStatus !== "unsupported" && pushStatus !== "blocked" ? <button type="button" className="push-toggle-button" onClick={enablePush} disabled={pushStatus === "working"}>{pushStatus === "working" ? "연결 중…" : "실제 알림 켜기"}</button> : null}</section>
     <section className="reminder-section"><strong>매일 기록</strong>{row("아침 인바디", draft.bodyEnabled, (enabled) => update("bodyEnabled", enabled), draft.bodyTime, (time) => update("bodyTime", time))}{(["breakfast", "lunch", "dinner"] as MealType[]).map((mealType) => <div key={mealType}>{row(`${mealLabels[mealType]} 기록`, draft.mealEnabled[mealType], (enabled) => updateMealEnabled(mealType, enabled), draft.mealTimes[mealType], (time) => updateMealTime(mealType, time))}</div>)}</section>
     <section className="reminder-section"><strong>운동과 계획</strong><label className={`reminder-row workout-relative ${draft.workoutEnabled ? "active" : ""}`}><input className="reminder-check" type="checkbox" checked={draft.workoutEnabled} onChange={(event) => update("workoutEnabled", event.target.checked)} /><span><strong>계획한 운동</strong><small>{draft.workoutEnabled ? workoutLeadLabel : "알림 끔"}</small></span><select className="reminder-lead-select" value={draft.workoutLeadMinutes} disabled={!draft.workoutEnabled} onChange={(event) => update("workoutLeadMinutes", Number(event.target.value))} aria-label="계획한 운동 알림 시점"><option value={0}>정시</option><option value={10}>10분 전</option><option value={30}>30분 전</option><option value={60}>1시간 전</option></select></label><div className={`reminder-row weekly ${draft.weeklyEnabled ? "active" : ""}`}><input className="reminder-check" type="checkbox" checked={draft.weeklyEnabled} onChange={(event) => update("weeklyEnabled", event.target.checked)} /><span><strong>주간 계획</strong><small>{draft.weeklyEnabled ? "다음 주 식단·운동" : "알림 끔"}</small></span><select value={draft.weeklyDay} disabled={!draft.weeklyEnabled} onChange={(event) => update("weeklyDay", Number(event.target.value))} aria-label="주간 계획 요일">{["일", "월", "화", "수", "목", "금", "토"].map((day, index) => <option value={index} key={day}>{day}요일</option>)}</select><input className="reminder-time" type="time" value={draft.weeklyTime} disabled={!draft.weeklyEnabled} onChange={(event) => update("weeklyTime", event.target.value)} aria-label="주간 계획 알림 시간" /></div></section>
-    <section className="reminder-section"><strong>월경</strong>{row("배란·월경 예상", draft.cycleEnabled, (enabled) => update("cycleEnabled", enabled), draft.cycleTime, (time) => update("cycleTime", time))}<p className="cycle-reminder-note">예상 배란일·월경일과 월경 예정일 3일 후에 알려줘요.</p></section>
+    <section className="reminder-section"><strong>월경</strong>{cycleRow({ label: "예상 배란일", enabled: draft.ovulationEnabled, enabledKey: "ovulationEnabled", days: draft.ovulationLeadDays, daysKey: "ovulationLeadDays", time: draft.ovulationTime, timeKey: "ovulationTime", direction: "before" })}{cycleRow({ label: "예상 월경일", enabled: draft.periodEnabled, enabledKey: "periodEnabled", days: draft.periodLeadDays, daysKey: "periodLeadDays", time: draft.periodTime, timeKey: "periodTime", direction: "before" })}{cycleRow({ label: "월경 기록 없음", enabled: draft.latePeriodEnabled, enabledKey: "latePeriodEnabled", days: draft.latePeriodDays, daysKey: "latePeriodDays", time: draft.latePeriodTime, timeKey: "latePeriodTime", direction: "after" })}</section>
     <section className="reminder-section travel-reminder-section"><div><strong>여행 중 알림</strong><small>여행 모드에만 적용</small></div><div className="travel-reminder-options">{(["기본 유지", "핵심만", "모두 끄기"] as ReminderSettings["travelBehavior"][]).map((behavior) => <button type="button" key={behavior} className={draft.travelBehavior === behavior ? "active" : ""} onClick={() => update("travelBehavior", behavior)}>{behavior}</button>)}</div><p>{draft.travelBehavior === "핵심만" ? "식사 기록만 남기고 인바디·운동·주간 계획 알림은 쉬어요." : draft.travelBehavior === "모두 끄기" ? "여행 기간에는 모든 알림을 쉬어요." : "평소 설정한 알림을 그대로 사용해요."}</p></section>
     <button className="primary-button submit-button" type="submit">알림 설정 저장</button>
   </form></Sheet>;
