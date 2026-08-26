@@ -769,6 +769,8 @@ export function HealthApp() {
   const [pushMessage, setPushMessage] = useState("");
   const [appleHealthSyncing, setAppleHealthSyncing] = useState(false);
   const saveQueue = useRef(Promise.resolve());
+  const lastPersistedState = useRef<AppState | undefined>(undefined);
+  const lastPersistedUid = useRef<string | undefined>(undefined);
   const deepLinkHandled = useRef(false);
   const today = todayKey();
 
@@ -781,6 +783,8 @@ export function HealthApp() {
       setAuthSigningIn(false);
       setAuthMessage("");
       if (!user) {
+        lastPersistedState.current = undefined;
+        lastPersistedUid.current = undefined;
         setState(createFreshState());
         setLoaded(false);
         return;
@@ -790,6 +794,8 @@ export function HealthApp() {
         .then((saved) => {
           if (!active) return;
           const next = normalizeAppState(saved);
+          lastPersistedState.current = next;
+          lastPersistedUid.current = user.uid;
           setState(next);
           setSaveState("saved");
           void getPushStatus().then((status) => {
@@ -866,11 +872,27 @@ export function HealthApp() {
     };
   }, [modal]);
 
-  const persist = (next: AppState, previous: AppState) => {
+  const persist = (next: AppState) => {
     if (!authUser) return;
+    const uid = authUser.uid;
     setSaveState("saving");
     saveQueue.current = saveQueue.current
-      .then(() => saveUserState(authUser.uid, next, previous))
+      .then(async () => {
+        const previous = lastPersistedUid.current === uid ? lastPersistedState.current : undefined;
+        let lastError: unknown;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            await saveUserState(uid, next, previous);
+            lastPersistedState.current = next;
+            lastPersistedUid.current = uid;
+            return;
+          } catch (error) {
+            lastError = error;
+            if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
+          }
+        }
+        throw lastError;
+      })
       .then(() => {
         setSaveState("saved");
         void syncPushSubscription(pushSyncPayload(next, today));
@@ -908,7 +930,7 @@ export function HealthApp() {
   const commit = (updater: (current: AppState) => AppState) => {
     setState((current) => {
       const next = updater(current);
-      void persist(next, current);
+      void persist(next);
       return next;
     });
   };
@@ -917,7 +939,10 @@ export function HealthApp() {
     if (!authUser) return;
     await saveQueue.current;
     const saved = await loadUserState(authUser.uid);
-    setState(normalizeAppState(saved));
+    const next = normalizeAppState(saved);
+    lastPersistedState.current = next;
+    lastPersistedUid.current = authUser.uid;
+    setState(next);
     setSaveState("saved");
   }, [authUser]);
 
@@ -1641,7 +1666,7 @@ export function HealthApp() {
       {modal === "nutrition-goal" && <NutritionGoalSheet goal={state.nutritionGoal} close={closeModal} save={saveNutritionGoal} />}
       {modal === "profile-goal" && <ProfileGoalSheet profile={state.profile} latestBody={[...state.bodyRecords].sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`))[0]} today={today} close={closeModal} save={saveProfileGoal} />}
       {modal === "profile-settings" && <ProfileSettingsSheet profile={state.profile} googleName={authUser.displayName ?? undefined} today={today} close={closeAccountChild} save={saveProfileSettings} />}
-      {modal === "account" && <AccountSheet nickname={state.profile.nickname?.trim() || authUser.displayName?.split(" ")[0] || "사용자"} close={closeModal} openProfile={() => setModal("profile-settings")} openData={() => setModal("data-management")} logout={() => void signOutGoogleUser()} />}
+      {modal === "account" && <AccountSheet nickname={state.profile.nickname?.trim() || authUser.displayName?.split(" ")[0] || "사용자"} close={closeModal} openProfile={() => setModal("profile-settings")} openData={() => setModal("data-management")} logout={async () => { await saveQueue.current; await signOutGoogleUser(); }} />}
       {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={closeModal} save={saveWorkout} />}
       {modal === "workout-goal" && <WorkoutGoalSheet goal={state.workoutGoal ?? initialState.workoutGoal!} close={closeModal} save={saveWorkoutGoal} />}
       {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} initialStart={weeklyPlanStart} close={closeModal} save={saveWeeklyPlan} />}
@@ -2905,11 +2930,11 @@ function ProfileSettingsSheet({ profile, googleName, today, close, save }: { pro
   </form></Sheet>;
 }
 
-function AccountSheet({ nickname, close, openProfile, openData, logout }: { nickname: string; close: () => void; openProfile: () => void; openData: () => void; logout: () => void }) {
+function AccountSheet({ nickname, close, openProfile, openData, logout }: { nickname: string; close: () => void; openProfile: () => void; openData: () => void; logout: () => void | Promise<void> }) {
   return <Sheet title={`${nickname}님`} close={close}><div className="account-sheet-actions">
     <button type="button" onClick={openProfile}><span>내 정보 수정</span><b aria-hidden="true">›</b></button>
     <button type="button" onClick={openData}><span>데이터 관리</span><b aria-hidden="true">›</b></button>
-    <button type="button" className="logout" onClick={logout}><span>로그아웃</span><b aria-hidden="true">›</b></button>
+    <button type="button" className="logout" onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) void logout(); }}><span>로그아웃</span><b aria-hidden="true">›</b></button>
   </div></Sheet>;
 }
 

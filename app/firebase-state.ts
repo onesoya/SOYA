@@ -21,10 +21,11 @@ type RecordKey =
   | "workouts"
   | "dailyActivities"
   | "cycles"
+  | "loveRecords"
   | "consultations"
   | "weeklyReviews";
 
-const recordKeys: RecordKey[] = [
+const recordKeys = [
   "bodyRecords",
   "circumferenceRecords",
   "foodLibrary",
@@ -32,9 +33,25 @@ const recordKeys: RecordKey[] = [
   "workouts",
   "dailyActivities",
   "cycles",
+  "loveRecords",
   "consultations",
   "weeklyReviews",
-];
+] as const satisfies readonly RecordKey[];
+
+const coreKeys = [
+  "profile",
+  "nutritionGoal",
+  "workoutGoal",
+  "reminderSettings",
+  "skippedTasks",
+  "lastBackupAt",
+] as const satisfies readonly (keyof AppState)[];
+
+type StoredStateKey = typeof recordKeys[number] | typeof coreKeys[number];
+type AssertAllStateKeysAreStored<T extends never> = T;
+type AppStateStorageCoverage = AssertAllStateKeysAreStored<Exclude<keyof AppState, StoredStateKey>>;
+const appStateStorageCoverage: AppStateStorageCoverage | true = true;
+void appStateStorageCoverage;
 
 const clean = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -54,17 +71,35 @@ export async function loadUserState(uid: string): Promise<AppState> {
   const core = await getDoc(doc(db, "users", uid, "settings", "app"));
   if (!core.exists()) return createFreshState();
 
+  const coreData = clean(core.data()) as Partial<AppState>;
+
   const snapshots = await Promise.all(
     recordKeys.map((key) => getDocs(collection(db, "users", uid, key))),
   );
   const records = Object.fromEntries(recordKeys.map((key, index) => [
     key,
-    snapshots[index].docs.map((entry) => entry.data()),
+    snapshots[index].docs.length
+      ? snapshots[index].docs.map((entry) => entry.data())
+      : key === "loveRecords" && Array.isArray(coreData.loveRecords)
+        ? coreData.loveRecords
+        : [],
   ]));
+
+  const loveSnapshot = snapshots[recordKeys.indexOf("loveRecords")];
+  const legacyLoveRecords = !loveSnapshot.docs.length && Array.isArray(coreData.loveRecords)
+    ? coreData.loveRecords
+    : [];
+  for (let index = 0; index < legacyLoveRecords.length; index += 450) {
+    const batch = writeBatch(db);
+    for (const entry of legacyLoveRecords.slice(index, index + 450)) {
+      batch.set(doc(db, "users", uid, "loveRecords", entry.id), clean(entry));
+    }
+    await batch.commit();
+  }
 
   return {
     ...createFreshState(),
-    ...clean(core.data()),
+    ...coreData,
     ...records,
   } as AppState;
 }

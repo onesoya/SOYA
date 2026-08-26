@@ -15,6 +15,26 @@
   --shadow: 0 18px 50px rgba(75, 55, 35, 0.08);
 }
 
+/* iOS는 입력 글자가 16px보다 작으면 포커스할 때 화면을 강제로 확대한다. */
+@media (hover: none) and (pointer: coarse), (max-width: 620px) {
+  input:not([type]),
+  input[type="text"],
+  input[type="search"],
+  input[type="number"],
+  input[type="email"],
+  input[type="url"],
+  input[type="date"],
+  input[type="time"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  input[type="search"] {
+    touch-action: manipulation;
+  }
+}
+
 * { box-sizing: border-box; }
 html { background: var(--cream); }
 body { margin: 0; background: var(--cream); color: var(--ink); font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
