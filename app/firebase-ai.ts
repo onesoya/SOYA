@@ -2,7 +2,7 @@
 
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { firebaseApp } from "./firebase-client";
-import type { ConsultationPlanSuggestion } from "./data";
+import type { ConsultationPlanSuggestion, InitialConsultationProposal } from "./data";
 
 export type AiConsultationResult = {
   text: string;
@@ -17,6 +17,7 @@ export type AiConsultationResult = {
   estimatedUsd: number;
   krwReferenceRate: number;
   planSuggestions?: ConsultationPlanSuggestion[];
+  initialProposal?: InitialConsultationProposal;
 };
 
 export type AiUsageSummary = {
@@ -48,9 +49,11 @@ export type AiBodyImportResult = {
 
 type WeeklySummaryRequest = { kind: "weekly-summary"; week: unknown };
 type WeeklyPlanRequest = { kind: "weekly-plan"; week: unknown; summary: string; userResponse: string };
+type InitialAnalysisRequest = { kind: "initial-analysis"; profile: unknown };
+type InitialPlanRequest = { kind: "initial-plan"; profile: unknown; summary: string; userResponse: string };
 type FollowUpRequest = { kind: "followup"; question: string; previousConsultation: string };
 
-type AiConsultationRequest = WeeklySummaryRequest | WeeklyPlanRequest | FollowUpRequest;
+type AiConsultationRequest = WeeklySummaryRequest | WeeklyPlanRequest | InitialAnalysisRequest | InitialPlanRequest | FollowUpRequest;
 
 export async function requestAiConsultation(payload: AiConsultationRequest) {
   const functions = getFunctions(firebaseApp(), "asia-northeast3");

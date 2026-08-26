@@ -247,6 +247,94 @@ function weeklyConsultationOutput(raw) {
   }
 }
 
+function initialConsultationOutput(raw) {
+  const fallback = { text: String(raw || "").trim(), initialProposal: undefined };
+  const cleaned = String(raw || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  try {
+    const parsed = JSON.parse(cleaned);
+    const text = safeText(parsed?.text, 18000);
+    if (!text) return fallback;
+    const proposal = parsed?.initialProposal;
+    if (!proposal || typeof proposal !== "object") return { text, initialProposal: undefined };
+    const nutrition = proposal.nutritionGoal || {};
+    const workout = proposal.workoutGoal || {};
+    const date = /^20\d{2}-\d{2}-\d{2}$/.test(String(proposal.goalEndDate || "")) ? String(proposal.goalEndDate) : "";
+    const number = (value, min, max, fallbackValue) => {
+      const parsedNumber = Number(value);
+      return Number.isFinite(parsedNumber) ? Math.min(max, Math.max(min, parsedNumber)) : fallbackValue;
+    };
+    const initialProposal = {
+      goalEndDate: date,
+      targetBodyFatChange: number(proposal.targetBodyFatChange, -20, 10, 0),
+      targetMuscleChange: number(proposal.targetMuscleChange, -10, 10, 0),
+      nutritionGoal: {
+        caloriesMin: Math.round(number(nutrition.caloriesMin, 800, 5000, 1600)),
+        caloriesMax: Math.round(number(nutrition.caloriesMax, 800, 5000, 1800)),
+        proteinMin: Math.round(number(nutrition.proteinMin, 20, 400, 90)),
+        proteinMax: Math.round(number(nutrition.proteinMax, 20, 400, 120)),
+        carbsMin: Math.round(number(nutrition.carbsMin, 20, 700, 160)),
+        carbsMax: Math.round(number(nutrition.carbsMax, 20, 700, 230)),
+        fatMin: Math.round(number(nutrition.fatMin, 10, 250, 45)),
+        fatMax: Math.round(number(nutrition.fatMax, 10, 250, 70)),
+        sugarMax: Math.round(number(nutrition.sugarMax, 5, 200, 50)),
+        fiberMin: Math.round(number(nutrition.fiberMin, 5, 100, 25)),
+      },
+      workoutGoal: {
+        cardioSessions: Math.round(number(workout.cardioSessions, 0, 14, 2)),
+        cardioMinutes: Math.round(number(workout.cardioMinutes, 0, 1200, 90)),
+      },
+      adjustmentRules: (Array.isArray(proposal.adjustmentRules) ? proposal.adjustmentRules : [])
+        .slice(0, 8).map((item) => safeText(item, 240)).filter(Boolean),
+    };
+    if (!initialProposal.goalEndDate
+      || initialProposal.nutritionGoal.caloriesMin > initialProposal.nutritionGoal.caloriesMax
+      || initialProposal.nutritionGoal.proteinMin > initialProposal.nutritionGoal.proteinMax
+      || initialProposal.nutritionGoal.carbsMin > initialProposal.nutritionGoal.carbsMax
+      || initialProposal.nutritionGoal.fatMin > initialProposal.nutritionGoal.fatMax) {
+      return { text, initialProposal: undefined };
+    }
+    return { text, initialProposal };
+  } catch {
+    return fallback;
+  }
+}
+
+function initialResponseFormat(kind) {
+  if (kind === "initial-analysis") {
+    return { format: { type: "json_schema", name: "soya_initial_analysis", strict: true, schema: {
+      type: "object", additionalProperties: false, required: ["text"], properties: { text: { type: "string" } },
+    } } };
+  }
+  if (kind !== "initial-plan") return undefined;
+  const boundedNumberSchema = { type: "number" };
+  return { format: { type: "json_schema", name: "soya_initial_plan", strict: true, schema: {
+    type: "object", additionalProperties: false, required: ["text", "initialProposal"], properties: {
+      text: { type: "string" },
+      initialProposal: {
+        type: "object", additionalProperties: false,
+        required: ["goalEndDate", "targetBodyFatChange", "targetMuscleChange", "nutritionGoal", "workoutGoal", "adjustmentRules"],
+        properties: {
+          goalEndDate: { type: "string" }, targetBodyFatChange: boundedNumberSchema, targetMuscleChange: boundedNumberSchema,
+          nutritionGoal: {
+            type: "object", additionalProperties: false,
+            required: ["caloriesMin", "caloriesMax", "proteinMin", "proteinMax", "carbsMin", "carbsMax", "fatMin", "fatMax", "sugarMax", "fiberMin"],
+            properties: {
+              caloriesMin: boundedNumberSchema, caloriesMax: boundedNumberSchema, proteinMin: boundedNumberSchema, proteinMax: boundedNumberSchema,
+              carbsMin: boundedNumberSchema, carbsMax: boundedNumberSchema, fatMin: boundedNumberSchema, fatMax: boundedNumberSchema,
+              sugarMax: boundedNumberSchema, fiberMin: boundedNumberSchema,
+            },
+          },
+          workoutGoal: {
+            type: "object", additionalProperties: false, required: ["cardioSessions", "cardioMinutes"],
+            properties: { cardioSessions: boundedNumberSchema, cardioMinutes: boundedNumberSchema },
+          },
+          adjustmentRules: { type: "array", maxItems: 8, items: { type: "string" } },
+        },
+      },
+    },
+  } } };
+}
+
 const appleHealthEndpoint = "https://asia-northeast3-soya-e12cd.cloudfunctions.net/importAppleHealth";
 
 function isoTimestamp(value) {
@@ -542,17 +630,21 @@ export const createWeeklyConsultation = onCall({
   if (!request.auth) throw new HttpsError("unauthenticated", "Google 로그인 후 상담할 수 있어요.");
 
   const requestedKind = request.data?.kind;
-  const kind = requestedKind === "followup" || requestedKind === "weekly-plan" || requestedKind === "weekly-summary"
+  const kind = requestedKind === "followup" || requestedKind === "weekly-plan" || requestedKind === "weekly-summary" || requestedKind === "initial-analysis" || requestedKind === "initial-plan"
     ? requestedKind
     : "weekly-summary";
   const week = request.data?.week;
+  const profile = request.data?.profile;
   const question = safeText(request.data?.question, 1000);
   const previousConsultation = safeText(request.data?.previousConsultation, 10000);
   const summary = safeText(request.data?.summary, 14000);
-  const userResponse = safeText(request.data?.userResponse, 4000);
+  const userResponse = safeText(request.data?.userResponse, 6000);
   const weekJson = week ? JSON.stringify(week) : "";
+  const profileJson = profile ? JSON.stringify(profile) : "";
   if ((kind === "weekly-summary" || kind === "weekly-plan") && (!weekJson || weekJson.length > 50000)) throw new HttpsError("invalid-argument", "상담할 주간 기록을 확인해주세요.");
+  if ((kind === "initial-analysis" || kind === "initial-plan") && (!profileJson || profileJson.length > 100000)) throw new HttpsError("invalid-argument", "첫 상담 자료를 확인해주세요.");
   if (kind === "weekly-plan" && (!summary || !userResponse)) throw new HttpsError("invalid-argument", "이번 주 요약과 답변을 확인해주세요.");
+  if (kind === "initial-plan" && (!summary || !userResponse)) throw new HttpsError("invalid-argument", "전체 분석과 답변을 확인해주세요.");
   if (kind === "followup" && (!question || !previousConsultation)) throw new HttpsError("invalid-argument", "이어갈 질문을 입력해주세요.");
 
   const month = currentUsageMonth();
@@ -570,12 +662,20 @@ export const createWeeklyConsultation = onCall({
     ? `${sharedSafety} 제공된 주간 기록과 현재 목표, 가장 최근의 목표 마무리 리포트를 함께 해석하세요. 목표 마무리 리포트의 날짜가 현재 주와 멀면 억지로 연결하지 말고 참고 자료라고 밝혀주세요. 지금 단계에서는 다음 주 식단·운동 계획을 만들지 마세요. 반드시 JSON 하나만 출력하고 최상위는 text와 planSuggestions로 하세요. text에는 '이번 주 요약', '목표 흐름', '잘한 점', '조정할 점', '내가 답하면 좋은 질문' 순서로 작성하세요. 마지막 질문은 사용자가 다음 주 일정, 컨디션, 원하는 관리 강도와 우선순위를 답할 수 있도록 2~4개만 구체적으로 물어보세요. planSuggestions는 반드시 빈 배열로 두고 마크다운 코드블록은 쓰지 마세요.`
     : kind === "weekly-plan"
       ? `${sharedSafety} 이번 주 요약과 사용자의 답변을 가장 중요한 조건으로 삼아 다음 주 식단·운동 계획 제안을 만드세요. 반드시 JSON 하나만 출력하고 최상위는 text와 planSuggestions로 하세요. text에는 '답변에서 반영한 점', '다음 주 방향', '확인할 점' 순서로 간결하게 작성하세요. planSuggestions에는 사용자가 확인한 뒤 주간 계획표에 넣을 수 있는 제안만 최대 4개 넣으세요. 각 제안은 id, category(meal 또는 workout), title, detail, meals, workouts를 모두 포함합니다. meals 항목은 dayOffset(월요일 0~일요일 6), mealType(breakfast/lunch/dinner/snack), title을 포함합니다. 식단은 정확한 양보다 음식 종류 중심으로 제안하세요. workouts 항목은 dayOffset, type(PT/유산소), title, minutes, intensity(1~10), heartRate, overlapsSteps를 포함합니다. 기록된 선호와 주간 목표 안에서만 제안하고 해당 종류가 없으면 meals 또는 workouts는 빈 배열로 두세요. 사용자가 답변에서 원하지 않은 계획을 임의로 추가하지 마세요. 마크다운 코드블록은 쓰지 마세요.`
-      : `${sharedSafety} 앞선 상담과 사용자의 질문에 직접 답하세요. 답변은 간결하지만 실제로 실행할 수 있게 구체적으로 작성하세요.`;
+      : kind === "initial-analysis"
+        ? `${sharedSafety} 이것은 사용자의 첫 정밀 상담입니다. 제공된 전체 체성분 이력을 장기 흐름과 최근 8~12주 흐름으로 나누어 분석하고, 같은 기기·아침 공복 측정을 우선해 비교하세요. 체지방량과 골격근량을 중심으로 체중·내장지방·허리·엉덩이둘레를 보조 지표로 사용하세요. 측정 조건, 월경 단계, 여행과 기록 공백 때문에 확실하지 않은 부분은 명시하세요. 지금은 목표 수치나 식단·운동 기준을 확정하지 마세요. text에는 'SOYA가 이해한 현재 상태', '전체 체성분 흐름', '최근 흐름', '강점과 주의점', '현실적인 목표 범위', '확인할 질문'을 이 순서로 작성하세요. 질문은 이미 기록에 답이 있는 내용을 다시 묻지 말고, 목표 우선순위·기간, 생활의 자유도, 식사·운동 제약, 에너지·식욕·수면, 월경과 여행, 원하는 상담 강도 중 실제로 빠진 것만 4~7개 물어보세요.`
+        : kind === "initial-plan"
+          ? `${sharedSafety} 이것은 첫 정밀 상담의 최종 제안 단계입니다. 앞서 분석한 전체 체성분 이력과 사용자의 답변을 함께 반영하세요. 사용자가 확인하기 전에는 앱 설정에 저장되지 않는 제안입니다. text에는 '답변에서 바로잡은 점', '초기 목표', '영양 기준', '운동 기준', '월경·여행 조정 원칙', '첫 2주의 관찰 포인트', '확정 전 확인할 점'을 순서대로 작성하세요. initialProposal에는 목표 종료일, 체지방량 변화 목표(감소는 음수), 골격근량 변화 목표, 열량·단백질·탄수화물·지방·당류·식이섬유 범위, 개인 유산소 주간 횟수와 누적 시간, 조정 원칙을 넣으세요. 무리한 감량이나 근거 없는 정밀 수치를 피하고 현재 기록이 부족하면 보수적인 시작 범위를 제안하세요.`
+          : `${sharedSafety} 앞선 상담과 사용자의 질문에 직접 답하세요. 답변은 간결하지만 실제로 실행할 수 있게 구체적으로 작성하세요.`;
   const input = kind === "weekly-summary"
     ? `다음은 사용자가 선택한 한 주의 기록, 현재 목표와 목표 마무리 리포트입니다.\n${weekJson}`
     : kind === "weekly-plan"
       ? `주간 기록과 목표 자료:\n${weekJson}\n\nAI가 먼저 정리한 이번 주 요약:\n${summary}\n\n사용자의 답변:\n${userResponse}`
-      : `직전 상담:\n${previousConsultation}\n\n사용자의 추가 질문:\n${question}`;
+      : kind === "initial-analysis"
+        ? `다음은 첫 상담을 위한 프로필, 전체 체성분 이력과 최근 생활 기록입니다.\n${profileJson}`
+        : kind === "initial-plan"
+          ? `첫 상담 전체 자료:\n${profileJson}\n\nAI가 먼저 정리한 전체 분석:\n${summary}\n\n사용자의 확인·수정 답변:\n${userResponse}`
+          : `직전 상담:\n${previousConsultation}\n\n사용자의 추가 질문:\n${question}`;
 
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {
@@ -586,16 +686,21 @@ export const createWeeklyConsultation = onCall({
         instructions,
         input,
         reasoning: { effort: "high" },
-        max_output_tokens: kind === "weekly-plan" ? 3000 : 2000,
+        max_output_tokens: kind === "initial-plan" ? 4500 : kind === "initial-analysis" ? 3500 : kind === "weekly-plan" ? 3000 : 2000,
         store: false,
         safety_identifier: createHash("sha256").update(request.auth.uid).digest("hex").slice(0, 64),
+        ...(initialResponseFormat(kind) ? { text: initialResponseFormat(kind) } : {}),
       }),
     });
     if (!response.ok) throw new Error(`OpenAI ${response.status}`);
     const data = await response.json();
     const rawText = outputText(data);
     if (!rawText) throw new Error("Empty OpenAI response");
-    const result = kind === "followup" ? { text: rawText, planSuggestions: [] } : weeklyConsultationOutput(rawText);
+    const result = kind === "followup"
+      ? { text: rawText, planSuggestions: [] }
+      : kind === "initial-analysis" || kind === "initial-plan"
+        ? initialConsultationOutput(rawText)
+        : weeklyConsultationOutput(rawText);
     const inputTokens = Number(data?.usage?.input_tokens || 0);
     const outputTokens = Number(data?.usage?.output_tokens || 0);
     await usageRef.set({
@@ -603,7 +708,7 @@ export const createWeeklyConsultation = onCall({
       outputTokens: FieldValue.increment(outputTokens),
       lastUsedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
-    return { text: result.text, planSuggestions: result.planSuggestions, source: "openai", model: "gpt-5.6-sol", reasoningEffort: "high", ...usageSummary({ count: used, inputTokens, outputTokens }) };
+    return { text: result.text, planSuggestions: result.planSuggestions, initialProposal: result.initialProposal, source: "openai", model: "gpt-5.6-sol", reasoningEffort: "high", ...usageSummary({ count: used, inputTokens, outputTokens }) };
   } catch (error) {
     await usageRef.set({ count: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     console.error("SOYA consultation failed", error);

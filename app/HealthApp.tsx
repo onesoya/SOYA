@@ -2598,6 +2598,7 @@ function ChangeView({ state, today, setModal, openDetail, openCircumference, ope
 function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDetail }: { state: AppState; commit: (updater: (current: AppState) => AppState) => void; openWeeklyPlan: (start?: string, consultation?: Consultation) => void; deleteConsultation: (consultation: Consultation) => void; openDetail: (consultation: Consultation) => void }) {
   const [loading, setLoading] = useState(false);
   const [planLoading, setPlanLoading] = useState(false);
+  const [initialPlanLoading, setInitialPlanLoading] = useState(false);
   const [followUpLoading, setFollowUpLoading] = useState(false);
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [followUpQuestion, setFollowUpQuestion] = useState("");
@@ -2607,10 +2608,14 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
   const savedReview = (state.weeklyReviews ?? []).find((item) => item.weekStart === reviewStart);
   const [reviewNote, setReviewNote] = useState(savedReview?.note ?? "");
   const [reviewEditing, setReviewEditing] = useState(!savedReview);
-  const latest = state.consultations[0];
+  const initialConsultation = state.consultations.find((item) => item.consultationType === "initial");
+  const initialConsultationConfirmed = initialConsultation?.flowStage === "initial-confirmed";
+  const weeklyConsultations = state.consultations.filter((item) => item.consultationType !== "initial");
+  const latest = weeklyConsultations[0];
   const weekConsultation = state.consultations.find((item) => item.weekStart === reviewStart);
   const visibleConsultation = weekConsultation ?? (latest && !latest.flowStage ? latest : undefined);
   const [weeklyAnswer, setWeeklyAnswer] = useState(weekConsultation?.userResponse ?? "");
+  const [initialAnswer, setInitialAnswer] = useState(initialConsultation?.userResponse ?? "");
   const reviewEnd = addDays(reviewStart, 6);
 
   useEffect(() => {
@@ -2618,6 +2623,10 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
     setReviewNote(reviewForWeek?.note ?? "");
     setReviewEditing(!reviewForWeek);
   }, [reviewStart, state.weeklyReviews]);
+
+  useEffect(() => {
+    setInitialAnswer(initialConsultation?.userResponse ?? "");
+  }, [initialConsultation?.id, initialConsultation?.userResponse]);
 
   useEffect(() => {
     let active = true;
@@ -2813,6 +2822,13 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
         note: latestCompletedGoal.note,
         report: latestCompletedGoal.report,
       } : undefined,
+      initialBaseline: initialConsultationConfirmed && initialConsultation ? {
+        consultedAt: initialConsultation.date,
+        confirmedAt: initialConsultation.confirmedAt,
+        analysis: initialConsultation.summaryText ?? initialConsultation.text,
+        initialPlan: initialConsultation.planText,
+        appliedProposal: initialConsultation.initialProposal,
+      } : undefined,
       nutritionGoal: state.nutritionGoal,
       workoutGoal: state.workoutGoal,
       weeklyNote: savedReview?.note ?? reviewNote.trim(),
@@ -2820,6 +2836,150 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
       previousWeek: previousReview,
       automaticReview,
     };
+  };
+  const initialConsultationPayload = () => {
+    const today = todayKey();
+    const recentStart = addDays(today, -84);
+    const conditionStart = addDays(today, -180);
+    const bodyHistory = [...state.bodyRecords]
+      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
+      .map((item) => ({
+        date: item.date,
+        time: item.time,
+        weight: item.weight,
+        skeletalMuscle: item.skeletalMuscle,
+        bodyFatMass: item.bodyFatMass,
+        bodyFatRate: item.bodyFatRate,
+        visceralFat: item.visceralFat,
+        measurementTiming: item.measurementTiming ?? item.condition.split(" · ")[0],
+        device: item.device ?? item.condition.split(" · ")[1],
+        menstrualPhase: menstrualPhase(state.cycles, item.date).label,
+      }));
+    const actualMeals = state.meals.filter((item) => item.kind === "actual" && !item.skipped && item.date >= recentStart && item.date <= today);
+    const nutritionByDay = [...new Set(actualMeals.map((item) => item.date))].sort().map((date) => {
+      const day = nutritionTotal(actualMeals.filter((item) => item.date === date));
+      return { date, calories: day.calories, protein: day.protein, carbs: day.carbs, fat: day.fat, sugar: day.sugar, fiber: day.fiber };
+    });
+    return {
+      today,
+      profile: state.profile,
+      currentNutritionGoal: state.nutritionGoal,
+      currentWorkoutGoal: state.workoutGoal,
+      latestCompletedGoals: (state.goalHistory ?? []).slice(0, 5),
+      bodyHistory,
+      recentBodyHistory: bodyHistory.filter((item) => item.date >= recentStart),
+      circumferenceHistory: [...(state.circumferenceRecords ?? [])].sort((a, b) => a.date.localeCompare(b.date)),
+      recentNutritionByDay: nutritionByDay,
+      recentWorkouts: state.workouts.filter((item) => item.kind === "actual" && item.date >= recentStart && item.date <= today).map((item) => ({ date: item.date, type: item.type, title: item.title, minutes: item.minutes, intensity: item.intensity, heartRate: item.heartRate, details: item.details })),
+      recentActivity: (state.dailyActivities ?? []).filter((item) => item.date >= recentStart && item.date <= today).map((item) => ({ date: item.date, steps: item.steps, activeCalories: item.activeCalories, watchWorn: item.watchWorn })),
+      recentCondition: state.cycles.filter((item) => item.date >= conditionStart && item.date <= today && (item.state !== "없음" || item.energy || item.appetite || item.symptoms?.length || item.note)).map((item) => ({ date: item.date, bleeding: item.state, flow: item.flow, pain: item.pain, energy: item.energy, appetite: item.appetite, symptoms: item.symptoms, note: item.note })),
+      menstrualCycles: cycleHistories(state.cycles).slice(0, 24),
+      travelPeriods: state.profile.travelStartDate && state.profile.travelEndDate ? [{ start: state.profile.travelStartDate, end: state.profile.travelEndDate, level: state.profile.travelLevel }] : [],
+      dataCounts: {
+        body: bodyHistory.length,
+        circumference: state.circumferenceRecords?.length ?? 0,
+        nutritionDays: nutritionByDay.length,
+        workouts: state.workouts.filter((item) => item.kind === "actual" && item.date >= recentStart).length,
+        menstrualCycles: cycleHistories(state.cycles).length,
+      },
+    };
+  };
+  const updateAiUsage = (data: Awaited<ReturnType<typeof requestAiConsultation>>) => {
+    setAiUsage((current) => ({
+      month: current?.month ?? todayKey().slice(0, 7),
+      used: data.used,
+      limit: data.limit,
+      remaining: data.remaining,
+      inputTokens: (current?.inputTokens ?? 0) + data.inputTokens,
+      outputTokens: (current?.outputTokens ?? 0) + data.outputTokens,
+      estimatedUsd: (current?.estimatedUsd ?? 0) + data.estimatedUsd,
+      krwReferenceRate: data.krwReferenceRate,
+    }));
+  };
+  const requestInitialAnalysis = async () => {
+    setLoading(true);
+    setConsultationError("");
+    try {
+      const data = await requestAiConsultation({ kind: "initial-analysis", profile: initialConsultationPayload() });
+      const consultation: Consultation = {
+        id: id("consult-initial"),
+        date: todayKey(),
+        consultationType: "initial",
+        text: data.text,
+        summaryText: data.text,
+        flowStage: "initial-analysis",
+        source: "openai",
+        model: data.model,
+        planSuggestions: [],
+      };
+      commit((current) => ({ ...current, consultations: [consultation, ...current.consultations.filter((item) => item.consultationType !== "initial")] }));
+      updateAiUsage(data);
+      setInitialAnswer("");
+    } catch (error) {
+      setConsultationError(error instanceof Error && error.message ? error.message.replace(/^FirebaseError:\s*/i, "") : "첫 상담 분석을 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
+    } finally { setLoading(false); }
+  };
+  const requestInitialPlan = async () => {
+    const answer = initialAnswer.trim();
+    if (!initialConsultation || !answer) return;
+    setInitialPlanLoading(true);
+    setConsultationError("");
+    try {
+      const summary = initialConsultation.summaryText ?? initialConsultation.text;
+      const data = await requestAiConsultation({ kind: "initial-plan", profile: initialConsultationPayload(), summary, userResponse: answer });
+      if (!data.initialProposal) throw new Error("초기 목표 제안을 구조화하지 못했어요. 다시 시도해주세요.");
+      const combinedText = `${summary}\n\n◆ 나의 확인·수정\n${answer}\n\n◆ 초기 상담 리포트\n${data.text}`;
+      commit((current) => ({
+        ...current,
+        consultations: current.consultations.map((item) => item.id === initialConsultation.id ? {
+          ...item,
+          text: combinedText,
+          userResponse: answer,
+          planText: data.text,
+          flowStage: "initial-plan-ready",
+          initialProposal: data.initialProposal,
+          source: "openai",
+          model: data.model,
+        } : item),
+      }));
+      updateAiUsage(data);
+    } catch (error) {
+      setConsultationError(error instanceof Error && error.message ? error.message.replace(/^FirebaseError:\s*/i, "") : "초기 목표 제안을 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
+    } finally { setInitialPlanLoading(false); }
+  };
+  const reviseInitialAnswer = () => {
+    if (!initialConsultation) return;
+    setInitialAnswer(initialConsultation.userResponse ?? "");
+    commit((current) => ({
+      ...current,
+      consultations: current.consultations.map((item) => item.id === initialConsultation.id ? {
+        ...item,
+        flowStage: "initial-analysis",
+        userResponse: undefined,
+        planText: undefined,
+        initialProposal: undefined,
+      } : item),
+    }));
+  };
+  const confirmInitialPlan = () => {
+    const proposal = initialConsultation?.initialProposal;
+    if (!initialConsultation || !proposal) return;
+    if (!window.confirm("이 기준을 SOYA의 첫 목표와 영양·운동 설정에 반영할까요?")) return;
+    const confirmedAt = todayKey();
+    commit((current) => ({
+      ...current,
+      profile: {
+        ...current.profile,
+        goalStartDate: confirmedAt,
+        goalEndDate: proposal.goalEndDate >= confirmedAt ? proposal.goalEndDate : current.profile.goalEndDate,
+        goalWeek: 1,
+        targetBodyFatChange: proposal.targetBodyFatChange,
+        targetMuscleChange: proposal.targetMuscleChange,
+      },
+      nutritionGoal: proposal.nutritionGoal,
+      workoutGoal: proposal.workoutGoal,
+      consultations: current.consultations.map((item) => item.id === initialConsultation.id ? { ...item, flowStage: "initial-confirmed", confirmedAt } : item),
+    }));
   };
   const requestReview = async () => {
     setLoading(true);
@@ -2829,17 +2989,8 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
         kind: "weekly-summary",
         week: consultationWeekPayload(),
       });
-      commit((current) => ({ ...current, consultations: [{ id: id("consult"), date: todayKey(), weekStart: reviewStart, weekEnd: reviewEnd, text: data.text, summaryText: data.text, flowStage: "summary", source: "openai", model: data.model, planSuggestions: [] }, ...current.consultations] }));
-      setAiUsage((current) => ({
-        month: current?.month ?? todayKey().slice(0, 7),
-        used: data.used,
-        limit: data.limit,
-        remaining: data.remaining,
-        inputTokens: (current?.inputTokens ?? 0) + data.inputTokens,
-        outputTokens: (current?.outputTokens ?? 0) + data.outputTokens,
-        estimatedUsd: (current?.estimatedUsd ?? 0) + data.estimatedUsd,
-        krwReferenceRate: data.krwReferenceRate,
-      }));
+      commit((current) => ({ ...current, consultations: [{ id: id("consult"), date: todayKey(), consultationType: "weekly", weekStart: reviewStart, weekEnd: reviewEnd, text: data.text, summaryText: data.text, flowStage: "summary", source: "openai", model: data.model, planSuggestions: [] }, ...current.consultations] }));
+      updateAiUsage(data);
       setFollowUpOpen(false);
       setFollowUpQuestion("");
       setWeeklyAnswer("");
@@ -2910,6 +3061,8 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
       setConsultationError(error instanceof Error && error.message ? error.message.replace(/^FirebaseError:\s*/i, "") : "답변을 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
     } finally { setFollowUpLoading(false); }
   };
+  const displayedConsultation = !initialConsultationConfirmed ? initialConsultation : visibleConsultation;
+  const historyConsultations = state.consultations.filter((item) => item.id !== displayedConsultation?.id);
   return <div className="section-stack">
     <section className="card weekly-review-card">
       <div className="weekly-review-heading"><div><span className="eyebrow">일요일 주간 정리</span><h2>이번 주를 한눈에 봐요</h2></div><button type="button" className="week-current-button" onClick={() => selectReviewWeek(weekStart(todayKey()))}>이번 주</button></div>
@@ -2935,15 +3088,27 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
       </section>
       <div className="weekly-review-next"><button type="button" className="primary-button" onClick={() => openWeeklyPlan(addDays(reviewStart, 7))}>다음 주 계획하기</button></div>
     </section>
-    <section className="section-hero consult-hero"><div><span className="eyebrow">주간 상담</span><h2>정리된 기록으로<br />함께 조정해요.</h2></div><button className="primary-button" onClick={requestReview} disabled={loading}>{loading ? "기록을 살펴보는 중…" : "✦ 상담 시작"}</button></section>
+    <section className="section-hero consult-hero"><div><span className="eyebrow">{initialConsultationConfirmed ? "주간 상담" : "첫 정밀 상담"}</span><h2>{initialConsultationConfirmed ? <>정리된 기록으로<br />함께 조정해요.</> : <>전체 흐름부터<br />차근차근 알아봐요.</>}</h2></div>{initialConsultationConfirmed ? <button className="primary-button" onClick={requestReview} disabled={loading}>{loading ? "기록을 살펴보는 중…" : "✦ 상담 시작"}</button> : initialConsultation ? <span className="initial-consultation-progress">상담 진행 중</span> : <button className="primary-button" onClick={requestInitialAnalysis} disabled={loading}>{loading ? "전체 기록을 살펴보는 중…" : "✦ 첫 상담 시작"}</button>}</section>
     <section className="card ai-usage-card">
       <div className="ai-usage-heading"><strong>이번 달 AI 사용</strong><span>{aiUsage ? `${aiUsage.used}/${aiUsage.limit}회` : "확인 중"}</span></div>
       <div className="ai-usage-values"><article><small>남은 상담</small><strong>{aiUsage ? `${aiUsage.remaining}회` : "-"}</strong></article><article><small>예상 비용</small><strong>{aiUsage ? `약 ${Math.round(aiUsage.estimatedUsd * aiUsage.krwReferenceRate).toLocaleString()}원` : "-"}</strong></article></div>
       <div className="ai-usage-track"><i style={{ width: `${aiUsage ? Math.min(100, aiUsage.used / aiUsage.limit * 100) : 0}%` }} /></div>
     </section>
     {consultationError && <p className="consultation-error" role="alert">{consultationError}</p>}
-    <section className="card consultation-card">
-      <CardTitle title={visibleConsultation ? "주간 AI 상담" : "첫 상담을 준비했어요"} aside={visibleConsultation ? `${visibleConsultation.weekStart?.replaceAll("-", ".") ?? visibleConsultation.date}` : ""} />
+    {!initialConsultationConfirmed ? <section className="card consultation-card initial-consultation-card">
+      <CardTitle title={initialConsultation ? "첫 정밀 상담" : "첫 상담을 준비했어요"} aside={initialConsultation?.date.replaceAll("-", ".")} />
+      {initialConsultation ? <>
+        <div className="consultation-meta"><span className={`source-badge ${initialConsultation.source}`}>{initialConsultation.model === "gpt-5.6-sol" ? "GPT-5.6 Sol · High" : initialConsultation.model || "ChatGPT 상담"}</span>{aiUsage && <small>이번 달 {aiUsage.used}/{aiUsage.limit}회</small>}</div>
+        <div className="consultation-flow initial-consultation-flow">
+          <div className="consultation-flow-track" aria-label="첫 상담 진행 단계"><span className="done"><b>1</b>전체 분석</span><i /><span className={initialConsultation.userResponse ? "done" : "active"}><b>2</b>내가 확인</span><i /><span className={initialConsultation.flowStage === "initial-plan-ready" ? "active" : ""}><b>3</b>기준 확정</span></div>
+          <section className="consultation-step complete"><div className="consultation-step-heading"><span>1</span><strong>전체 기록 분석</strong><small>장기 흐름과 최근 8~12주를 함께 봤어요</small></div><div className="consultation-text">{initialConsultation.summaryText ?? initialConsultation.text}</div></section>
+          <section className={`consultation-step ${initialConsultation.userResponse ? "complete" : "active"}`}><div className="consultation-step-heading"><span>2</span><strong>내가 확인하고 바로잡기</strong><small>{initialConsultation.userResponse ? "답변 완료" : "목표와 생활 조건을 알려주세요"}</small></div>{initialConsultation.userResponse ? <><p className="consultation-user-answer">{initialConsultation.userResponse}</p><button type="button" className="consultation-revise-answer" onClick={reviseInitialAnswer}>답변 수정하고 다시 제안받기</button></> : <div className="consultation-answer-editor"><ClearableFieldControl><textarea value={initialAnswer} onChange={(event) => setInitialAnswer(event.target.value)} maxLength={6000} placeholder="분석에서 맞는 점과 다른 점, 원하는 목표와 기간, 식사·운동 제약, 월경이나 여행 때 원하는 조정 방식 등을 자유롭게 알려주세요." aria-label="첫 상담 분석에 답변" /></ClearableFieldControl><div><small>{initialAnswer.length}/6000</small><button type="button" className="primary-button" onClick={requestInitialPlan} disabled={!initialAnswer.trim() || initialPlanLoading}>{initialPlanLoading ? "초기 기준을 만드는 중…" : "답변하고 초기 기준 받기"}</button></div></div>}</section>
+          <section className={`consultation-step ${initialConsultation.flowStage === "initial-plan-ready" ? "active" : "waiting"}`}><div className="consultation-step-heading"><span>3</span><strong>초기 목표와 기준 확정</strong><small>{initialConsultation.flowStage === "initial-plan-ready" ? "확인 전에는 앱에 반영되지 않아요" : "답변을 기다리고 있어요"}</small></div>{initialConsultation.flowStage === "initial-plan-ready" && initialConsultation.initialProposal ? <><div className="consultation-text">{initialConsultation.planText}</div><div className="initial-proposal-grid"><article><span>초기 목표</span><strong>체지방 {signed(initialConsultation.initialProposal.targetBodyFatChange)}kg</strong><b>골격근 {signed(initialConsultation.initialProposal.targetMuscleChange)}kg</b><small>{initialConsultation.initialProposal.goalEndDate.replaceAll("-", ".")}까지</small></article><article><span>하루 영양</span><strong>{initialConsultation.initialProposal.nutritionGoal.caloriesMin}~{initialConsultation.initialProposal.nutritionGoal.caloriesMax} kcal</strong><b>단백질 {initialConsultation.initialProposal.nutritionGoal.proteinMin}~{initialConsultation.initialProposal.nutritionGoal.proteinMax}g</b><small>당류 ≤ {initialConsultation.initialProposal.nutritionGoal.sugarMax}g · 식이섬유 ≥ {initialConsultation.initialProposal.nutritionGoal.fiberMin}g</small></article><article><span>주간 운동</span><strong>개인 유산소 {initialConsultation.initialProposal.workoutGoal.cardioSessions}회</strong><b>누적 {initialConsultation.initialProposal.workoutGoal.cardioMinutes}분</b><small>PT는 실제 일정에 맞춰 계획</small></article></div>{initialConsultation.initialProposal.adjustmentRules.length > 0 && <div className="initial-adjustment-rules"><strong>상황별 조정 원칙</strong><ul>{initialConsultation.initialProposal.adjustmentRules.map((rule) => <li key={rule}>{rule}</li>)}</ul></div>}<div className="consultation-not-saved"><strong>아직 적용되지 않았어요</strong><span>내용을 확인한 뒤 아래 버튼을 눌러야 목표·영양·운동 기준이 바뀌어요.</span></div><button type="button" className="primary-button initial-confirm-button" onClick={confirmInitialPlan}>이 기준으로 첫 목표 시작하기</button></> : <p className="consultation-waiting-text">소야님의 확인과 답변을 받은 뒤에만 초기 목표와 기준을 제안해요.</p>}</section>
+        </div>
+        <div className="consult-buttons"><button className="delete-text-button" onClick={() => deleteConsultation(initialConsultation)}>첫 상담 삭제</button></div>
+      </> : <EmptyState text={<>지금까지의 체성분 흐름과 최근 기록을 먼저 살펴보고,<br />소야님에게 꼭 필요한 것만 질문할게요.</>} action="첫 정밀 상담 시작" onClick={requestInitialAnalysis} showIcon={false} />}
+    </section> : <section className="card consultation-card">
+      <CardTitle title={visibleConsultation ? "주간 AI 상담" : "이번 주 상담을 준비했어요"} aside={visibleConsultation ? `${visibleConsultation.weekStart?.replaceAll("-", ".") ?? visibleConsultation.date}` : ""} />
       {visibleConsultation ? <>
         <div className="consultation-meta"><span className={`source-badge ${visibleConsultation.source}`}>{visibleConsultation.source === "openai" ? visibleConsultation.model === "gpt-5.6-sol" ? "GPT-5.6 Sol · High" : visibleConsultation.model || "ChatGPT 상담" : "AI 연결 전 미리보기"}</span>{aiUsage && <small>이번 달 {aiUsage.used}/{aiUsage.limit}회</small>}</div>
         {visibleConsultation.flowStage ? <div className="consultation-flow">
@@ -2954,9 +3119,9 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
         </div> : <div className="consultation-text">{visibleConsultation.text}</div>}
         <div className="consult-buttons"><button className="delete-text-button" onClick={() => deleteConsultation(visibleConsultation)}>삭제</button>{(!visibleConsultation.flowStage || visibleConsultation.flowStage === "plan-ready") && <button className="ghost-button" onClick={() => setFollowUpOpen((current) => !current)}>대화 이어가기</button>}{visibleConsultation.flowStage === "plan-ready" && <button className="primary-button" onClick={() => openWeeklyPlan(addDays(visibleConsultation.weekStart ?? reviewStart, 7), visibleConsultation)}>제안 확인하고 계획하기</button>}{!visibleConsultation.flowStage && <button className="primary-button" onClick={() => openWeeklyPlan(addDays(visibleConsultation.weekStart ?? reviewStart, 7), visibleConsultation)}>{visibleConsultation.planSuggestions?.length ? "제안 골라 계획하기" : "다음 주 계획하기"}</button>}</div>
         {followUpOpen && <div className="consult-followup"><ClearableFieldControl><textarea value={followUpQuestion} onChange={(event) => setFollowUpQuestion(event.target.value)} maxLength={1000} placeholder="상담 내용에서 더 묻고 싶은 점을 적어주세요." aria-label="ChatGPT에게 이어서 질문" /></ClearableFieldControl><div><small>{followUpQuestion.length}/1000</small><button type="button" className="primary-button" onClick={requestFollowUp} disabled={!followUpQuestion.trim() || followUpLoading}>{followUpLoading ? "답변을 기다리는 중…" : "질문 보내기"}</button></div></div>}
-      </> : <EmptyState text={<>체성분·식사·운동 기록을 바탕으로<br />이번 주를 함께 정리해요.</>} action="첫 상담 시작" onClick={requestReview} showIcon={false} />}
-    </section>
-    <section className="card consultation-history"><CardTitle title="과거 상담" aside={`${Math.max(0, state.consultations.length - 1)}개`} />{state.consultations.length > 1 ? <div className="history-list">{state.consultations.slice(1).map((item) => <button key={item.id} onClick={() => openDetail(item)} aria-label={`${item.date} 상담 보기`}><strong>{item.date}</strong><b aria-hidden="true">›</b></button>)}</div> : <p className="history-empty">상담이 쌓이면 이전 내용을 여기에서 다시 볼 수 있어요.</p>}</section>
+      </> : <EmptyState text={<>체성분·식사·운동 기록을 바탕으로<br />이번 주를 함께 정리해요.</>} action="주간 상담 시작" onClick={requestReview} showIcon={false} />}
+    </section>}
+    <section className="card consultation-history"><CardTitle title="과거 상담" aside={`${historyConsultations.length}개`} />{historyConsultations.length ? <div className="history-list">{historyConsultations.map((item) => <button key={item.id} onClick={() => openDetail(item)} aria-label={`${item.date} ${item.consultationType === "initial" ? "첫 상담" : "주간 상담"} 보기`}><span><strong>{item.date}</strong><small>{item.consultationType === "initial" ? "초기 상담 리포트" : "주간 상담"}</small></span><b aria-hidden="true">›</b></button>)}</div> : <p className="history-empty">상담이 쌓이면 이전 내용을 여기에서 다시 볼 수 있어요.</p>}</section>
   </div>;
 }
 
@@ -4156,7 +4321,8 @@ function BodyDetailSheet({ record, close, edit, remove }: { record: BodyRecord; 
 }
 
 function ConsultationDetailSheet({ consultation, close, remove }: { consultation: Consultation; close: () => void; remove: () => void }) {
-  return <Sheet title="상담 다시보기" close={close}><div className="detail-date"><strong>{consultation.date}</strong></div><span className={`source-badge ${consultation.source}`}>{consultation.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span>{consultation.flowStage ? <div className="consultation-detail-flow"><section><strong>1. 이번 주 요약</strong><div className="consultation-text consultation-popup-text">{consultation.summaryText ?? consultation.text}</div></section>{consultation.userResponse && <section><strong>2. 나의 답변</strong><p>{consultation.userResponse}</p></section>}{consultation.planText && <section><strong>3. 다음 주 제안</strong><div className="consultation-text consultation-popup-text">{consultation.planText}</div></section>}</div> : <div className="consultation-text consultation-popup-text">{consultation.text}</div>}<button type="button" className="delete-button full-delete-button" onClick={remove}>상담 삭제</button></Sheet>;
+  const initial = consultation.consultationType === "initial";
+  return <Sheet title={initial ? "첫 상담 다시보기" : "상담 다시보기"} close={close}><div className="detail-date"><strong>{consultation.date}</strong>{initial && consultation.confirmedAt && <span>기준 확정 완료</span>}</div><span className={`source-badge ${consultation.source}`}>{consultation.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span>{consultation.flowStage ? <div className="consultation-detail-flow"><section><strong>1. {initial ? "전체 기록 분석" : "이번 주 요약"}</strong><div className="consultation-text consultation-popup-text">{consultation.summaryText ?? consultation.text}</div></section>{consultation.userResponse && <section><strong>2. {initial ? "나의 확인·수정" : "나의 답변"}</strong><p>{consultation.userResponse}</p></section>}{consultation.planText && <section><strong>3. {initial ? "초기 상담 리포트" : "다음 주 제안"}</strong><div className="consultation-text consultation-popup-text">{consultation.planText}</div></section>}</div> : <div className="consultation-text consultation-popup-text">{consultation.text}</div>}<button type="button" className="delete-button full-delete-button" onClick={remove}>상담 삭제</button></Sheet>;
 }
 
 type LoveFormDraft = { date: string; count: string; contraception: LoveRecord["contraception"]; note: string };

@@ -141,16 +141,42 @@ export type LoveRecord = {
 export type Consultation = {
   id: string;
   date: string;
+  consultationType?: "initial" | "weekly";
   weekStart?: string;
   weekEnd?: string;
   text: string;
   summaryText?: string;
   userResponse?: string;
   planText?: string;
-  flowStage?: "summary" | "plan-ready";
+  flowStage?: "summary" | "plan-ready" | "initial-analysis" | "initial-plan-ready" | "initial-confirmed";
+  confirmedAt?: string;
+  initialProposal?: InitialConsultationProposal;
   source: "openai" | "preview";
   model?: string;
   planSuggestions?: ConsultationPlanSuggestion[];
+};
+
+export type InitialConsultationProposal = {
+  goalEndDate: string;
+  targetBodyFatChange: number;
+  targetMuscleChange: number;
+  nutritionGoal: {
+    caloriesMin: number;
+    caloriesMax: number;
+    proteinMin: number;
+    proteinMax: number;
+    carbsMin: number;
+    carbsMax: number;
+    fatMin: number;
+    fatMax: number;
+    sugarMax: number;
+    fiberMin: number;
+  };
+  workoutGoal: {
+    cardioSessions: number;
+    cardioMinutes: number;
+  };
+  adjustmentRules: string[];
 };
 
 export type ConsultationPlanSuggestion = {
