@@ -1053,6 +1053,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .love-heart { position: absolute; right: 4px; bottom: 2px; z-index: 2; font-family: Arial, sans-serif; font-size: 13px; line-height: 1; }
 .love-heart.outline { color: transparent; -webkit-text-stroke: 1.3px #a83f4b; text-shadow: none; }
 .love-heart.filled { color: #a83f4b; text-shadow: 1px 1px 0 var(--paper); }
+.predicted-period-drop { position: absolute; right: 5px; top: 5px; z-index: 3; width: 8px; height: 8px; border: 1px solid var(--ink); border-radius: 55% 55% 55% 0; background: var(--coral); transform: rotate(-45deg); box-shadow: inset 2px 2px 0 rgba(255,255,255,.55); }
 .menstrual-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .menstrual-phase-card { min-height: 126px; padding: 20px 22px; border-color: var(--ink); border-radius: 0; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .menstrual-phase-card > div { min-width: 0; display: grid; gap: 7px; }
@@ -1066,6 +1067,12 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .menstrual-summary strong { background: #f4d8d2; }
 .cycle-detail-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .cycle-history-card { display: grid; gap: 14px; }
+.cycle-history-card > summary { list-style: none; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+.cycle-history-card > summary::-webkit-details-marker { display: none; }
+.cycle-history-card > summary span { font-size: 16px; font-weight: 900; }
+.cycle-history-card > summary i { font-style: normal; font-size: 18px; transition: transform .18s ease; }
+.cycle-history-card[open] > summary i { transform: rotate(180deg); }
+.cycle-history-controls { display: flex; justify-content: flex-end; }
 .cycle-year-select { min-width: 92px; height: 36px; padding: 0 28px 0 10px; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); font-family: inherit; font-size: 9px; font-weight: 850; }
 .cycle-history-list { border: 1px solid var(--line); background: white; display: grid; }
 .cycle-history-item { padding: 14px; border-bottom: 1px solid var(--line); display: grid; gap: 11px; }
@@ -1088,6 +1095,15 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .menstrual-detail-grid span { color: var(--muted); font-size: 8px; }
 .menstrual-detail-grid strong { font-size: 10px; }
 .menstrual-note { margin: 12px 0 0; padding: 12px; border-left: 3px solid var(--coral); background: var(--cream); color: var(--muted); font-size: 10px; line-height: 1.65; }
+.menstrual-selected-day { display: grid; gap: 12px; }
+.selected-day-records { display: grid; grid-template-columns: minmax(0, 2fr) minmax(120px, 1fr); gap: 10px; }
+.selected-day-records > div { min-width: 0; padding: 12px; border: 1px solid var(--line); background: white; }
+.selected-day-records .menstrual-summary { margin-top: 0; }
+.selected-day-love { align-content: start; display: grid; gap: 6px; }
+.selected-day-love > span { color: var(--coral); font-size: 8px; font-weight: 850; }
+.selected-day-love > strong { font-size: 10px; line-height: 1.5; }
+.selected-day-love > p { margin: 2px 0 0; color: var(--muted); font-size: 8px; line-height: 1.55; }
+.selected-day-empty { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.6; }
 .prediction-note { margin: -3px 2px 0; color: var(--muted); font-size: 8px; line-height: 1.65; }
 .cycle-record-tabs { margin: -4px 0 18px; padding: 4px; border: 2px solid var(--ink); border-radius: 999px; background: var(--cream); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
 .cycle-record-tabs button { min-height: 40px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-family: inherit; font-size: 10px; font-weight: 850; cursor: pointer; }
@@ -1380,6 +1396,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .cycle-history-heading { align-items: flex-start; flex-direction: column; }
   .cycle-history-actions { width: 100%; }
   .cycle-history-actions button { flex: 1; }
+  .selected-day-records { grid-template-columns: 1fr; }
   .weekly-meal-grid { grid-template-columns: minmax(0, 1fr); }
   .sheet header { top: -12px; }
   .sheet-leading-fields { grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 10px; }

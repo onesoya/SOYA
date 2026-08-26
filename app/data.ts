@@ -130,6 +130,14 @@ export type CycleEntry = {
   periodId?: string;
 };
 
+export type LoveRecord = {
+  id: string;
+  date: string;
+  count: number;
+  contraception: "피임함" | "피임하지 않음";
+  note?: string;
+};
+
 export type Consultation = {
   id: string;
   date: string;
@@ -206,6 +214,7 @@ export type AppState = {
   workouts: WorkoutEntry[];
   dailyActivities?: DailyActivity[];
   cycles: CycleEntry[];
+  loveRecords?: LoveRecord[];
   consultations: Consultation[];
   weeklyReviews?: WeeklyReview[];
   reminderSettings?: ReminderSettings;
@@ -282,6 +291,7 @@ export const initialState: AppState = {
   ],
   dailyActivities: [],
   cycles: [],
+  loveRecords: [],
   consultations: [],
   weeklyReviews: [],
   skippedTasks: [],
@@ -311,6 +321,7 @@ export function createFreshState(): AppState {
     workouts: [],
     dailyActivities: [],
     cycles: [],
+    loveRecords: [],
     consultations: [],
     weeklyReviews: [],
     skippedTasks: [],

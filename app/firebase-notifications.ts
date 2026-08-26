@@ -121,7 +121,7 @@ export async function observeForegroundNotifications() {
       body: payload.notification?.body ?? "기록할 시간이 왔어요.",
       icon: "/tiger-icon-192.png",
       badge: "/tiger-icon-192.png",
-      data: { url: payload.fcmOptions?.link ?? "/" },
+      data: { url: payload.data?.url ?? payload.fcmOptions?.link ?? "/" },
     });
   });
 }

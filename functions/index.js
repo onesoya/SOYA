@@ -76,8 +76,16 @@ function remindersFor(data, clock) {
   if (travelBehavior === "모두 끄기") return [];
 
   const reminders = [];
+  const destinationFor = (key) => {
+    if (key === "body") return "/?open=body";
+    if (key.startsWith("meal_")) return `/?tab=food&open=meal-actual&mealType=${key.replace("meal_", "")}`;
+    if (key.startsWith("workout")) return "/?tab=workout&open=workout-actual";
+    if (key === "weekly") return "/?open=weekly-plan";
+    if (key.startsWith("cycle_")) return "/?tab=menstrual&open=cycle";
+    return "/";
+  };
   const add = (key, time, title, body) => {
-    if (time === clock.time && data.lastSent?.[key] !== clock.day) reminders.push({ key, title, body });
+    if (time === clock.time && data.lastSent?.[key] !== clock.day) reminders.push({ key, title, body, destination: destinationFor(key) });
   };
 
   if (travelBehavior !== "핵심만" && settings.bodyEnabled && !completed.body) {
@@ -146,13 +154,14 @@ export const sendSoyaReminders = onSchedule({
     const sent = {};
     try {
       for (const reminder of reminders) {
+        const link = new URL(reminder.destination, data.appUrl || "https://soya--soya-e12cd.asia-east1.hosted.app/").toString();
         await getMessaging().send({
           token: data.token,
           notification: { title: reminder.title, body: reminder.body },
-          data: { kind: reminder.key },
+          data: { kind: reminder.key, url: link },
           webpush: {
             headers: { Urgency: "high" },
-            fcmOptions: { link: data.appUrl || "https://my-balance-tiger.onesoya.chatgpt.site/" },
+            fcmOptions: { link },
           },
         });
         sent[`lastSent.${reminder.key}`] = clock.day;
