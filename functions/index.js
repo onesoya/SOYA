@@ -432,12 +432,18 @@ export const createWeeklyConsultation = onCall({
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Google 로그인 후 상담할 수 있어요.");
 
-  const kind = request.data?.kind === "followup" ? "followup" : "weekly";
+  const requestedKind = request.data?.kind;
+  const kind = requestedKind === "followup" || requestedKind === "weekly-plan" || requestedKind === "weekly-summary"
+    ? requestedKind
+    : "weekly-summary";
   const week = request.data?.week;
   const question = safeText(request.data?.question, 1000);
   const previousConsultation = safeText(request.data?.previousConsultation, 10000);
+  const summary = safeText(request.data?.summary, 14000);
+  const userResponse = safeText(request.data?.userResponse, 4000);
   const weekJson = week ? JSON.stringify(week) : "";
-  if (kind === "weekly" && (!weekJson || weekJson.length > 50000)) throw new HttpsError("invalid-argument", "상담할 주간 기록을 확인해주세요.");
+  if ((kind === "weekly-summary" || kind === "weekly-plan") && (!weekJson || weekJson.length > 50000)) throw new HttpsError("invalid-argument", "상담할 주간 기록을 확인해주세요.");
+  if (kind === "weekly-plan" && (!summary || !userResponse)) throw new HttpsError("invalid-argument", "이번 주 요약과 답변을 확인해주세요.");
   if (kind === "followup" && (!question || !previousConsultation)) throw new HttpsError("invalid-argument", "이어갈 질문을 입력해주세요.");
 
   const month = currentUsageMonth();
@@ -450,12 +456,17 @@ export const createWeeklyConsultation = onCall({
     return current + 1;
   });
 
-  const instructions = kind === "weekly"
-    ? "당신은 SOYA 앱의 신중한 한국어 주간 코치입니다. 사용자는 체중 자체보다 체지방량 감소와 골격근량 유지·증가를 중요하게 봅니다. 제공된 한 주의 요약만 근거로 삼고, 기록된 사실과 추정을 분명히 구분하세요. 단백질·당류·식이섬유, 운동 수행, 월경 단계와 에너지·식욕을 함께 보되 월경으로 모든 변화를 단정하지 마세요. 의학적 진단이나 치료 지시를 하지 마세요. 반드시 JSON 하나만 출력하세요. JSON 최상위는 text와 planSuggestions입니다. text에는 '이번 주 한줄 요약', '잘한 점', '조정할 점', '체성분 흐름', '식사', '운동', '월경·컨디션 고려', '다음 주 행동 3가지' 순서의 따뜻하고 구체적인 한국어 상담을 일반 텍스트로 넣으세요. planSuggestions에는 다음 주 계획표에 실제로 넣을 수 있는 제안만 최대 4개 넣으세요. 각 제안은 id, category(meal 또는 workout), title, detail, meals, workouts를 모두 포함합니다. meals 항목은 dayOffset(월요일 0~일요일 6), mealType(breakfast/lunch/dinner/snack), title을 포함합니다. workouts 항목은 dayOffset, type(PT/유산소), title, minutes, intensity(1~10), heartRate, overlapsSteps를 포함합니다. 식단 제안은 계획 단계이므로 음식 종류 중심으로 쓰고, 사용자의 기록과 목표만으로 무리하게 구체화하지 마세요. 운동은 기록된 선호와 주간 목표 안에서만 제안하세요. 해당 종류의 제안이 없으면 meals 또는 workouts는 빈 배열로 두세요. 기록이 부족한 항목은 text에서 부족하다고 말하고 근거 없는 제안은 만들지 마세요. 마크다운 코드블록은 쓰지 마세요."
-    : "당신은 SOYA 앱에서 직전 주간 상담을 이어가는 신중한 한국어 코치입니다. 앞선 상담과 사용자의 질문에 직접 답하세요. 제공되지 않은 건강 정보를 만들어내지 말고, 의학적 진단이나 치료 지시를 하지 마세요. 답변은 간결하지만 실제로 실행할 수 있게 구체적으로 작성하세요.";
-  const input = kind === "weekly"
-    ? `다음은 사용자가 선택한 한 주의 정리된 기록입니다.\n${weekJson}`
-    : `직전 상담:\n${previousConsultation}\n\n사용자의 추가 질문:\n${question}`;
+  const sharedSafety = "당신은 SOYA 앱의 신중한 한국어 주간 코치입니다. 사용자는 체중 자체보다 체지방량 감소와 골격근량 유지·증가를 중요하게 봅니다. 기록된 사실과 추정을 분명히 구분하고, 단백질·당류·식이섬유, 운동 수행, 월경 단계와 에너지·식욕을 함께 보되 월경으로 모든 변화를 단정하지 마세요. 제공되지 않은 건강 정보를 만들지 말고 의학적 진단이나 치료 지시를 하지 마세요.";
+  const instructions = kind === "weekly-summary"
+    ? `${sharedSafety} 제공된 주간 기록과 현재 목표, 가장 최근의 목표 마무리 리포트를 함께 해석하세요. 목표 마무리 리포트의 날짜가 현재 주와 멀면 억지로 연결하지 말고 참고 자료라고 밝혀주세요. 지금 단계에서는 다음 주 식단·운동 계획을 만들지 마세요. 반드시 JSON 하나만 출력하고 최상위는 text와 planSuggestions로 하세요. text에는 '이번 주 요약', '목표 흐름', '잘한 점', '조정할 점', '내가 답하면 좋은 질문' 순서로 작성하세요. 마지막 질문은 사용자가 다음 주 일정, 컨디션, 원하는 관리 강도와 우선순위를 답할 수 있도록 2~4개만 구체적으로 물어보세요. planSuggestions는 반드시 빈 배열로 두고 마크다운 코드블록은 쓰지 마세요.`
+    : kind === "weekly-plan"
+      ? `${sharedSafety} 이번 주 요약과 사용자의 답변을 가장 중요한 조건으로 삼아 다음 주 식단·운동 계획 제안을 만드세요. 반드시 JSON 하나만 출력하고 최상위는 text와 planSuggestions로 하세요. text에는 '답변에서 반영한 점', '다음 주 방향', '확인할 점' 순서로 간결하게 작성하세요. planSuggestions에는 사용자가 확인한 뒤 주간 계획표에 넣을 수 있는 제안만 최대 4개 넣으세요. 각 제안은 id, category(meal 또는 workout), title, detail, meals, workouts를 모두 포함합니다. meals 항목은 dayOffset(월요일 0~일요일 6), mealType(breakfast/lunch/dinner/snack), title을 포함합니다. 식단은 정확한 양보다 음식 종류 중심으로 제안하세요. workouts 항목은 dayOffset, type(PT/유산소), title, minutes, intensity(1~10), heartRate, overlapsSteps를 포함합니다. 기록된 선호와 주간 목표 안에서만 제안하고 해당 종류가 없으면 meals 또는 workouts는 빈 배열로 두세요. 사용자가 답변에서 원하지 않은 계획을 임의로 추가하지 마세요. 마크다운 코드블록은 쓰지 마세요.`
+      : `${sharedSafety} 앞선 상담과 사용자의 질문에 직접 답하세요. 답변은 간결하지만 실제로 실행할 수 있게 구체적으로 작성하세요.`;
+  const input = kind === "weekly-summary"
+    ? `다음은 사용자가 선택한 한 주의 기록, 현재 목표와 목표 마무리 리포트입니다.\n${weekJson}`
+    : kind === "weekly-plan"
+      ? `주간 기록과 목표 자료:\n${weekJson}\n\nAI가 먼저 정리한 이번 주 요약:\n${summary}\n\n사용자의 답변:\n${userResponse}`
+      : `직전 상담:\n${previousConsultation}\n\n사용자의 추가 질문:\n${question}`;
 
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {
@@ -466,7 +477,7 @@ export const createWeeklyConsultation = onCall({
         instructions,
         input,
         reasoning: { effort: "high" },
-        max_output_tokens: kind === "weekly" ? 3000 : 2000,
+        max_output_tokens: kind === "weekly-plan" ? 3000 : 2000,
         store: false,
         safety_identifier: createHash("sha256").update(request.auth.uid).digest("hex").slice(0, 64),
       }),
@@ -475,7 +486,7 @@ export const createWeeklyConsultation = onCall({
     const data = await response.json();
     const rawText = outputText(data);
     if (!rawText) throw new Error("Empty OpenAI response");
-    const result = kind === "weekly" ? weeklyConsultationOutput(rawText) : { text: rawText, planSuggestions: [] };
+    const result = kind === "followup" ? { text: rawText, planSuggestions: [] } : weeklyConsultationOutput(rawText);
     const inputTokens = Number(data?.usage?.input_tokens || 0);
     const outputTokens = Number(data?.usage?.output_tokens || 0);
     await usageRef.set({

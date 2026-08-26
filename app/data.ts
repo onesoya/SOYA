@@ -144,6 +144,10 @@ export type Consultation = {
   weekStart?: string;
   weekEnd?: string;
   text: string;
+  summaryText?: string;
+  userResponse?: string;
+  planText?: string;
+  flowStage?: "summary" | "plan-ready";
   source: "openai" | "preview";
   model?: string;
   planSuggestions?: ConsultationPlanSuggestion[];

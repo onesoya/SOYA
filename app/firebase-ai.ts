@@ -30,12 +30,15 @@ export type AiUsageSummary = {
   krwReferenceRate: number;
 };
 
-type WeeklyRequest = { kind: "weekly"; week: unknown };
+type WeeklySummaryRequest = { kind: "weekly-summary"; week: unknown };
+type WeeklyPlanRequest = { kind: "weekly-plan"; week: unknown; summary: string; userResponse: string };
 type FollowUpRequest = { kind: "followup"; question: string; previousConsultation: string };
 
-export async function requestAiConsultation(payload: WeeklyRequest | FollowUpRequest) {
+type AiConsultationRequest = WeeklySummaryRequest | WeeklyPlanRequest | FollowUpRequest;
+
+export async function requestAiConsultation(payload: AiConsultationRequest) {
   const functions = getFunctions(firebaseApp(), "asia-northeast3");
-  const callable = httpsCallable<WeeklyRequest | FollowUpRequest, AiConsultationResult>(functions, "createWeeklyConsultation");
+  const callable = httpsCallable<AiConsultationRequest, AiConsultationResult>(functions, "createWeeklyConsultation");
   const response = await callable(payload);
   return response.data;
 }

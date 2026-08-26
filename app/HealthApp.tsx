@@ -2556,6 +2556,7 @@ function ChangeView({ state, today, setModal, openDetail, openCircumference, ope
 
 function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDetail }: { state: AppState; commit: (updater: (current: AppState) => AppState) => void; openWeeklyPlan: (start?: string, consultation?: Consultation) => void; deleteConsultation: (consultation: Consultation) => void; openDetail: (consultation: Consultation) => void }) {
   const [loading, setLoading] = useState(false);
+  const [planLoading, setPlanLoading] = useState(false);
   const [followUpLoading, setFollowUpLoading] = useState(false);
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [followUpQuestion, setFollowUpQuestion] = useState("");
@@ -2566,6 +2567,9 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
   const [reviewNote, setReviewNote] = useState(savedReview?.note ?? "");
   const [reviewEditing, setReviewEditing] = useState(!savedReview);
   const latest = state.consultations[0];
+  const weekConsultation = state.consultations.find((item) => item.weekStart === reviewStart);
+  const visibleConsultation = weekConsultation ?? (latest && !latest.flowStage ? latest : undefined);
+  const [weeklyAnswer, setWeeklyAnswer] = useState(weekConsultation?.userResponse ?? "");
   const reviewEnd = addDays(reviewStart, 6);
 
   useEffect(() => {
@@ -2719,6 +2723,11 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
   }, [previousReview, review, state.nutritionGoal, state.profile.targetBodyFatChange, state.workoutGoal]);
 
   const conditionLabel = (value: number) => value ? conditionLabels[Math.min(4, Math.max(0, Math.round(value) - 1))] : "기록 없음";
+  const selectReviewWeek = (start: string) => {
+    setReviewStart(start);
+    setWeeklyAnswer("");
+    setFollowUpOpen(false);
+  };
   const saveReview = () => {
     const note = reviewNote.trim();
     if (!note) return;
@@ -2733,31 +2742,53 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
     setReviewNote("");
     setReviewEditing(true);
   };
+  const consultationWeekPayload = () => {
+    const goalProgress = bodyGoalProgressFor(state, reviewEnd);
+    const latestCompletedGoal = (state.goalHistory ?? [])[0];
+    return {
+      weekStart: reviewStart,
+      weekEnd: reviewEnd,
+      currentGoal: {
+        mode: state.profile.mode,
+        targetBodyFatChange: state.profile.targetBodyFatChange,
+        targetMuscleChange: state.profile.targetMuscleChange,
+        goalStartDate: state.profile.goalStartDate,
+        goalEndDate: state.profile.goalEndDate,
+        progress: {
+          bodyFatChange: goalProgress.bodyFatChange,
+          muscleChange: goalProgress.muscleChange,
+          bodyFatPercent: Math.round(goalProgress.bodyFatPercent),
+          musclePercent: Math.round(goalProgress.musclePercent),
+        },
+      },
+      latestCompletedGoal: latestCompletedGoal ? {
+        startedAt: latestCompletedGoal.startedAt,
+        plannedEndAt: latestCompletedGoal.plannedEndAt,
+        completedAt: latestCompletedGoal.completedAt,
+        mode: latestCompletedGoal.mode,
+        targets: { bodyFat: latestCompletedGoal.targetBodyFatChange, muscle: latestCompletedGoal.targetMuscleChange },
+        changes: { bodyFat: latestCompletedGoal.bodyFatChange, muscle: latestCompletedGoal.muscleChange },
+        outcome: latestCompletedGoal.outcome,
+        note: latestCompletedGoal.note,
+        report: latestCompletedGoal.report,
+      } : undefined,
+      nutritionGoal: state.nutritionGoal,
+      workoutGoal: state.workoutGoal,
+      weeklyNote: savedReview?.note ?? reviewNote.trim(),
+      currentWeek: review,
+      previousWeek: previousReview,
+      automaticReview,
+    };
+  };
   const requestReview = async () => {
     setLoading(true);
     setConsultationError("");
     try {
       const data = await requestAiConsultation({
-        kind: "weekly",
-        week: {
-          weekStart: reviewStart,
-          weekEnd: reviewEnd,
-          goal: {
-            mode: state.profile.mode,
-            targetBodyFatChange: state.profile.targetBodyFatChange,
-            targetMuscleChange: state.profile.targetMuscleChange,
-            goalStartDate: state.profile.goalStartDate,
-            goalEndDate: state.profile.goalEndDate,
-          },
-          nutritionGoal: state.nutritionGoal,
-          workoutGoal: state.workoutGoal,
-          weeklyNote: savedReview?.note ?? reviewNote.trim(),
-          currentWeek: review,
-          previousWeek: previousReview,
-          automaticReview,
-        },
+        kind: "weekly-summary",
+        week: consultationWeekPayload(),
       });
-      commit((current) => ({ ...current, consultations: [{ id: id("consult"), date: todayKey(), weekStart: reviewStart, weekEnd: reviewEnd, text: data.text, source: "openai", model: data.model, planSuggestions: data.planSuggestions }, ...current.consultations] }));
+      commit((current) => ({ ...current, consultations: [{ id: id("consult"), date: todayKey(), weekStart: reviewStart, weekEnd: reviewEnd, text: data.text, summaryText: data.text, flowStage: "summary", source: "openai", model: data.model, planSuggestions: [] }, ...current.consultations] }));
       setAiUsage((current) => ({
         month: current?.month ?? todayKey().slice(0, 7),
         used: data.used,
@@ -2770,19 +2801,58 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
       }));
       setFollowUpOpen(false);
       setFollowUpQuestion("");
+      setWeeklyAnswer("");
     } catch (error) {
       setConsultationError(error instanceof Error && error.message ? error.message.replace(/^FirebaseError:\s*/i, "") : "상담을 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
     } finally { setLoading(false); }
   };
+  const requestWeeklyPlan = async () => {
+    const consultation = weekConsultation;
+    const answer = weeklyAnswer.trim();
+    if (!consultation || !answer) return;
+    setPlanLoading(true);
+    setConsultationError("");
+    try {
+      const summary = consultation.summaryText ?? consultation.text;
+      const data = await requestAiConsultation({ kind: "weekly-plan", week: consultationWeekPayload(), summary, userResponse: answer });
+      const combinedText = `${summary}\n\n◆ 나의 답변\n${answer}\n\n◆ 다음 주 제안\n${data.text}`;
+      commit((current) => ({
+        ...current,
+        consultations: current.consultations.map((item) => item.id === consultation.id ? {
+          ...item,
+          text: combinedText,
+          summaryText: summary,
+          userResponse: answer,
+          planText: data.text,
+          flowStage: "plan-ready",
+          planSuggestions: data.planSuggestions ?? [],
+          source: "openai",
+          model: data.model,
+        } : item),
+      }));
+      setAiUsage((current) => ({
+        month: current?.month ?? todayKey().slice(0, 7),
+        used: data.used,
+        limit: data.limit,
+        remaining: data.remaining,
+        inputTokens: (current?.inputTokens ?? 0) + data.inputTokens,
+        outputTokens: (current?.outputTokens ?? 0) + data.outputTokens,
+        estimatedUsd: (current?.estimatedUsd ?? 0) + data.estimatedUsd,
+        krwReferenceRate: data.krwReferenceRate,
+      }));
+    } catch (error) {
+      setConsultationError(error instanceof Error && error.message ? error.message.replace(/^FirebaseError:\s*/i, "") : "다음 주 제안을 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
+    } finally { setPlanLoading(false); }
+  };
   const requestFollowUp = async () => {
     const question = followUpQuestion.trim();
-    if (!latest || !question) return;
+    if (!visibleConsultation || !question) return;
     setFollowUpLoading(true);
     setConsultationError("");
     try {
-      const data = await requestAiConsultation({ kind: "followup", question, previousConsultation: latest.text });
-      const updatedText = `${latest.text}\n\n◆ 나의 질문\n${question}\n\n◆ ChatGPT 답변\n${data.text}`;
-      commit((current) => ({ ...current, consultations: current.consultations.map((item) => item.id === latest.id ? { ...item, text: updatedText, source: "openai", model: data.model } : item) }));
+      const data = await requestAiConsultation({ kind: "followup", question, previousConsultation: visibleConsultation.text });
+      const updatedText = `${visibleConsultation.text}\n\n◆ 나의 질문\n${question}\n\n◆ ChatGPT 답변\n${data.text}`;
+      commit((current) => ({ ...current, consultations: current.consultations.map((item) => item.id === visibleConsultation.id ? { ...item, text: updatedText, source: "openai", model: data.model } : item) }));
       setAiUsage((current) => ({
         month: current?.month ?? todayKey().slice(0, 7),
         used: data.used,
@@ -2801,8 +2871,8 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
   };
   return <div className="section-stack">
     <section className="card weekly-review-card">
-      <div className="weekly-review-heading"><div><span className="eyebrow">일요일 주간 정리</span><h2>이번 주를 한눈에 봐요</h2></div><button type="button" className="week-current-button" onClick={() => setReviewStart(weekStart(todayKey()))}>이번 주</button></div>
-      <div className="weekly-review-nav"><button type="button" onClick={() => setReviewStart(addDays(reviewStart, -7))} aria-label="이전 주">‹</button><strong>{reviewStart.replaceAll("-", ".")} – {reviewEnd.replaceAll("-", ".")}</strong><button type="button" onClick={() => setReviewStart(addDays(reviewStart, 7))} aria-label="다음 주">›</button></div>
+      <div className="weekly-review-heading"><div><span className="eyebrow">일요일 주간 정리</span><h2>이번 주를 한눈에 봐요</h2></div><button type="button" className="week-current-button" onClick={() => selectReviewWeek(weekStart(todayKey()))}>이번 주</button></div>
+      <div className="weekly-review-nav"><button type="button" onClick={() => selectReviewWeek(addDays(reviewStart, -7))} aria-label="이전 주">‹</button><strong>{reviewStart.replaceAll("-", ".")} – {reviewEnd.replaceAll("-", ".")}</strong><button type="button" onClick={() => selectReviewWeek(addDays(reviewStart, 7))} aria-label="다음 주">›</button></div>
       <div className="weekly-review-context"><span>{state.profile.mode} {review.timing.week}주차</span><span>{review.phaseLabel}</span>{review.travelDays > 0 && <span>여행 {review.travelDays}일</span>}<span>목표일까지 {review.timing.daysLeft}일</span></div>
       <div className="weekly-review-grid">
         <article className="weekly-review-panel body"><div className="weekly-panel-title"><span>체성분</span><small>{review.bodyCount}회 측정</small></div>{review.bodyCount ? <><strong>체지방 {review.bodyFatChange === undefined ? "-" : `${signed(review.bodyFatChange)}kg`}</strong><b>골격근 {review.muscleChange === undefined ? "-" : `${signed(review.muscleChange)}kg`}</b><p>{review.bodyPhase}</p></> : <p className="weekly-panel-empty">측정 기록 없음</p>}</article>
@@ -2831,7 +2901,20 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
       <div className="ai-usage-track"><i style={{ width: `${aiUsage ? Math.min(100, aiUsage.used / aiUsage.limit * 100) : 0}%` }} /></div>
     </section>
     {consultationError && <p className="consultation-error" role="alert">{consultationError}</p>}
-    <section className="card consultation-card"><CardTitle title={latest ? "최근 상담" : "첫 상담을 준비했어요"} aside={latest ? latest.date : ""} />{latest ? <><div className="consultation-meta"><span className={`source-badge ${latest.source}`}>{latest.source === "openai" ? latest.model === "gpt-5.6-sol" ? "GPT-5.6 Sol · High" : latest.model || "ChatGPT 상담" : "AI 연결 전 미리보기"}</span>{aiUsage && <small>이번 달 {aiUsage.used}/{aiUsage.limit}회</small>}</div><div className="consultation-text">{latest.text}</div><div className="consult-buttons"><button className="delete-text-button" onClick={() => deleteConsultation(latest)}>삭제</button><button className="ghost-button" onClick={() => setFollowUpOpen((current) => !current)}>대화 이어가기</button><button className="primary-button" onClick={() => openWeeklyPlan(addDays(latest.weekStart ?? reviewStart, 7), latest)}>{latest.planSuggestions?.length ? "제안 골라 계획하기" : "다음 주 계획하기"}</button></div>{followUpOpen && <div className="consult-followup"><ClearableFieldControl><textarea value={followUpQuestion} onChange={(event) => setFollowUpQuestion(event.target.value)} maxLength={1000} placeholder="상담 내용에서 더 묻고 싶은 점을 적어주세요." aria-label="ChatGPT에게 이어서 질문" /></ClearableFieldControl><div><small>{followUpQuestion.length}/1000</small><button type="button" className="primary-button" onClick={requestFollowUp} disabled={!followUpQuestion.trim() || followUpLoading}>{followUpLoading ? "답변을 기다리는 중…" : "질문 보내기"}</button></div></div>}</> : <EmptyState text={<>체성분·식사·운동 기록을 바탕으로<br />이번 주를 함께 정리해요.</>} action="첫 상담 시작" onClick={requestReview} showIcon={false} />}</section>
+    <section className="card consultation-card">
+      <CardTitle title={visibleConsultation ? "주간 AI 상담" : "첫 상담을 준비했어요"} aside={visibleConsultation ? `${visibleConsultation.weekStart?.replaceAll("-", ".") ?? visibleConsultation.date}` : ""} />
+      {visibleConsultation ? <>
+        <div className="consultation-meta"><span className={`source-badge ${visibleConsultation.source}`}>{visibleConsultation.source === "openai" ? visibleConsultation.model === "gpt-5.6-sol" ? "GPT-5.6 Sol · High" : visibleConsultation.model || "ChatGPT 상담" : "AI 연결 전 미리보기"}</span>{aiUsage && <small>이번 달 {aiUsage.used}/{aiUsage.limit}회</small>}</div>
+        {visibleConsultation.flowStage ? <div className="consultation-flow">
+          <div className="consultation-flow-track" aria-label="주간 상담 진행 단계"><span className="done"><b>1</b>이번 주 요약</span><i /><span className={visibleConsultation.userResponse ? "done" : "active"}><b>2</b>내가 답변</span><i /><span className={visibleConsultation.flowStage === "plan-ready" ? "done" : ""}><b>3</b>다음 주 계획</span></div>
+          <section className="consultation-step complete"><div className="consultation-step-heading"><span>1</span><strong>이번 주 요약</strong><small>AI가 목표와 기록을 함께 봤어요</small></div><div className="consultation-text">{visibleConsultation.summaryText ?? visibleConsultation.text}</div></section>
+          <section className={`consultation-step ${visibleConsultation.userResponse ? "complete" : "active"}`}><div className="consultation-step-heading"><span>2</span><strong>내가 답변</strong><small>{visibleConsultation.userResponse ? "답변 완료" : "다음 주 조건을 알려주세요"}</small></div>{visibleConsultation.userResponse ? <p className="consultation-user-answer">{visibleConsultation.userResponse}</p> : <div className="consultation-answer-editor"><ClearableFieldControl><textarea value={weeklyAnswer} onChange={(event) => setWeeklyAnswer(event.target.value)} maxLength={4000} placeholder="다음 주 일정, 컨디션, 원하는 관리 강도와 꼭 반영할 점을 자유롭게 답해주세요." aria-label="이번 주 요약에 답변" /></ClearableFieldControl><div><small>{weeklyAnswer.length}/4000</small><button type="button" className="primary-button" onClick={requestWeeklyPlan} disabled={!weeklyAnswer.trim() || planLoading}>{planLoading ? "제안을 만드는 중…" : "답변하고 제안 받기"}</button></div></div>}</section>
+          <section className={`consultation-step ${visibleConsultation.flowStage === "plan-ready" ? "complete" : "waiting"}`}><div className="consultation-step-heading"><span>3</span><strong>다음 주 계획</strong><small>{visibleConsultation.flowStage === "plan-ready" ? "확인 후 반영해주세요" : "답변을 기다리고 있어요"}</small></div>{visibleConsultation.flowStage === "plan-ready" ? <><div className="consultation-text">{visibleConsultation.planText}</div>{visibleConsultation.planSuggestions?.length ? <div className="consultation-suggestion-preview">{visibleConsultation.planSuggestions.map((suggestion) => <article key={suggestion.id}><span>{suggestion.category === "meal" ? "식단" : "운동"}</span><strong>{suggestion.title}</strong><p>{suggestion.detail}</p></article>)}</div> : <p className="consultation-no-suggestions">바로 계획표에 넣을 제안은 없어요. 상담 내용을 확인한 뒤 직접 계획할 수 있어요.</p>}<div className="consultation-not-saved"><strong>아직 저장되지 않았어요</strong><span>제안을 확인하고 원하는 항목만 골라 반영할 수 있어요.</span></div></> : <p className="consultation-waiting-text">소야님의 답변을 받은 뒤에만 식단·운동 계획을 제안해요.</p>}</section>
+        </div> : <div className="consultation-text">{visibleConsultation.text}</div>}
+        <div className="consult-buttons"><button className="delete-text-button" onClick={() => deleteConsultation(visibleConsultation)}>삭제</button>{(!visibleConsultation.flowStage || visibleConsultation.flowStage === "plan-ready") && <button className="ghost-button" onClick={() => setFollowUpOpen((current) => !current)}>대화 이어가기</button>}{visibleConsultation.flowStage === "plan-ready" && <button className="primary-button" onClick={() => openWeeklyPlan(addDays(visibleConsultation.weekStart ?? reviewStart, 7), visibleConsultation)}>제안 확인하고 계획하기</button>}{!visibleConsultation.flowStage && <button className="primary-button" onClick={() => openWeeklyPlan(addDays(visibleConsultation.weekStart ?? reviewStart, 7), visibleConsultation)}>{visibleConsultation.planSuggestions?.length ? "제안 골라 계획하기" : "다음 주 계획하기"}</button>}</div>
+        {followUpOpen && <div className="consult-followup"><ClearableFieldControl><textarea value={followUpQuestion} onChange={(event) => setFollowUpQuestion(event.target.value)} maxLength={1000} placeholder="상담 내용에서 더 묻고 싶은 점을 적어주세요." aria-label="ChatGPT에게 이어서 질문" /></ClearableFieldControl><div><small>{followUpQuestion.length}/1000</small><button type="button" className="primary-button" onClick={requestFollowUp} disabled={!followUpQuestion.trim() || followUpLoading}>{followUpLoading ? "답변을 기다리는 중…" : "질문 보내기"}</button></div></div>}
+      </> : <EmptyState text={<>체성분·식사·운동 기록을 바탕으로<br />이번 주를 함께 정리해요.</>} action="첫 상담 시작" onClick={requestReview} showIcon={false} />}
+    </section>
     <section className="card consultation-history"><CardTitle title="과거 상담" aside={`${Math.max(0, state.consultations.length - 1)}개`} />{state.consultations.length > 1 ? <div className="history-list">{state.consultations.slice(1).map((item) => <button key={item.id} onClick={() => openDetail(item)} aria-label={`${item.date} 상담 보기`}><strong>{item.date}</strong><b aria-hidden="true">›</b></button>)}</div> : <p className="history-empty">상담이 쌓이면 이전 내용을 여기에서 다시 볼 수 있어요.</p>}</section>
   </div>;
 }
@@ -3907,7 +3990,7 @@ function BodyDetailSheet({ record, close, edit, remove }: { record: BodyRecord; 
 }
 
 function ConsultationDetailSheet({ consultation, close, remove }: { consultation: Consultation; close: () => void; remove: () => void }) {
-  return <Sheet title="상담 다시보기" close={close}><div className="detail-date"><strong>{consultation.date}</strong></div><span className={`source-badge ${consultation.source}`}>{consultation.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span><div className="consultation-text consultation-popup-text">{consultation.text}</div><button type="button" className="delete-button full-delete-button" onClick={remove}>상담 삭제</button></Sheet>;
+  return <Sheet title="상담 다시보기" close={close}><div className="detail-date"><strong>{consultation.date}</strong></div><span className={`source-badge ${consultation.source}`}>{consultation.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span>{consultation.flowStage ? <div className="consultation-detail-flow"><section><strong>1. 이번 주 요약</strong><div className="consultation-text consultation-popup-text">{consultation.summaryText ?? consultation.text}</div></section>{consultation.userResponse && <section><strong>2. 나의 답변</strong><p>{consultation.userResponse}</p></section>}{consultation.planText && <section><strong>3. 다음 주 제안</strong><div className="consultation-text consultation-popup-text">{consultation.planText}</div></section>}</div> : <div className="consultation-text consultation-popup-text">{consultation.text}</div>}<button type="button" className="delete-button full-delete-button" onClick={remove}>상담 삭제</button></Sheet>;
 }
 
 type LoveFormDraft = { date: string; count: string; contraception: LoveRecord["contraception"]; note: string };
