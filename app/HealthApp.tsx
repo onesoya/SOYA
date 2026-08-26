@@ -44,6 +44,7 @@ import {
   disablePushNotifications,
   enablePushNotifications,
   getPushStatus,
+  observeNotificationClicks,
   observeForegroundNotifications,
   syncPushSubscription,
   type PushStatus,
@@ -1172,32 +1173,51 @@ export function HealthApp() {
     return () => stop?.();
   }, []);
 
-  useEffect(() => {
-    if (!authReady || !authUser || !loaded || deepLinkHandled.current || typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
+  const openDeepLink = useCallback((destination: string) => {
+    if (typeof window === "undefined") return;
+    const url = new URL(destination, window.location.origin);
+    const params = url.searchParams;
     const requestedTab = params.get("tab");
     const requestedModal = params.get("open") as Modal;
+    const requestedDate = /^20\d{2}-\d{2}-\d{2}$/.test(params.get("date") ?? "") ? params.get("date")! : today;
     if (requestedTab && tabs.some((item) => item.id === requestedTab)) setTab(requestedTab as Tab);
     if (requestedModal && ["body", "meal-actual", "workout-actual", "weekly-plan", "cycle"].includes(requestedModal)) {
+      if (requestedModal === "body") setSelectedBodyRecord(undefined);
       if (requestedModal === "meal-actual") {
         const mealType = params.get("mealType") as MealType;
-        setMealPresetType(Object.keys(mealLabels).includes(mealType) ? mealType : undefined);
-        setMealDate(today);
-        setMealDraft(undefined);
+        const validMealType = Object.keys(mealLabels).includes(mealType) ? mealType : undefined;
+        setMealPresetType(validMealType);
+        setMealDate(requestedDate);
+        setMealDraft(validMealType ? state.meals.find((item) => item.date === requestedDate && item.mealType === validMealType && item.kind === "plan") : undefined);
       }
       if (requestedModal === "workout-actual") {
-        setWorkoutDraft(undefined);
-        setWorkoutPresetType(undefined);
+        const planId = params.get("planId");
+        const plan = state.workouts.find((item) => item.kind === "plan" && item.date === requestedDate && (!planId || planId === "workout" || item.id === planId))
+          ?? state.workouts.find((item) => item.kind === "plan" && item.date === requestedDate);
+        setWorkoutDraft(plan);
+        setWorkoutPresetType(plan?.type);
+      }
+      if (requestedModal === "weekly-plan") {
+        setWeeklyPlanStart(undefined);
+        setWeeklyPlanConsultation(undefined);
       }
       if (requestedModal === "cycle") {
-        setCycleDate(today);
+        setCycleDate(requestedDate);
         setCycleRangeDraft(undefined);
       }
       setModal(requestedModal);
     }
+  }, [setModal, state.meals, state.workouts, today]);
+
+  useEffect(() => {
+    if (!authReady || !authUser || !loaded || deepLinkHandled.current || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    openDeepLink(window.location.href);
     deepLinkHandled.current = true;
     if (params.size) window.history.replaceState({}, "", window.location.pathname);
-  }, [authReady, authUser, loaded, setModal, today]);
+  }, [authReady, authUser, loaded, openDeepLink]);
+
+  useEffect(() => observeNotificationClicks(openDeepLink), [openDeepLink]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });

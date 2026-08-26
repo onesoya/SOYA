@@ -13,8 +13,15 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// 알림 페이로드는 FCM이 표시하므로 여기서 다시 표시하지 않습니다.
-messaging.onBackgroundMessage(() => undefined);
+messaging.onBackgroundMessage((payload) => {
+  const data = payload?.data || {};
+  return self.registration.showNotification(data.title || "SOYA", {
+    body: data.body || "기록할 시간이 왔어요.",
+    icon: "/tiger-icon-192.png",
+    badge: "/tiger-icon-192.png",
+    data: { kind: data.kind, url: data.url || "/" },
+  });
+});
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
@@ -22,8 +29,10 @@ self.addEventListener("notificationclick", (event) => {
     || event.notification?.data?.url
     || "/";
   event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
-    const existing = windows.find((client) => "focus" in client);
+    const absoluteDestination = new URL(destination, self.location.origin).toString();
+    const existing = windows.find((client) => "focus" in client && new URL(client.url).origin === self.location.origin);
     if (!existing) return clients.openWindow(destination);
-    return existing.navigate(destination).then(() => existing.focus());
+    existing.postMessage({ type: "SOYA_NOTIFICATION_CLICK", url: absoluteDestination });
+    return existing.focus();
   }));
 });

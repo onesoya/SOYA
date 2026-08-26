@@ -117,11 +117,20 @@ export async function observeForegroundNotifications() {
   return onMessage(messaging, async (payload) => {
     if (Notification.permission !== "granted") return;
     const serviceWorkerRegistration = await registration();
-    await serviceWorkerRegistration.showNotification(payload.notification?.title ?? "SOYA", {
-      body: payload.notification?.body ?? "기록할 시간이 왔어요.",
+    await serviceWorkerRegistration.showNotification(payload.data?.title ?? payload.notification?.title ?? "SOYA", {
+      body: payload.data?.body ?? payload.notification?.body ?? "기록할 시간이 왔어요.",
       icon: "/tiger-icon-192.png",
       badge: "/tiger-icon-192.png",
-      data: { url: payload.data?.url ?? payload.fcmOptions?.link ?? "/" },
+      data: { kind: payload.data?.kind, url: payload.data?.url ?? payload.fcmOptions?.link ?? "/" },
     });
   });
+}
+
+export function observeNotificationClicks(open: (url: string) => void) {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return () => undefined;
+  const receive = (event: MessageEvent<{ type?: string; url?: string }>) => {
+    if (event.data?.type === "SOYA_NOTIFICATION_CLICK" && event.data.url) open(event.data.url);
+  };
+  navigator.serviceWorker.addEventListener("message", receive);
+  return () => navigator.serviceWorker.removeEventListener("message", receive);
 }

@@ -77,11 +77,11 @@ function remindersFor(data, clock) {
 
   const reminders = [];
   const destinationFor = (key) => {
-    if (key === "body") return "/?open=body";
-    if (key.startsWith("meal_")) return `/?tab=food&open=meal-actual&mealType=${key.replace("meal_", "")}`;
-    if (key.startsWith("workout")) return "/?tab=workout&open=workout-actual";
-    if (key === "weekly") return "/?open=weekly-plan";
-    if (key.startsWith("cycle_")) return "/?tab=menstrual&open=cycle";
+    if (key === "body") return `/?tab=today&open=body&date=${clock.day}`;
+    if (key.startsWith("meal_")) return `/?tab=food&open=meal-actual&mealType=${key.replace("meal_", "")}&date=${clock.day}`;
+    if (key.startsWith("workout")) return `/?tab=workout&open=workout-actual&planId=${encodeURIComponent(key.replace(/^workout_?/, ""))}&date=${clock.day}`;
+    if (key === "weekly") return `/?tab=change&open=weekly-plan&date=${clock.day}`;
+    if (key.startsWith("cycle_")) return `/?tab=menstrual&open=cycle&date=${clock.day}`;
     return "/";
   };
   const add = (key, time, title, body) => {
@@ -157,8 +157,7 @@ export const sendSoyaReminders = onSchedule({
         const link = new URL(reminder.destination, data.appUrl || "https://soya--soya-e12cd.asia-east1.hosted.app/").toString();
         await getMessaging().send({
           token: data.token,
-          notification: { title: reminder.title, body: reminder.body },
-          data: { kind: reminder.key, url: link },
+          data: { kind: reminder.key, title: reminder.title, body: reminder.body, url: link },
           webpush: {
             headers: { Urgency: "high" },
             fcmOptions: { link },
