@@ -456,7 +456,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .weekly-nutrition-values b { display: block; margin-bottom: 2px; color: var(--ink); font-size: 12px; }
 .weekly-goal-progress { display: grid; gap: 11px; padding: 14px; border: 1px solid var(--line); background: var(--paper); }
 .goal-summary-card > .weekly-goal-progress { margin-top: 1px; }
-.change-goal-progress-card > .weekly-goal-progress { padding: 0; border: 0; background: transparent; }
 .weekly-goal-progress-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .weekly-goal-progress-heading strong { color: var(--coral); font-size: 11px; font-weight: 900; }
 .weekly-goal-progress-heading small { color: var(--muted); font-size: 7px; }
@@ -1279,15 +1278,19 @@ h1, h2, h3, strong, b { font-weight: 700; }
 
 .change-overview {
   min-height: 130px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+  display: grid;
+  gap: 18px;
   background: #f4ead2;
 }
+.change-overview-main { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.change-overview > .weekly-goal-progress { padding: 14px 0 0; border-width: 1px 0 0; background: transparent; }
 .change-overview h2 { margin: 8px 0 5px; font-size: clamp(18px, 3vw, 25px); }
 .change-overview p { margin: 0; color: var(--muted); font-size: 10px; }
 .change-overview-actions { flex: 0 0 auto; display: flex; gap: 9px; }
+.body-metric-filter { width: 100%; margin: 2px 0 9px; border: 1px solid var(--ink); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.body-metric-filter button { min-width: 0; min-height: 40px; padding: 7px 5px; border: 0; background: var(--paper); color: var(--muted); font-family: inherit; font-size: 8px; font-weight: 850; cursor: pointer; }
+.body-metric-filter button + button { border-left: 1px solid var(--ink); }
+.body-metric-filter button.active { background: var(--ink); color: white; }
 .body-phase-filter { width: fit-content; max-width: 100%; margin: 2px 0 18px; border: 1px solid var(--ink); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .body-phase-filter button { min-width: 92px; min-height: 36px; padding: 7px 10px; border: 0; background: var(--paper); color: var(--muted); font-family: inherit; font-size: 8px; font-weight: 850; cursor: pointer; }
 .body-phase-filter button + button { border-left: 1px solid var(--ink); }
@@ -1496,7 +1499,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .travel-day-control { padding: 10px; }
   .travel-day-options button { font-size: 7px; }
   .nutrition-summary-heading { align-items: flex-end; }
-  .change-overview { align-items: flex-start; flex-direction: column; }
+  .change-overview-main { align-items: flex-start; flex-direction: column; width: 100%; }
   .change-overview-actions { width: 100%; }
   .change-overview-actions button { flex: 1; }
   .change-metric-grid { grid-template-columns: 1fr 1fr; }

@@ -354,7 +354,8 @@ function menstrualPrediction(entries: CycleEntry[], today: string) {
     nextOvulation = addDays(nextPeriod, cycleLength - 14);
   }
   const periodPredictions = [nextPeriod, addDays(nextPeriod, cycleLength)];
-  const ovulationPredictions = [nextOvulation, addDays(nextOvulation, cycleLength)];
+  const previousOvulation = addDays(nextOvulation, -cycleLength);
+  const ovulationPredictions = [previousOvulation, nextOvulation, addDays(nextOvulation, cycleLength)];
   for (const ovulation of ovulationPredictions) {
     ovulationDates.add(ovulation);
     for (let offset = -5; offset <= 1; offset += 1) fertileDates.add(addDays(ovulation, offset));
@@ -1954,6 +1955,7 @@ function ChangeConsultView({ state, today, setModal, commit, openWeeklyPlan, del
 
 function ChangeView({ state, today, setModal, openDetail, openCircumference }: { state: AppState; today: string; setModal: (modal: Modal) => void; openDetail: (record: BodyRecord) => void; openCircumference: (record?: CircumferenceRecord) => void }) {
   const [phaseFilter, setPhaseFilter] = useState<"all" | "focus" | "influence">("all");
+  const [trendMetric, setTrendMetric] = useState<BodyTrendMetric>("bodyFatMass");
   const latest = state.bodyRecords[0];
   const recentRecords = state.bodyRecords.slice(0, 7).reverse();
   const oldest = recentRecords[0];
@@ -1972,10 +1974,10 @@ function ChangeView({ state, today, setModal, openDetail, openCircumference }: {
   const timing = goalTiming(state.profile, today);
   const travelToday = isTravelDate(state.profile, today);
   const goalCopy = `체지방 ${signed(state.profile.targetBodyFatChange)}kg · 골격근 ${signed(state.profile.targetMuscleChange)}kg${travelToday ? ` · 여행 기본 ${state.profile.travelLevel ?? "균형 유지"}` : ""}`;
-  return <div className="section-stack"><section className={`card change-overview ${travelToday ? "travel-change-overview" : ""}`}><div><span className="eyebrow">{state.profile.mode} {timing.week}주차{travelToday ? " · 여행 중" : ""}</span><h2>{travelToday ? "측정 공백도 여행 기록의 일부예요" : <>체지방 {oldest && latest ? `${signed(latest.bodyFatMass - oldest.bodyFatMass)}kg` : "-"} · 골격근 {oldest && latest ? `${signed(latest.skeletalMuscle - oldest.skeletalMuscle)}kg` : "-"}</>}</h2><p>{goalCopy}</p></div><div className="change-overview-actions"><button className="ghost-button" onClick={() => setModal("profile-goal")}>목표 수정</button><button className="primary-button" onClick={() => setModal("body")}>인바디 입력</button></div></section>
+  const trendInfo = bodyTrendMetrics[trendMetric];
+  return <div className="section-stack"><section className={`card change-overview ${travelToday ? "travel-change-overview" : ""}`}><div className="change-overview-main"><div><span className="eyebrow">{state.profile.mode} {timing.week}주차{travelToday ? " · 여행 중" : ""}</span><h2>{travelToday ? "측정 공백도 여행 기록의 일부예요" : <>체지방 {oldest && latest ? `${signed(latest.bodyFatMass - oldest.bodyFatMass)}kg` : "-"} · 골격근 {oldest && latest ? `${signed(latest.skeletalMuscle - oldest.skeletalMuscle)}kg` : "-"}</>}</h2><p>{goalCopy}</p></div><div className="change-overview-actions"><button className="ghost-button" onClick={() => setModal("profile-goal")}>목표 수정</button><button className="primary-button" onClick={() => setModal("body")}>인바디 입력</button></div></div><BodyGoalProgress state={state} endDate={today} /></section>
     <div className="metric-grid change-metric-grid"><MetricCard label="체지방량" value={String(latest?.bodyFatMass ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="골격근량" value={String(latest?.skeletalMuscle ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="체중" value={String(latest?.weight ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="내장지방" value={String(latest?.visceralFat ?? "-")} unit="Lv" hint={measuredAt} /></div>
-    <section className="card change-goal-progress-card"><BodyGoalProgress state={state} endDate={today} /></section>
-    <section className="card chart-card cycle-aware-chart"><CardTitle title="최근 체지방량" aside={`kg · ${chartRecords.length}회`} /><div className="body-phase-filter" role="tablist" aria-label="월경 주기 구간으로 체성분 기록 보기"><button type="button" role="tab" aria-selected={phaseFilter === "all"} className={phaseFilter === "all" ? "active" : ""} onClick={() => setPhaseFilter("all")}>전체</button><button type="button" role="tab" aria-selected={phaseFilter === "focus"} className={phaseFilter === "focus" ? "active" : ""} onClick={() => setPhaseFilter("focus")}>월경 후 집중</button><button type="button" role="tab" aria-selected={phaseFilter === "influence"} className={phaseFilter === "influence" ? "active" : ""} onClick={() => setPhaseFilter("influence")}>월경 전·중</button></div><FatTrendChart records={chartRecords} emptyText={phaseFilter === "all" ? "체성분 기록을 입력하면 흐름이 보여요." : "이 주기 구간의 체성분 기록이 아직 없어요."} /></section>
+    <section className="card chart-card cycle-aware-chart"><CardTitle title={`최근 ${trendInfo.label}`} aside={`${trendInfo.unit} · ${chartRecords.length}회`} /><div className="body-metric-filter" role="tablist" aria-label="체성분 그래프 항목 선택">{(Object.keys(bodyTrendMetrics) as BodyTrendMetric[]).map((metric) => <button type="button" role="tab" aria-selected={trendMetric === metric} className={trendMetric === metric ? "active" : ""} onClick={() => setTrendMetric(metric)} key={metric}>{bodyTrendMetrics[metric].label}</button>)}</div><div className="body-phase-filter" role="tablist" aria-label="월경 주기 구간으로 체성분 기록 보기"><button type="button" role="tab" aria-selected={phaseFilter === "all"} className={phaseFilter === "all" ? "active" : ""} onClick={() => setPhaseFilter("all")}>전체</button><button type="button" role="tab" aria-selected={phaseFilter === "focus"} className={phaseFilter === "focus" ? "active" : ""} onClick={() => setPhaseFilter("focus")}>월경 후 집중</button><button type="button" role="tab" aria-selected={phaseFilter === "influence"} className={phaseFilter === "influence" ? "active" : ""} onClick={() => setPhaseFilter("influence")}>월경 전·중</button></div><BodyTrendChart records={chartRecords} metric={trendMetric} emptyText={phaseFilter === "all" ? "체성분 기록을 입력하면 흐름이 보여요." : "이 주기 구간의 체성분 기록이 아직 없어요."} /></section>
     <section className="card circumference-card"><CardTitle title="허리·엉덩이둘레" aside={<button type="button" className="text-button" onClick={() => openCircumference()}>기록하기</button>} />
       {latestCircumference ? <><div className="circumference-latest"><MetricCard label="허리둘레" value={String(latestCircumference.waistIn)} unit="inch" hint={latestCircumference.date} /><MetricCard label="엉덩이둘레" value={String(latestCircumference.hipIn)} unit="inch" hint={latestCircumference.date} /></div><CircumferenceTrendChart records={circumferenceChartRecords} /><div className="circumference-history">{circumferenceRecords.slice(0, 5).map((record) => <button type="button" key={record.id} onClick={() => openCircumference(record)}><span>{record.date}</span><strong>허리 {record.waistIn}inch</strong><strong>엉덩이 {record.hipIn}inch</strong><b aria-hidden="true">›</b></button>)}</div></> : <EmptyState text="일요일 아침 측정값을 기록해보세요." action="둘레 기록하기" onClick={() => openCircumference()} showIcon={false} />}
     </section>
@@ -2295,27 +2297,37 @@ function MeasurementPickerSheet({ close, select }: { close: () => void; select: 
 function MovementPickerSheet({ close, select }: { close: () => void; select: (modal: "workout-actual" | "activity") => void }) { return <Sheet title="하루의 움직임" close={close}><div className="quick-grid two measurement-picker-grid"><QuickButton label="한 운동 기록" onClick={() => select("workout-actual")} /><QuickButton label="하루 활동" onClick={() => select("activity")} /></div></Sheet>; }
 function QuickButton({ label, onClick }: { label: string; onClick: () => void }) { return <button className="quick-button" onClick={onClick}><strong>{label}</strong></button>; }
 
-function FatTrendChart({ records, emptyText = "체성분 기록을 입력하면 흐름이 보여요." }: { records: BodyRecord[]; emptyText?: string }) {
+type BodyTrendMetric = "bodyFatMass" | "skeletalMuscle" | "weight" | "visceralFat";
+
+const bodyTrendMetrics: Record<BodyTrendMetric, { label: string; unit: string }> = {
+  bodyFatMass: { label: "체지방량", unit: "kg" },
+  skeletalMuscle: { label: "골격근량", unit: "kg" },
+  weight: { label: "체중", unit: "kg" },
+  visceralFat: { label: "내장지방", unit: "Lv" },
+};
+
+function BodyTrendChart({ records, metric, emptyText = "체성분 기록을 입력하면 흐름이 보여요." }: { records: BodyRecord[]; metric: BodyTrendMetric; emptyText?: string }) {
   if (!records.length) return <div className="empty-chart">{emptyText}</div>;
+  const metricInfo = bodyTrendMetrics[metric];
   const width = 700;
   const height = 250;
   const left = 52;
   const right = 28;
   const top = 34;
   const bottom = 46;
-  const values = records.map((item) => item.bodyFatMass);
+  const values = records.map((item) => item[metric]);
   const min = Math.floor((Math.min(...values) - 0.2) * 10) / 10;
   const max = Math.ceil((Math.max(...values) + 0.2) * 10) / 10;
   const range = Math.max(max - min, 0.4);
   const points = records.map((record, index) => ({
     record,
     x: left + (records.length === 1 ? (width - left - right) / 2 : index * ((width - left - right) / (records.length - 1))),
-    y: top + ((max - record.bodyFatMass) / range) * (height - top - bottom),
+    y: top + ((max - record[metric]) / range) * (height - top - bottom),
   }));
-  return <div className="trend-chart-wrap"><svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="최근 체지방량 변화 선 그래프">
+  return <div className="trend-chart-wrap"><svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`최근 ${metricInfo.label} 변화 선 그래프`}>
     {[0, 0.5, 1].map((ratio) => { const y = top + ratio * (height - top - bottom); const value = max - ratio * range; return <g key={ratio}><line x1={left} x2={width - right} y1={y} y2={y} className="chart-grid-line" /><text x={left - 10} y={y + 4} textAnchor="end" className="chart-axis-value">{value.toFixed(1)}</text></g>; })}
     <polyline points={points.map((point) => `${point.x},${point.y}`).join(" ")} className="trend-line" />
-    {points.map(({ record, x, y }) => <g key={record.id}><circle cx={x} cy={y} r="6" className="trend-point" /><text x={x} y={y - 14} textAnchor="middle" className="trend-value">{record.bodyFatMass}kg</text><text x={x} y={height - 16} textAnchor="middle" className="trend-date">{record.date.slice(5).replace("-", "/")}</text></g>)}
+    {points.map(({ record, x, y }) => <g key={record.id}><circle cx={x} cy={y} r="6" className="trend-point" /><text x={x} y={y - 14} textAnchor="middle" className="trend-value">{record[metric]}{metricInfo.unit}</text><text x={x} y={height - 16} textAnchor="middle" className="trend-date">{record.date.slice(5).replace("-", "/")}</text></g>)}
   </svg></div>;
 }
 
