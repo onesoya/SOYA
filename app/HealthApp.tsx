@@ -34,7 +34,7 @@ import {
 } from "./firebase-client";
 import { loadUserState, saveUserState } from "./firebase-state";
 import { requestAiBodyImport, requestAiConsultation, requestAiUsageSummary, type AiBodyImportRecord, type AiUsageSummary } from "./firebase-ai";
-import { prepareBodyMedia } from "./body-media";
+import { processBodyMedia } from "./body-media";
 import {
   createAppleHealthConnectionKey,
   getAppleHealthConnectionStatus,
@@ -3484,16 +3484,14 @@ function BodyBulkSheet({ existing, close, save }: { existing: BodyRecord[]; clos
     setImportError("");
     setImportWarnings([]);
     try {
-      const frames = await prepareBodyMedia(files, setImportStatus);
       const found: AiBodyImportRecord[] = [];
       const warnings: string[] = [];
-      const batches = Math.ceil(frames.length / 6);
-      for (let offset = 0; offset < frames.length; offset += 6) {
-        setImportStatus(`AI가 체성분 기록을 읽고 있어요 · ${Math.floor(offset / 6) + 1}/${batches}`);
-        const result = await requestAiBodyImport(frames.slice(offset, offset + 6));
+      const summary = await processBodyMedia(files, setImportStatus, async (frames, batchNumber, preparedFrames) => {
+        setImportStatus(`AI가 인바디 기록을 읽고 있어요 · ${batchNumber}번째 묶음 · ${preparedFrames}개 화면 확인`);
+        const result = await requestAiBodyImport(frames);
         found.push(...result.records);
         warnings.push(...result.warnings);
-      }
+      });
       const bestByDate = new Map<string, AiBodyImportRecord>();
       for (const record of found) {
         const previous = bestByDate.get(record.date);
@@ -3514,9 +3512,12 @@ function BodyBulkSheet({ existing, close, save }: { existing: BodyRecord[]; clos
         const currentDates = new Set([...existingDates, ...current.map((row) => row.date)]);
         return [...current, ...additions.filter((row) => !currentDates.has(row.date))];
       });
-      setImportWarnings([...new Set(warnings)].slice(0, 5));
+      const safetyWarning = summary.reachedSafetyLimit
+        ? "서로 다른 화면이 240개를 넘어 나머지는 분석하지 않았어요. 빠진 기록이 있다면 영상을 둘로 나누어 다시 선택해주세요."
+        : "";
+      setImportWarnings([...new Set([...warnings, safetyWarning].filter(Boolean))].slice(0, 5));
       setImportStatus(additions.length
-        ? `${additions.length}개 기록을 찾았어요.${skipped ? ` 이미 있는 ${skipped}개는 제외했어요.` : ""}`
+        ? `${additions.length}개 기록을 찾았어요. 영상 전체에서 ${summary.preparedFrames}개 화면을 확인했고, 같은 화면 ${summary.skippedDuplicateFrames}개는 건너뛰었어요.${skipped ? ` 이미 있는 ${skipped}개 기록은 제외했어요.` : ""}`
         : skipped
           ? `찾은 ${skipped}개 기록은 이미 저장되어 있어요.`
           : "완전한 수치가 보이는 기록을 찾지 못했어요. 다른 사진을 선택하거나 직접 입력해주세요.");
@@ -3538,7 +3539,7 @@ function BodyBulkSheet({ existing, close, save }: { existing: BodyRecord[]; clos
         <label className={`body-media-picker${files.length ? " selected" : ""}`}>
           <input key={fileInputKey} type="file" accept="image/*,video/*" multiple disabled={importing} onChange={(event) => { setFiles(Array.from(event.target.files ?? [])); setImportError(""); setImportStatus(""); setImportWarnings([]); }} />
           <strong>{files.length ? `${files.length}개 파일 선택됨` : "사진·동영상 선택"}</strong>
-          <span>{files.length ? files.map((file) => file.name).join(" · ") : "사진 최대 24장 · 영상은 장면으로 나누어 분석"}</span>
+          <span>{files.length ? files.map((file) => file.name).join(" · ") : "사진 최대 24장 · 긴 영상도 처음부터 끝까지 나누어 분석"}</span>
         </label>
         <button type="button" className="primary-button body-media-analyze" disabled={!files.length || importing} onClick={() => void analyzeMedia()}>{importing ? "분석 중..." : "선택한 파일 분석하기"}</button>
         {(importStatus || importError) && <p className={`body-media-status${importError ? " error" : ""}`}>{importError || importStatus}</p>}

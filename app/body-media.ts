@@ -2,6 +2,20 @@
 
 type Progress = (message: string) => void;
 
+export type BodyMediaSummary = {
+  preparedFrames: number;
+  sampledVideoFrames: number;
+  skippedDuplicateFrames: number;
+  reachedSafetyLimit: boolean;
+};
+
+type ConsumeBatch = (frames: string[], batchNumber: number, preparedFrames: number) => Promise<void>;
+
+const BATCH_SIZE = 6;
+const VIDEO_SAMPLE_SECONDS = 0.75;
+const MAX_VIDEO_FRAMES = 240;
+const DUPLICATE_DIFFERENCE = 0.45;
+
 function waitFor(target: EventTarget, success: string, failure = "error") {
   return new Promise<void>((resolve, reject) => {
     const done = () => {
@@ -36,6 +50,29 @@ function frameDataUrl(source: CanvasImageSource, width: number, height: number) 
   return canvas.toDataURL("image/jpeg", 0.78);
 }
 
+function visualFingerprint(source: CanvasImageSource) {
+  const width = 32;
+  const height = 56;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+  if (!context) throw new Error("영상 장면을 비교하지 못했어요.");
+  context.drawImage(source, 0, 0, width, height);
+  const pixels = context.getImageData(0, 0, width, height).data;
+  const result = new Uint8Array(width * height);
+  for (let sourceIndex = 0, targetIndex = 0; sourceIndex < pixels.length; sourceIndex += 4, targetIndex += 1) {
+    result[targetIndex] = Math.round(pixels[sourceIndex] * 0.299 + pixels[sourceIndex + 1] * 0.587 + pixels[sourceIndex + 2] * 0.114);
+  }
+  return result;
+}
+
+function fingerprintDifference(previous: Uint8Array, current: Uint8Array) {
+  let difference = 0;
+  for (let index = 0; index < current.length; index += 1) difference += Math.abs(current[index] - previous[index]);
+  return difference / current.length;
+}
+
 async function imageFrame(file: File) {
   const url = URL.createObjectURL(file);
   try {
@@ -56,53 +93,92 @@ async function seek(video: HTMLVideoElement, time: number) {
   await ready;
 }
 
-async function videoFrames(file: File, limit: number, progress: Progress) {
+async function openVideo(file: File) {
   const url = URL.createObjectURL(file);
+  const video = document.createElement("video");
+  video.preload = "auto";
+  video.muted = true;
+  video.playsInline = true;
+  video.src = url;
+  video.load();
   try {
-    const video = document.createElement("video");
-    video.preload = "auto";
-    video.muted = true;
-    video.playsInline = true;
-    video.src = url;
-    video.load();
     if (video.readyState < 1) await waitFor(video, "loadedmetadata");
     if (video.readyState < 2) await waitFor(video, "loadeddata");
     const duration = Number(video.duration);
     if (!Number.isFinite(duration) || duration <= 0) throw new Error("동영상 길이를 확인하지 못했어요.");
     if (duration > 15 * 60) throw new Error("15분보다 긴 영상은 나누어서 선택해주세요.");
-    const count = Math.min(limit, Math.max(2, Math.ceil(duration / 1.25)));
-    const end = Math.max(0, duration - 0.08);
-    const frames: string[] = [];
-    for (let index = 0; index < count; index += 1) {
-      const time = count === 1 ? 0 : end * index / (count - 1);
-      progress(`영상 장면을 준비하고 있어요 · ${index + 1}/${count}`);
-      await seek(video, time);
-      if (!video.videoWidth || !video.videoHeight) continue;
-      frames.push(frameDataUrl(video, video.videoWidth, video.videoHeight));
-    }
-    return frames;
-  } finally {
+    return { video, duration, release: () => URL.revokeObjectURL(url) };
+  } catch (error) {
     URL.revokeObjectURL(url);
+    throw error;
   }
 }
 
-export async function prepareBodyMedia(files: File[], progress: Progress) {
+export async function processBodyMedia(files: File[], progress: Progress, consume: ConsumeBatch): Promise<BodyMediaSummary> {
   const images = files.filter((file) => file.type.startsWith("image/"));
   const videos = files.filter((file) => file.type.startsWith("video/"));
   if (images.length + videos.length !== files.length) throw new Error("사진 또는 동영상 파일만 선택할 수 있어요.");
   if (images.length > 24) throw new Error("사진은 한 번에 24장까지 선택해주세요.");
-  const frames: string[] = [];
+
+  let batch: string[] = [];
+  let batchNumber = 0;
+  let preparedFrames = 0;
+  let sampledVideoFrames = 0;
+  let skippedDuplicateFrames = 0;
+  let retainedVideoFrames = 0;
+  let reachedSafetyLimit = false;
+
+  const flush = async () => {
+    if (!batch.length) return;
+    batchNumber += 1;
+    const current = batch;
+    batch = [];
+    await consume(current, batchNumber, preparedFrames);
+  };
+
+  const append = async (frame: string) => {
+    batch.push(frame);
+    preparedFrames += 1;
+    if (batch.length >= BATCH_SIZE) await flush();
+  };
+
   for (let index = 0; index < images.length; index += 1) {
     progress(`사진을 준비하고 있어요 · ${index + 1}/${images.length}`);
-    frames.push(await imageFrame(images[index]));
+    await append(await imageFrame(images[index]));
   }
-  const remaining = Math.max(0, 48 - frames.length);
-  const perVideoLimit = videos.length ? Math.max(2, Math.floor(remaining / videos.length)) : 0;
-  for (let index = 0; index < videos.length && frames.length < 48; index += 1) {
-    progress(`${videos[index].name}에서 장면을 찾고 있어요`);
-    const extracted = await videoFrames(videos[index], Math.min(perVideoLimit, 48 - frames.length), progress);
-    frames.push(...extracted);
+
+  for (let fileIndex = 0; fileIndex < videos.length && !reachedSafetyLimit; fileIndex += 1) {
+    progress(`${videos[fileIndex].name}에서 인바디 화면을 찾고 있어요`);
+    const { video, duration, release } = await openVideo(videos[fileIndex]);
+    try {
+      const samples = Math.max(2, Math.ceil(duration / VIDEO_SAMPLE_SECONDS) + 1);
+      const end = Math.max(0, duration - 0.08);
+      let previousFingerprint: Uint8Array | undefined;
+      for (let index = 0; index < samples; index += 1) {
+        if (retainedVideoFrames >= MAX_VIDEO_FRAMES) {
+          reachedSafetyLimit = true;
+          break;
+        }
+        const time = samples === 1 ? 0 : end * index / (samples - 1);
+        sampledVideoFrames += 1;
+        progress(`영상 전체를 확인하고 있어요 · ${index + 1}/${samples} · 인바디 화면 ${retainedVideoFrames}개 발견`);
+        await seek(video, time);
+        if (!video.videoWidth || !video.videoHeight) continue;
+        const fingerprint = visualFingerprint(video);
+        if (previousFingerprint && fingerprintDifference(previousFingerprint, fingerprint) < DUPLICATE_DIFFERENCE) {
+          skippedDuplicateFrames += 1;
+          continue;
+        }
+        previousFingerprint = fingerprint;
+        retainedVideoFrames += 1;
+        await append(frameDataUrl(video, video.videoWidth, video.videoHeight));
+      }
+    } finally {
+      release();
+    }
   }
-  if (!frames.length) throw new Error("분석할 장면을 만들지 못했어요.");
-  return frames.slice(0, 48);
+
+  await flush();
+  if (!preparedFrames) throw new Error("분석할 인바디 화면을 만들지 못했어요.");
+  return { preparedFrames, sampledVideoFrames, skippedDuplicateFrames, reachedSafetyLimit };
 }

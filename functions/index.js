@@ -11,7 +11,7 @@ initializeApp();
 const db = getFirestore();
 const openAiApiKey = defineSecret("OPENAI_API_KEY");
 const monthlyConsultationLimit = 6;
-const monthlyBodyImportBatchLimit = 30;
+const monthlyBodyImportBatchLimit = 60;
 const solInputUsdPerMillion = 4;
 const solOutputUsdPerMillion = 20;
 
