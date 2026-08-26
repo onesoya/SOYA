@@ -252,6 +252,35 @@ function boundedNumber(value, min, max) {
   return Math.min(max, Math.max(min, parsed));
 }
 
+function healthWorkoutSignature(date, workout) {
+  const startTime = /^\d{2}:\d{2}$/.test(String(workout?.startTime || "")) ? String(workout.startTime) : "";
+  const title = safeText(workout?.title, 100);
+  const minutes = Math.round(boundedNumber(workout?.minutes, 1, 1440) ?? 0);
+  const type = workout?.type === "PT" ? "PT" : "유산소";
+  return `${date}|${startTime}|${title}|${minutes}|${type}`;
+}
+
+function healthPayloadFingerprint(days) {
+  const normalized = days.map((day) => ({
+    date: String(day.date),
+    steps: Math.round(boundedNumber(day.steps, 0, 200000) ?? 0),
+    activeCalories: boundedNumber(day.activeCalories, 0, 20000) ?? null,
+    watchWorn: typeof day.watchWorn === "boolean" ? day.watchWorn : null,
+    workouts: (Array.isArray(day.workouts) ? day.workouts.slice(0, 50) : [])
+      .map((workout) => healthWorkoutSignature(String(day.date), workout))
+      .sort(),
+  }));
+  return createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+}
+
+function healthFailureReason(error) {
+  const message = (error instanceof Error ? error.message : String(error || "")).toLowerCase();
+  if (message.includes("deadline") || message.includes("timeout")) return "동기화 시간이 초과됐어요. 잠시 후 다시 시도해주세요.";
+  if (message.includes("permission") || message.includes("unauthorized")) return "건강 기록을 저장할 권한을 확인하지 못했어요. 연결 키를 다시 확인해주세요.";
+  if (message.includes("quota") || message.includes("rate")) return "요청이 잠시 몰렸어요. 잠시 후 다시 시도해주세요.";
+  return "Apple 건강 기록을 저장하는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.";
+}
+
 export const getAppleHealthConnectionStatus = onCall({
   region: "asia-northeast3",
   memory: "256MiB",
@@ -265,7 +294,13 @@ export const getAppleHealthConnectionStatus = onCall({
     connected: true,
     createdAt: isoTimestamp(data.createdAt),
     lastImportAt: isoTimestamp(data.lastImportAt),
+    lastAttemptAt: isoTimestamp(data.lastAttemptAt),
+    lastSuccessAt: isoTimestamp(data.lastSuccessAt) || isoTimestamp(data.lastImportAt),
     lastImportDate: data.lastImportDate || undefined,
+    lastFailureAt: isoTimestamp(data.lastFailureAt),
+    lastFailureReason: data.lastFailureReason || undefined,
+    lastSyncState: data.lastSyncState || undefined,
+    lastResult: data.lastResult || undefined,
   };
 });
 
@@ -323,94 +358,153 @@ export const importAppleHealth = onRequest({
   }
 
   const connectionRef = connection.docs[0].ref;
+  const connectionData = connection.docs[0].data();
   const uid = connection.docs[0].id;
   const suppliedDays = Array.isArray(request.body?.days) ? request.body.days : [request.body];
-  const days = suppliedDays.slice(0, 31).filter((day) => validHealthDate(day?.date));
+  const uniqueDays = new Map();
+  for (const day of suppliedDays.slice(0, 31)) {
+    if (validHealthDate(day?.date)) uniqueDays.set(String(day.date), day);
+  }
+  const days = [...uniqueDays.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  await connectionRef.set({
+    lastAttemptAt: FieldValue.serverTimestamp(),
+    lastSyncState: "processing",
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
   if (!days.length) {
+    await connectionRef.set({
+      lastFailureAt: FieldValue.serverTimestamp(),
+      lastFailureReason: "가져올 날짜나 건강 데이터 형식이 올바르지 않아요.",
+      lastSyncState: "failed",
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
     response.status(400).json({ ok: false, error: "가져올 날짜와 건강 데이터를 확인해주세요." });
     return;
   }
 
-  let importedActivities = 0;
-  let importedWorkouts = 0;
-  let protectedManualRecords = 0;
-  let lastImportDate = "";
-
-  for (const rawDay of days) {
-    const date = String(rawDay.date);
-    lastImportDate = date > lastImportDate ? date : lastImportDate;
-    const steps = Math.round(boundedNumber(rawDay.steps, 0, 200000) ?? 0);
-    const activeCalories = boundedNumber(rawDay.activeCalories, 0, 20000);
-    const watchWorn = typeof rawDay.watchWorn === "boolean" ? rawDay.watchWorn : Boolean(activeCalories && activeCalories > 0);
-    const activities = db.collection("users").doc(uid).collection("dailyActivities");
-    const existingActivities = await activities.where("date", "==", date).get();
-    const manualActivity = existingActivities.docs.find((entry) => entry.data().source !== "apple_health");
-    const importedActivity = existingActivities.docs.find((entry) => entry.data().source === "apple_health");
-    if (manualActivity) {
-      protectedManualRecords += 1;
-    } else {
-      const value = {
-        id: importedActivity?.id || `activity-health-${date.replaceAll("-", "")}`,
-        date,
-        watchWorn,
-        steps,
-        source: "apple_health",
-        importedAt: new Date().toISOString(),
-        ...(activeCalories && activeCalories > 0 ? { activeCalories: Math.round(activeCalories) } : {}),
-      };
-      await (importedActivity?.ref || activities.doc(value.id)).set(value);
-      importedActivities += 1;
-    }
-
-    const rawWorkouts = Array.isArray(rawDay.workouts) ? rawDay.workouts.slice(0, 50) : [];
-    const workouts = db.collection("users").doc(uid).collection("workouts");
-    for (const rawWorkout of rawWorkouts) {
-      const minutes = Math.round(boundedNumber(rawWorkout?.minutes, 1, 1440) ?? 0);
-      const title = safeText(rawWorkout?.title, 100);
-      if (!minutes || !title) continue;
-      const startTime = /^\d{2}:\d{2}$/.test(String(rawWorkout?.startTime || "")) ? String(rawWorkout.startTime) : undefined;
-      const externalId = safeText(rawWorkout?.id, 160) || createHash("sha256").update(`${date}|${startTime || ""}|${title}|${minutes}`).digest("hex").slice(0, 20);
-      const importedId = `workout-health-${createHash("sha256").update(externalId).digest("hex").slice(0, 24)}`;
-      const existingWorkout = await workouts.doc(importedId).get();
-      const sameDayWorkouts = await workouts.where("date", "==", date).get();
-      const matchingManualWorkout = sameDayWorkouts.docs.find((entry) => {
-        const value = entry.data();
-        return value.source !== "apple_health" && value.title === title && (value.startTime || "") === (startTime || "");
-      });
-      const workoutValue = {
-        id: importedId,
-        date,
-        kind: "actual",
-        type: rawWorkout?.type === "PT" ? "PT" : "유산소",
-        title,
-        minutes,
-        intensity: Math.round(boundedNumber(rawWorkout?.intensity, 1, 10) ?? 5),
-        heartRate: safeText(rawWorkout?.heartRate, 40),
-        overlapsSteps: Boolean(rawWorkout?.overlapsSteps),
-        details: safeText(rawWorkout?.details, 1000),
-        source: "apple_health",
-        externalId,
-        importedAt: new Date().toISOString(),
-        ...(startTime ? { startTime } : {}),
-      };
-      if (matchingManualWorkout) {
-        protectedManualRecords += 1;
-      } else if (!existingWorkout.exists || existingWorkout.data()?.source === "apple_health") {
-        await workouts.doc(importedId).set(workoutValue);
-        importedWorkouts += 1;
-      } else {
-        protectedManualRecords += 1;
-      }
-    }
+  const payloadHash = healthPayloadFingerprint(days);
+  const previousSuccessAt = connectionData.lastSuccessAt || connectionData.lastImportAt;
+  const previousSuccessMillis = previousSuccessAt?.toMillis instanceof Function ? previousSuccessAt.toMillis() : 0;
+  const isRecentDuplicate = connectionData.lastPayloadHash === payloadHash
+    && Date.now() - previousSuccessMillis < 5 * 60 * 1000;
+  const lastImportDate = String(days[days.length - 1].date);
+  if (isRecentDuplicate) {
+    const lastResult = { importedActivities: 0, importedWorkouts: 0, protectedManualRecords: 0, duplicate: true };
+    await connectionRef.set({
+      lastImportAt: FieldValue.serverTimestamp(),
+      lastSuccessAt: FieldValue.serverTimestamp(),
+      lastImportDate,
+      lastSyncState: "success",
+      lastResult,
+      lastFailureAt: FieldValue.delete(),
+      lastFailureReason: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    response.status(200).json({ ok: true, ...lastResult, lastImportDate });
+    return;
   }
 
-  await connectionRef.set({
-    lastImportAt: FieldValue.serverTimestamp(),
-    lastImportDate,
-    updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
-  await db.collection("users").doc(uid).set({ updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-  response.status(200).json({ ok: true, importedActivities, importedWorkouts, protectedManualRecords, lastImportDate });
+  try {
+    let importedActivities = 0;
+    let importedWorkouts = 0;
+    let protectedManualRecords = 0;
+
+    for (const rawDay of days) {
+      const date = String(rawDay.date);
+      const steps = Math.round(boundedNumber(rawDay.steps, 0, 200000) ?? 0);
+      const activeCalories = boundedNumber(rawDay.activeCalories, 0, 20000);
+      const watchWorn = typeof rawDay.watchWorn === "boolean" ? rawDay.watchWorn : Boolean(activeCalories && activeCalories > 0);
+      const activities = db.collection("users").doc(uid).collection("dailyActivities");
+      const existingActivities = await activities.where("date", "==", date).get();
+      const manualActivity = existingActivities.docs.find((entry) => entry.data().source !== "apple_health");
+      const importedActivity = existingActivities.docs.find((entry) => entry.data().source === "apple_health");
+      if (manualActivity) {
+        protectedManualRecords += 1;
+      } else {
+        const value = {
+          id: importedActivity?.id || `activity-health-${date.replaceAll("-", "")}`,
+          date,
+          watchWorn,
+          steps,
+          source: "apple_health",
+          importedAt: new Date().toISOString(),
+          ...(activeCalories && activeCalories > 0 ? { activeCalories: Math.round(activeCalories) } : {}),
+        };
+        await (importedActivity?.ref || activities.doc(value.id)).set(value);
+        importedActivities += 1;
+      }
+
+      const rawWorkouts = Array.isArray(rawDay.workouts) ? rawDay.workouts.slice(0, 50) : [];
+      const workouts = db.collection("users").doc(uid).collection("workouts");
+      const sameDayWorkouts = await workouts.where("date", "==", date).get();
+      const processedWorkoutSignatures = new Set();
+      for (const rawWorkout of rawWorkouts) {
+        const minutes = Math.round(boundedNumber(rawWorkout?.minutes, 1, 1440) ?? 0);
+        const title = safeText(rawWorkout?.title, 100);
+        if (!minutes || !title) continue;
+        const startTime = /^\d{2}:\d{2}$/.test(String(rawWorkout?.startTime || "")) ? String(rawWorkout.startTime) : undefined;
+        const type = rawWorkout?.type === "PT" ? "PT" : "유산소";
+        const signature = healthWorkoutSignature(date, { ...rawWorkout, title, minutes, startTime, type });
+        if (processedWorkoutSignatures.has(signature)) continue;
+        processedWorkoutSignatures.add(signature);
+        const matchingImportedWorkout = sameDayWorkouts.docs.find((entry) => entry.data().source === "apple_health"
+          && healthWorkoutSignature(date, entry.data()) === signature);
+        const externalId = safeText(rawWorkout?.id, 160) || createHash("sha256").update(signature).digest("hex").slice(0, 20);
+        const importedId = matchingImportedWorkout?.id
+          || `workout-health-${createHash("sha256").update(signature).digest("hex").slice(0, 24)}`;
+        const matchingManualWorkout = sameDayWorkouts.docs.find((entry) => {
+          const value = entry.data();
+          return value.source !== "apple_health" && value.title === title && (value.startTime || "") === (startTime || "");
+        });
+        const workoutValue = {
+          id: importedId,
+          date,
+          kind: "actual",
+          type,
+          title,
+          minutes,
+          intensity: Math.round(boundedNumber(rawWorkout?.intensity, 1, 10) ?? 5),
+          heartRate: safeText(rawWorkout?.heartRate, 40),
+          overlapsSteps: Boolean(rawWorkout?.overlapsSteps),
+          details: safeText(rawWorkout?.details, 1000),
+          source: "apple_health",
+          externalId,
+          importedAt: new Date().toISOString(),
+          ...(startTime ? { startTime } : {}),
+        };
+        if (matchingManualWorkout) {
+          protectedManualRecords += 1;
+        } else {
+          await (matchingImportedWorkout?.ref || workouts.doc(importedId)).set(workoutValue);
+          importedWorkouts += 1;
+        }
+      }
+    }
+
+    const lastResult = { importedActivities, importedWorkouts, protectedManualRecords, duplicate: false };
+    await connectionRef.set({
+      lastImportAt: FieldValue.serverTimestamp(),
+      lastSuccessAt: FieldValue.serverTimestamp(),
+      lastImportDate,
+      lastPayloadHash: payloadHash,
+      lastSyncState: "success",
+      lastResult,
+      lastFailureAt: FieldValue.delete(),
+      lastFailureReason: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    await db.collection("users").doc(uid).set({ updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    response.status(200).json({ ok: true, ...lastResult, lastImportDate });
+  } catch (error) {
+    const reason = healthFailureReason(error);
+    await connectionRef.set({
+      lastFailureAt: FieldValue.serverTimestamp(),
+      lastFailureReason: reason,
+      lastSyncState: "failed",
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true }).catch(() => undefined);
+    response.status(500).json({ ok: false, error: reason });
+  }
 });
 
 export const getAiUsageSummary = onCall({

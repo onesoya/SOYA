@@ -3936,16 +3936,29 @@ function AppleHealthSheet({ close, refresh, syncNow, syncing }: { close: () => v
     }
   };
 
-  const lastImport = status?.lastImportAt
-    ? new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(status.lastImportAt))
+  const formatSyncTime = (value?: string) => value
+    ? new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value))
     : "아직 가져온 기록이 없어요";
+  const lastSuccess = formatSyncTime(status?.lastSuccessAt ?? status?.lastImportAt);
+  const lastAttempt = status?.lastAttemptAt ? formatSyncTime(status.lastAttemptAt) : "아직 시도한 기록이 없어요";
+  const resultText = status?.lastResult?.duplicate
+    ? "같은 기록이라 중복 저장하지 않았어요"
+    : status?.lastResult
+      ? `활동 ${status.lastResult.importedActivities}건 · 운동 ${status.lastResult.importedWorkouts}건 반영${status.lastResult.protectedManualRecords ? ` · 직접 기록 ${status.lastResult.protectedManualRecords}건 유지` : ""}`
+      : "동기화 결과가 아직 없어요";
 
   return <Sheet title="Apple 건강 연결" close={close}>
     <div className="health-connection-stack">
       <section className="health-connection-status">
-        <div><span className={`health-status-dot ${status?.connected ? "connected" : ""}`} /><div><strong>{working && !status ? "연결 확인 중" : status?.connected ? "연결됨" : "연결되지 않음"}</strong><small>{status?.connected ? `최근 가져오기 · ${lastImport}` : "아이폰 단축어를 통해 안전하게 가져와요"}</small></div></div>
+        <div><span className={`health-status-dot ${status?.connected ? "connected" : ""}`} /><div><strong>{working && !status ? "연결 확인 중" : status?.connected ? "연결됨" : "연결되지 않음"}</strong><small>{status?.connected ? `마지막 동기화 · ${lastSuccess}` : "아이폰 단축어를 통해 안전하게 가져와요"}</small></div></div>
         <button type="button" disabled={working} onClick={() => void createKey()}>{status?.connected ? "연결 키 다시 만들기" : "연결 시작"}</button>
       </section>
+
+      {status?.connected && <section className="health-sync-history">
+        <strong>최근 동기화 상태</strong>
+        <dl><div><dt>마지막 성공</dt><dd>{lastSuccess}</dd></div><div><dt>마지막 시도</dt><dd>{lastAttempt}</dd></div><div><dt>처리 결과</dt><dd>{status.lastSyncState === "processing" ? "건강 데이터를 받는 중이에요" : resultText}</dd></div></dl>
+        {status.lastFailureReason && <div className="health-sync-failure" role="alert"><b>실패 이유</b><span>{status.lastFailureReason}</span>{status.lastFailureAt && <small>{formatSyncTime(status.lastFailureAt)}</small>}</div>}
+      </section>}
 
       <section className="health-data-list"><strong>가져올 수 있는 기록</strong><div><span>걸음 수</span><span>활동 에너지</span><span>Apple Watch 운동</span><span>평균 심박수</span></div></section>
 
@@ -3964,7 +3977,7 @@ function AppleHealthSheet({ close, refresh, syncNow, syncing }: { close: () => v
       </section>
 
       {message && <p className="health-connection-message" role="status">{message}</p>}
-      <div className="health-connection-actions"><button type="button" className="primary-button health-sync-now-button" disabled={working || syncing || !status?.connected} onClick={syncNow}>{syncing ? "동기화 중" : "지금 동기화"}</button><button type="button" className="ghost-button" disabled={working} onClick={() => void reload()}>기록 새로고침</button>{status?.connected && <button type="button" className="delete-button" disabled={working} onClick={() => void revoke()}>연결 해제</button>}</div>
+      <div className="health-connection-actions"><button type="button" className="primary-button health-sync-now-button" disabled={working || syncing || !status?.connected} onClick={syncNow}>{syncing ? "동기화 중" : "지금 동기화"}</button><button type="button" className="ghost-button" disabled={working} onClick={() => void reload()}>상태 새로고침</button>{status?.connected && <button type="button" className="delete-button" disabled={working} onClick={() => void revoke()}>연결 해제</button>}</div>
     </div>
   </Sheet>;
 }

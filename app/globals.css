@@ -504,6 +504,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .health-connection-status button:disabled, .health-connection-actions button:disabled { opacity: .5; cursor: default; }
 .health-status-dot { flex: 0 0 auto; width: 11px; height: 11px; border: 2px solid var(--muted); background: transparent; }
 .health-status-dot.connected { border-color: #62745a; background: var(--sage); }
+.health-sync-history { padding: 14px; border: 1px solid var(--line); background: white; display: grid; gap: 11px; }
+.health-sync-history > strong { font-size: 10px; }
+.health-sync-history dl { margin: 0; display: grid; gap: 7px; }
+.health-sync-history dl > div { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 10px; align-items: start; }
+.health-sync-history dt { color: var(--muted); font-size: 8px; font-weight: 800; }
+.health-sync-history dd { margin: 0; color: var(--ink); font-size: 8px; line-height: 1.5; text-align: right; overflow-wrap: anywhere; }
+.health-sync-failure { padding: 10px; border: 1px solid #d98a7d; background: #fff1ec; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 9px; color: #9b4f46; }
+.health-sync-failure b, .health-sync-failure span { font-size: 8px; line-height: 1.5; }
+.health-sync-failure small { grid-column: 2; color: #a8736b; font-size: 7px; }
 .health-data-list, .health-key-panel, .health-shortcut-guide { padding: 14px; border: 1px solid var(--line); background: white; display: grid; gap: 12px; }
 .health-data-list > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .health-data-list span { padding: 8px 9px; background: var(--cream); color: var(--muted); font-size: 8px; font-weight: 800; }

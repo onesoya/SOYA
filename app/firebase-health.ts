@@ -7,7 +7,18 @@ export type AppleHealthConnectionStatus = {
   connected: boolean;
   createdAt?: string;
   lastImportAt?: string;
+  lastAttemptAt?: string;
+  lastSuccessAt?: string;
   lastImportDate?: string;
+  lastFailureAt?: string;
+  lastFailureReason?: string;
+  lastSyncState?: "processing" | "success" | "failed";
+  lastResult?: {
+    importedActivities: number;
+    importedWorkouts: number;
+    protectedManualRecords: number;
+    duplicate: boolean;
+  };
 };
 
 export type AppleHealthConnectionKey = {
