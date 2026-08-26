@@ -206,6 +206,32 @@ export type GoalHistoryEntry = {
   bodyFatChange?: number;
   muscleChange?: number;
   outcome: "유지기로 전환" | "강도를 낮춰 이어가기" | "새 목표 시작";
+  note?: string;
+  report?: {
+    bodyFatStart?: number;
+    bodyFatEnd?: number;
+    muscleStart?: number;
+    muscleEnd?: number;
+    bodyFatProgress: number;
+    muscleProgress: number;
+    mealDays: number;
+    averageCalories?: number;
+    averageProtein?: number;
+    averageCarbs?: number;
+    averageFat?: number;
+    averageSugar?: number;
+    averageFiber?: number;
+    plannedWorkouts: number;
+    completedWorkouts: number;
+    workoutMinutes: number;
+    ptSessions: number;
+    cardioSessions: number;
+    cardioMinutes: number;
+    mainBleedingDays: number;
+    cycleStarts: number;
+    travelDays: number;
+    consultations: number;
+  };
 };
 
 export type AppState = {

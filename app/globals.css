@@ -37,6 +37,15 @@
 .goal-completion-options i { width: 25px; height: 25px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid var(--line); color: var(--coral); font-style: normal; }
 .goal-next-fields { padding: 15px; border: 1px solid var(--line); background: #fff; }
 .goal-archive-note { margin: 0; padding: 11px 13px; border-left: 3px solid var(--sage); background: var(--sage-soft); color: #5e705f; font-size: 10px; line-height: 1.6; }
+.goal-report-overview { padding: 16px; border: 1px solid var(--line); background: #fff; }
+.goal-report-heading { margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.goal-report-heading strong { color: var(--coral); font-size: 13px; }
+.goal-report-heading small { color: var(--muted); font-size: 9px; }
+.goal-report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.goal-report-grid article { min-width: 0; padding: 12px; display: grid; gap: 5px; border: 1px solid var(--line); background: #fffaf3; }
+.goal-report-grid span { color: var(--coral); font-size: 9px; font-weight: 800; }
+.goal-report-grid strong { font-size: 13px; }
+.goal-report-grid small, .goal-report-grid em { overflow-wrap: anywhere; color: var(--muted); font-size: 8px; font-style: normal; line-height: 1.5; }
 .goal-history-card { padding: 0; overflow: hidden; }
 .goal-history-card > summary { min-height: 72px; padding: 18px 22px; display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px; cursor: pointer; list-style: none; }
 .goal-history-card > summary::-webkit-details-marker { display: none; }
@@ -45,15 +54,24 @@
 .goal-history-card > summary i { font-style: normal; transition: transform .2s ease; }
 .goal-history-card[open] > summary i { transform: rotate(180deg); }
 .goal-history-list { border-top: 1px solid var(--line); }
-.goal-history-list article { padding: 18px 22px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 18px; }
-.goal-history-list article + article { border-top: 1px solid var(--line); }
-.goal-history-list article > div { display: grid; gap: 6px; }
-.goal-history-list article > div span { color: var(--muted); font-size: 9px; }
-.goal-history-list article > div strong { font-size: 13px; }
-.goal-history-list article > p { margin: 0; display: flex; gap: 18px; }
-.goal-history-list article > p span { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
-.goal-history-list article > p b { color: var(--ink); font-size: 12px; }
-.goal-history-list article > p small { font-size: 8px; }
+.goal-history-entry { width: 100%; padding: 18px 22px; display: grid; grid-template-columns: minmax(0, 1fr) auto 12px; align-items: center; gap: 18px; border: 0; background: transparent; color: var(--ink); text-align: left; }
+.goal-history-entry + .goal-history-entry { border-top: 1px solid var(--line); }
+.goal-history-entry > div { display: grid; gap: 6px; }
+.goal-history-entry > div span { color: var(--muted); font-size: 9px; }
+.goal-history-entry > div strong { font-size: 13px; }
+.goal-history-entry > p { margin: 0; display: flex; gap: 18px; }
+.goal-history-entry > p span { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
+.goal-history-entry > p b { color: var(--ink); font-size: 12px; }
+.goal-history-entry > p small { font-size: 8px; }
+.goal-history-chevron { color: var(--coral); font-size: 18px; font-style: normal; }
+.goal-history-detail-heading { padding: 16px; display: grid; gap: 7px; border: 1px solid var(--line); background: #fffaf3; }
+.goal-history-detail-heading span { color: var(--muted); font-size: 10px; }
+.goal-history-detail-heading strong { color: var(--coral); font-size: 17px; }
+.goal-history-result > div { margin-top: 0; }
+.goal-report-legacy { margin: 0; padding: 15px; border-left: 3px solid var(--gold); background: var(--gold-soft); color: var(--muted); font-size: 10px; line-height: 1.6; }
+.goal-history-note { padding: 16px; border: 1px solid var(--line); background: #fff; }
+.goal-history-note strong { color: var(--coral); font-size: 12px; }
+.goal-history-note p { margin: 10px 0 0; white-space: pre-wrap; font-size: 11px; line-height: 1.7; }
 
 /* First-start setup */
 .onboarding-screen {
@@ -134,8 +152,10 @@
   .goal-result-card { padding: 15px; }
   .goal-result-card > div { grid-template-columns: minmax(0, 1fr); }
   .goal-result-card p + p { border-left: 0; border-top: 1px solid var(--line); }
-  .goal-history-list article { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 16px; }
-  .goal-history-list article > p { justify-content: space-between; }
+  .goal-report-grid { grid-template-columns: minmax(0, 1fr); }
+  .goal-history-entry { grid-template-columns: minmax(0, 1fr) 12px; gap: 12px; padding: 16px; }
+  .goal-history-entry > p { grid-column: 1 / -1; justify-content: space-between; }
+  .goal-history-chevron { grid-column: 2; grid-row: 1; }
   .onboarding-screen { padding: 0; display: block; }
   .onboarding-card { min-height: 100dvh; padding: max(22px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom)); border: 0; border-radius: 0; box-shadow: none; }
   .onboarding-brand { gap: 12px; padding-bottom: 17px; }
@@ -1269,7 +1289,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .fertile-flower.ovulation { color: #8f6292; font-size: 15px; }
 .pixel-love-heart { position: absolute; right: 4px; bottom: 3px; z-index: 2; width: 14px; height: 12px; color: #a83f4b; pointer-events: none; }
 .pixel-love-heart::before { content: ""; position: absolute; left: 2px; top: 0; width: 2px; height: 2px; background: currentColor; }
-.pixel-love-heart.filled::before {
+.pixel-love-heart.heart-filled::before {
   box-shadow:
     2px 0 currentColor, 6px 0 currentColor, 8px 0 currentColor,
     -2px 2px currentColor, 0 2px currentColor, 2px 2px currentColor, 4px 2px currentColor, 6px 2px currentColor, 8px 2px currentColor, 10px 2px currentColor,
@@ -1278,7 +1298,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
     2px 8px currentColor, 4px 8px currentColor, 6px 8px currentColor,
     4px 10px currentColor;
 }
-.pixel-love-heart.outline::before {
+.pixel-love-heart.heart-outline::before {
   box-shadow:
     2px 0 currentColor, 6px 0 currentColor, 8px 0 currentColor,
     -2px 2px currentColor, 4px 2px currentColor, 10px 2px currentColor,
@@ -1287,7 +1307,8 @@ h1, h2, h3, strong, b { font-weight: 700; }
     2px 8px currentColor, 6px 8px currentColor,
     4px 10px currentColor;
 }
-.pixel-love-heart.outline {
+.pixel-love-heart.heart-outline {
+  outline: none !important;
   border: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
