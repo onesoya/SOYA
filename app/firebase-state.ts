@@ -16,6 +16,7 @@ import { firebaseDb } from "./firebase-client";
 type RecordKey =
   | "bodyRecords"
   | "circumferenceRecords"
+  | "healthExamRecords"
   | "foodLibrary"
   | "meals"
   | "workouts"
@@ -29,6 +30,7 @@ type RecordKey =
 const recordKeys = [
   "bodyRecords",
   "circumferenceRecords",
+  "healthExamRecords",
   "foodLibrary",
   "meals",
   "workouts",

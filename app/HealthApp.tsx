@@ -13,6 +13,7 @@ import {
   FoodLibraryItem,
   FoodUnit,
   GoalHistoryEntry,
+  HealthExamRecord,
   initialState,
   LoveRecord,
   MealFoodComponent,
@@ -53,7 +54,7 @@ import {
 } from "./firebase-notifications";
 
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
-type Modal = null | "quick" | "measurement-picker" | "movement-picker" | "body" | "body-bulk" | "body-detail" | "circumference" | "activity" | "apple-health" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "goal-complete" | "goal-history-detail" | "profile-settings" | "account" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "love" | "consultation-detail" | "reminders" | "data-management" | "data-audit";
+type Modal = null | "quick" | "measurement-picker" | "movement-picker" | "body" | "body-bulk" | "body-detail" | "circumference" | "health-exams" | "health-exam" | "activity" | "apple-health" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "goal-complete" | "goal-history-detail" | "profile-settings" | "account" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "love" | "consultation-detail" | "reminders" | "data-management" | "data-audit";
 type Consultation = AppState["consultations"][number];
 type WeeklyReview = NonNullable<AppState["weeklyReviews"]>[number];
 type BleedingState = Exclude<CycleEntry["state"], "없음">;
@@ -108,7 +109,7 @@ type BulkBodyDraft = {
 };
 type BackupEnvelope = { format: "SOYA_BACKUP"; version: 1; exportedAt: string; state: AppState };
 type RestoreMode = "merge" | "replace";
-type CsvKind = "body" | "circumference" | "meals" | "workouts" | "activity" | "cycles";
+type CsvKind = "body" | "circumference" | "health-exams" | "meals" | "workouts" | "activity" | "cycles";
 type GoalCompletionChoice = {
   outcome: NonNullable<AppState["goalHistory"]>[number]["outcome"];
   mode: AppState["profile"]["mode"];
@@ -233,6 +234,7 @@ const appleHealthSyncPendingKey = "soya-apple-health-sync-pending";
 
 const id = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const number = (value: FormDataEntryValue | null) => Number(value || 0);
+const optionalNumber = (value: FormDataEntryValue | null) => value === null || String(value).trim() === "" ? undefined : Number(value);
 const dateLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(new Date(`${value}T12:00:00`));
 const monthLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(new Date(`${value.slice(0, 7)}-01T12:00:00`));
 const signed = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
@@ -256,7 +258,7 @@ function normalizeAppState(value: unknown): AppState {
   const savedProfile = saved.profile && typeof saved.profile === "object" ? saved.profile : initialState.profile;
   const savedMode = String(savedProfile.mode ?? initialState.profile.mode);
   const legacyTravel = savedMode === "여행";
-  const hasExistingRecords = [saved.bodyRecords, saved.meals, saved.workouts, saved.cycles, saved.consultations]
+  const hasExistingRecords = [saved.bodyRecords, saved.healthExamRecords, saved.meals, saved.workouts, saved.cycles, saved.consultations]
     .some((records) => Array.isArray(records) && records.length > 0);
   const onboardingCompleted = typeof savedProfile.onboardingCompleted === "boolean"
     ? savedProfile.onboardingCompleted
@@ -284,6 +286,7 @@ function normalizeAppState(value: unknown): AppState {
     workoutGoal: { ...initialState.workoutGoal!, ...(saved.workoutGoal ?? {}) },
     bodyRecords: Array.isArray(saved.bodyRecords) ? saved.bodyRecords : [],
     circumferenceRecords: Array.isArray(saved.circumferenceRecords) ? saved.circumferenceRecords.map(normalizeCircumferenceRecord).filter((record): record is CircumferenceRecord => Boolean(record)) : [],
+    healthExamRecords: Array.isArray(saved.healthExamRecords) ? saved.healthExamRecords : [],
     foodLibrary: (Array.isArray(saved.foodLibrary) ? saved.foodLibrary : []).map(normalizeFoodLibraryItem),
     meals: Array.isArray(saved.meals) ? saved.meals : [],
     workouts: Array.isArray(saved.workouts) ? saved.workouts : [],
@@ -330,6 +333,7 @@ function mergeAppState(current: AppState, imported: AppState): AppState {
     ...current,
     bodyRecords: mergeById(current.bodyRecords, imported.bodyRecords),
     circumferenceRecords: mergeById(current.circumferenceRecords ?? [], imported.circumferenceRecords ?? []),
+    healthExamRecords: mergeById(current.healthExamRecords ?? [], imported.healthExamRecords ?? []),
     foodLibrary: mergeById(current.foodLibrary ?? [], imported.foodLibrary ?? []),
     meals: mergeById(current.meals, imported.meals),
     workouts: mergeById(current.workouts, imported.workouts),
@@ -349,6 +353,7 @@ function restoreTrashItem(current: AppState, item: TrashItem): AppState {
     ...current,
     bodyRecords: mergeById(current.bodyRecords, item.payload.bodyRecords ?? []),
     circumferenceRecords: mergeById(current.circumferenceRecords ?? [], item.payload.circumferenceRecords ?? []),
+    healthExamRecords: mergeById(current.healthExamRecords ?? [], item.payload.healthExamRecords ?? []),
     foodLibrary: mergeById(current.foodLibrary ?? [], item.payload.foodLibrary ?? []),
     meals: mergeById(current.meals, item.payload.meals ?? []),
     workouts: mergeById(current.workouts, item.payload.workouts ?? []),
@@ -380,7 +385,7 @@ function csvCell(value: string | number | boolean | undefined) {
 }
 
 function exportCsv(state: AppState, kind: CsvKind, today: string) {
-  const labels: Record<CsvKind, string> = { body: "체성분", circumference: "신체둘레", meals: "식단", workouts: "운동", activity: "하루활동", cycles: "월경" };
+  const labels: Record<CsvKind, string> = { body: "체성분", circumference: "신체둘레", "health-exams": "건강검진", meals: "식단", workouts: "운동", activity: "하루활동", cycles: "월경" };
   let rows: (string | number | boolean | undefined)[][] = [];
   if (kind === "body") rows = [
     ["날짜", "시간", "체중(kg)", "골격근량(kg)", "체지방량(kg)", "체지방률(%)", "내장지방레벨", "측정 시점", "측정 기기"],
@@ -389,6 +394,10 @@ function exportCsv(state: AppState, kind: CsvKind, today: string) {
   if (kind === "circumference") rows = [
     ["날짜", "허리둘레(inch)", "엉덩이둘레(inch)", "메모"],
     ...(state.circumferenceRecords ?? []).map((item) => [item.date, item.waistIn, item.hipIn, item.note]),
+  ];
+  if (kind === "health-exams") rows = [
+    ["검진일", "검진 종류", "검진기관", "수축기 혈압(mmHg)", "이완기 혈압(mmHg)", "공복혈당(mg/dL)", "당화혈색소(%)", "총콜레스테롤(mg/dL)", "HDL(mg/dL)", "LDL(mg/dL)", "중성지방(mg/dL)", "혈색소(g/dL)", "AST(U/L)", "ALT(U/L)", "감마GTP(U/L)", "크레아티닌(mg/dL)", "eGFR(mL/min/1.73㎡)", "종합소견", "메모"],
+    ...(state.healthExamRecords ?? []).map((item) => [item.date, item.examType, item.institution, item.systolic, item.diastolic, item.fastingGlucose, item.hba1c, item.totalCholesterol, item.hdl, item.ldl, item.triglycerides, item.hemoglobin, item.ast, item.alt, item.gammaGtp, item.creatinine, item.egfr, item.overallFinding, item.note]),
   ];
   if (kind === "meals") rows = [
     ["날짜", "끼니", "구분", "음식", "섭취 없음", "칼로리(kcal)", "단백질(g)", "탄수화물(g)", "지방(g)", "당류(g)", "식이섬유(g)"],
@@ -1113,6 +1122,9 @@ export function HealthApp() {
   const closeAccountChild = useCallback(() => {
     setModalStack((current) => current.length > 1 && current[current.length - 2] === "account" ? current.slice(0, -1) : []);
   }, []);
+  const closeHealthExamChild = useCallback(() => {
+    setModalStack((current) => current.length > 1 && current[current.length - 2] === "health-exams" ? current.slice(0, -1) : []);
+  }, []);
   const [mealPresetType, setMealPresetType] = useState<MealType>();
   const [mealDraft, setMealDraft] = useState<MealEntry>();
   const [mealDate, setMealDate] = useState<string>();
@@ -1124,6 +1136,7 @@ export function HealthApp() {
   const [loveDate, setLoveDate] = useState<string>();
   const [selectedBodyRecord, setSelectedBodyRecord] = useState<BodyRecord>();
   const [selectedCircumferenceRecord, setSelectedCircumferenceRecord] = useState<CircumferenceRecord>();
+  const [selectedHealthExamRecord, setSelectedHealthExamRecord] = useState<HealthExamRecord>();
   const [selectedConsultation, setSelectedConsultation] = useState<Consultation>();
   const [selectedGoalHistory, setSelectedGoalHistory] = useState<GoalHistoryEntry>();
   const [weeklyPlanStart, setWeeklyPlanStart] = useState<string>();
@@ -1711,6 +1724,41 @@ export function HealthApp() {
     setModal(null);
   };
 
+  const saveHealthExam = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const editingId = String(data.get("editingId") || "");
+    const record: HealthExamRecord = {
+      id: editingId || id("health-exam"),
+      date: String(data.get("date")),
+      institution: String(data.get("institution") || "").trim() || undefined,
+      examType: String(data.get("examType") || "국가건강검진") as HealthExamRecord["examType"],
+      systolic: optionalNumber(data.get("systolic")),
+      diastolic: optionalNumber(data.get("diastolic")),
+      fastingGlucose: optionalNumber(data.get("fastingGlucose")),
+      hba1c: optionalNumber(data.get("hba1c")),
+      totalCholesterol: optionalNumber(data.get("totalCholesterol")),
+      hdl: optionalNumber(data.get("hdl")),
+      ldl: optionalNumber(data.get("ldl")),
+      triglycerides: optionalNumber(data.get("triglycerides")),
+      hemoglobin: optionalNumber(data.get("hemoglobin")),
+      ast: optionalNumber(data.get("ast")),
+      alt: optionalNumber(data.get("alt")),
+      gammaGtp: optionalNumber(data.get("gammaGtp")),
+      creatinine: optionalNumber(data.get("creatinine")),
+      egfr: optionalNumber(data.get("egfr")),
+      overallFinding: String(data.get("overallFinding") || "").trim() || undefined,
+      note: String(data.get("note") || "").trim() || undefined,
+    };
+    commit((current) => ({
+      ...current,
+      healthExamRecords: [record, ...(current.healthExamRecords ?? []).filter((item) => item.id !== editingId)]
+        .sort((a, b) => b.date.localeCompare(a.date)),
+    }));
+    setSelectedHealthExamRecord(undefined);
+    closeHealthExamChild();
+  };
+
   const saveActivity = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -1938,6 +1986,16 @@ export function HealthApp() {
     commit((current) => ({ ...moveToTrash(current, `${record.date} 허리·엉덩이둘레`, { circumferenceRecords: [record] }), circumferenceRecords: (current.circumferenceRecords ?? []).filter((item) => item.id !== record.id) }));
     setSelectedCircumferenceRecord(undefined);
     setModal(null);
+  };
+
+  const deleteHealthExam = (record: HealthExamRecord) => {
+    if (!window.confirm(`${record.date} 건강검진 기록을 삭제할까요?`)) return;
+    commit((current) => ({
+      ...moveToTrash(current, `${record.date} 건강검진`, { healthExamRecords: [record] }),
+      healthExamRecords: (current.healthExamRecords ?? []).filter((item) => item.id !== record.id),
+    }));
+    setSelectedHealthExamRecord(undefined);
+    closeHealthExamChild();
   };
 
   const deleteConsultation = (consultation: Consultation) => {
@@ -2181,7 +2239,7 @@ export function HealthApp() {
         {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openGoal={() => setModal("nutrition-goal")} openLibrary={() => setModal("food-library")} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} updateTravelDayLevel={updateTravelDayLevel} />}
         {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} updateTravelDayLevel={updateTravelDayLevel} />}
         {tab === "menstrual" && <MenstrualView state={state} today={today} openRecord={(date) => { setCycleRangeDraft(undefined); setCycleDate(date); setModal("cycle"); }} openLove={(date) => { setLoveDate(date); setModal("love"); }} editRange={(date) => { const range = cycleRangeAround(state.cycles, date); if (range) { setCycleRangeDraft(range); setCycleDate(date); setModal("cycle"); } }} deleteRange={deleteCycleRange} />}
-        {tab === "change" && <ChangeConsultView state={state} today={today} setModal={setModal} commit={commit} openWeeklyPlan={(start, consultation) => { setWeeklyPlanStart(start); setWeeklyPlanConsultation(consultation); setModal("weekly-plan"); }} deleteConsultation={deleteConsultation} openBodyDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} openCircumference={(record) => { setSelectedCircumferenceRecord(record); setModal("circumference"); }} openConsultationDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} openGoalHistory={(goal) => { setSelectedGoalHistory(goal); setModal("goal-history-detail"); }} />}
+        {tab === "change" && <ChangeConsultView state={state} today={today} setModal={setModal} commit={commit} openWeeklyPlan={(start, consultation) => { setWeeklyPlanStart(start); setWeeklyPlanConsultation(consultation); setModal("weekly-plan"); }} deleteConsultation={deleteConsultation} openBodyDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} openCircumference={(record) => { setSelectedCircumferenceRecord(record); setModal("circumference"); }} openHealthExams={() => setModal("health-exams")} openConsultationDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} openGoalHistory={(goal) => { setSelectedGoalHistory(goal); setModal("goal-history-detail"); }} />}
       </main>
 
       <button className={`fab${fabVisible ? "" : " fab-hidden"}`} onClick={() => setModal("quick")} aria-label="빠른 추가" aria-hidden={!fabVisible} tabIndex={fabVisible ? 0 : -1}>+</button>
@@ -2195,6 +2253,8 @@ export function HealthApp() {
       {modal === "body-bulk" && <BodyBulkSheet existing={state.bodyRecords} close={closeModal} save={saveBodyBulk} />}
       {modal === "body-detail" && selectedBodyRecord && <BodyDetailSheet record={selectedBodyRecord} close={closeModal} edit={() => setModal("body")} remove={() => deleteBody(selectedBodyRecord)} />}
       {modal === "circumference" && <CircumferenceSheet today={today} latest={(state.circumferenceRecords ?? []).find((item) => item.id !== selectedCircumferenceRecord?.id)} draft={selectedCircumferenceRecord} close={closeModal} save={saveCircumference} remove={deleteCircumference} />}
+      {modal === "health-exams" && <HealthExamListSheet records={state.healthExamRecords ?? []} close={closeModal} add={() => { setSelectedHealthExamRecord(undefined); setModal("health-exam"); }} edit={(record) => { setSelectedHealthExamRecord(record); setModal("health-exam"); }} />}
+      {modal === "health-exam" && <HealthExamSheet today={today} draft={selectedHealthExamRecord} close={closeHealthExamChild} save={saveHealthExam} remove={deleteHealthExam} />}
       {modal === "activity" && <ActivitySheet today={activityDate ?? today} draft={(state.dailyActivities ?? []).find((item) => item.date === (activityDate ?? today))} openAppleHealth={() => setModal("apple-health")} close={closeModal} save={saveActivity} remove={deleteActivity} />}
       {modal === "apple-health" && <AppleHealthSheet close={closeAppleHealth} refresh={refreshFromCloud} syncNow={startAppleHealthSync} syncing={appleHealthSyncing} />}
       {(modal === "meal-plan" || modal === "meal-actual") && <MealSheet today={mealDate ?? today} kind={modal === "meal-plan" ? "plan" : "actual"} library={state.foodLibrary ?? []} draft={mealDraft} presetType={mealPresetType} close={closeModal} save={saveMeal} />}
@@ -2551,12 +2611,12 @@ function MenstrualView({ state, today, openRecord, openLove, editRange, deleteRa
   </div>;
 }
 
-function ChangeConsultView({ state, today, setModal, commit, openWeeklyPlan, deleteConsultation, openBodyDetail, openCircumference, openConsultationDetail, openGoalHistory }: { state: AppState; today: string; setModal: (modal: Modal) => void; commit: (updater: (current: AppState) => AppState) => void; openWeeklyPlan: (start?: string, consultation?: Consultation) => void; deleteConsultation: (consultation: Consultation) => void; openBodyDetail: (record: BodyRecord) => void; openCircumference: (record?: CircumferenceRecord) => void; openConsultationDetail: (consultation: Consultation) => void; openGoalHistory: (goal: GoalHistoryEntry) => void }) {
+function ChangeConsultView({ state, today, setModal, commit, openWeeklyPlan, deleteConsultation, openBodyDetail, openCircumference, openHealthExams, openConsultationDetail, openGoalHistory }: { state: AppState; today: string; setModal: (modal: Modal) => void; commit: (updater: (current: AppState) => AppState) => void; openWeeklyPlan: (start?: string, consultation?: Consultation) => void; deleteConsultation: (consultation: Consultation) => void; openBodyDetail: (record: BodyRecord) => void; openCircumference: (record?: CircumferenceRecord) => void; openHealthExams: () => void; openConsultationDetail: (consultation: Consultation) => void; openGoalHistory: (goal: GoalHistoryEntry) => void }) {
   const [view, setView] = useState<"change" | "consult">("change");
-  return <><div className="combined-view-tabs" role="tablist" aria-label="변화와 상담 화면 선택"><button type="button" role="tab" aria-selected={view === "change"} className={view === "change" ? "active" : ""} onClick={() => setView("change")}>변화</button><button type="button" role="tab" aria-selected={view === "consult"} className={view === "consult" ? "active" : ""} onClick={() => setView("consult")}>상담</button></div>{view === "change" ? <ChangeView state={state} today={today} setModal={setModal} openDetail={openBodyDetail} openCircumference={openCircumference} openGoalHistory={openGoalHistory} /> : <ConsultView state={state} commit={commit} openWeeklyPlan={openWeeklyPlan} deleteConsultation={deleteConsultation} openDetail={openConsultationDetail} />}</>;
+  return <><div className="combined-view-tabs" role="tablist" aria-label="변화와 상담 화면 선택"><button type="button" role="tab" aria-selected={view === "change"} className={view === "change" ? "active" : ""} onClick={() => setView("change")}>변화</button><button type="button" role="tab" aria-selected={view === "consult"} className={view === "consult" ? "active" : ""} onClick={() => setView("consult")}>상담</button></div>{view === "change" ? <ChangeView state={state} today={today} setModal={setModal} openDetail={openBodyDetail} openCircumference={openCircumference} openHealthExams={openHealthExams} openGoalHistory={openGoalHistory} /> : <ConsultView state={state} commit={commit} openWeeklyPlan={openWeeklyPlan} deleteConsultation={deleteConsultation} openDetail={openConsultationDetail} />}</>;
 }
 
-function ChangeView({ state, today, setModal, openDetail, openCircumference, openGoalHistory }: { state: AppState; today: string; setModal: (modal: Modal) => void; openDetail: (record: BodyRecord) => void; openCircumference: (record?: CircumferenceRecord) => void; openGoalHistory: (goal: GoalHistoryEntry) => void }) {
+function ChangeView({ state, today, setModal, openDetail, openCircumference, openHealthExams, openGoalHistory }: { state: AppState; today: string; setModal: (modal: Modal) => void; openDetail: (record: BodyRecord) => void; openCircumference: (record?: CircumferenceRecord) => void; openHealthExams: () => void; openGoalHistory: (goal: GoalHistoryEntry) => void }) {
   const [phaseFilter, setPhaseFilter] = useState<"all" | "focus" | "influence">("all");
   const [trendMetric, setTrendMetric] = useState<BodyTrendMetric>("bodyFatMass");
   const latest = state.bodyRecords[0];
@@ -2573,6 +2633,8 @@ function ChangeView({ state, today, setModal, openDetail, openCircumference, ope
   const circumferenceRecords = [...(state.circumferenceRecords ?? [])].sort((a, b) => b.date.localeCompare(a.date));
   const latestCircumference = circumferenceRecords[0];
   const circumferenceChartRecords = circumferenceRecords.slice(0, 8).reverse();
+  const healthExamRecords = [...(state.healthExamRecords ?? [])].sort((a, b) => b.date.localeCompare(a.date));
+  const latestHealthExam = healthExamRecords[0];
   const measuredAt = latest ? `${latest.date.replaceAll("-", ".")} · ${latest.time}` : "기록 없음";
   const timing = goalTiming(state.profile, today);
   const targetProgress = bodyGoalProgressFor(state, today);
@@ -2590,6 +2652,9 @@ function ChangeView({ state, today, setModal, openDetail, openCircumference, ope
     <section className="card chart-card cycle-aware-chart"><CardTitle title={`${trendInfo.label} 흐름`} aside={`${trendInfo.unit} · ${chartRecords.length}회`} /><div className="body-metric-filter" role="tablist" aria-label="체성분 그래프 항목 선택">{(Object.keys(bodyTrendMetrics) as BodyTrendMetric[]).map((metric) => <button type="button" role="tab" aria-selected={trendMetric === metric} className={trendMetric === metric ? "active" : ""} onClick={() => setTrendMetric(metric)} key={metric}>{bodyTrendMetrics[metric].label}</button>)}</div><div className="body-phase-filter" role="tablist" aria-label="월경 주기 구간으로 체성분 기록 보기"><button type="button" role="tab" aria-selected={phaseFilter === "all"} className={phaseFilter === "all" ? "active" : ""} onClick={() => setPhaseFilter("all")}>전체</button><button type="button" role="tab" aria-selected={phaseFilter === "focus"} className={phaseFilter === "focus" ? "active" : ""} onClick={() => setPhaseFilter("focus")}>월경 후 집중</button><button type="button" role="tab" aria-selected={phaseFilter === "influence"} className={phaseFilter === "influence" ? "active" : ""} onClick={() => setPhaseFilter("influence")}>월경 전·중</button></div><BodyTrendChart records={chartRecords} cycles={state.cycles} metric={trendMetric} showMenstrualBands={phaseFilter === "all"} emptyText={phaseFilter === "all" ? "체성분 기록을 입력하면 흐름이 보여요." : "이 주기 구간의 체성분 기록이 아직 없어요."} /></section>
     <section className="card circumference-card"><CardTitle title="허리·엉덩이둘레" aside={<button type="button" className="text-button" onClick={() => openCircumference()}>기록하기</button>} />
       {latestCircumference ? <><div className="circumference-latest"><MetricCard label="허리둘레" value={String(latestCircumference.waistIn)} unit="inch" hint={latestCircumference.date} /><MetricCard label="엉덩이둘레" value={String(latestCircumference.hipIn)} unit="inch" hint={latestCircumference.date} /></div><CircumferenceTrendChart records={circumferenceChartRecords} /><div className="circumference-history">{circumferenceRecords.slice(0, 5).map((record) => <button type="button" key={record.id} onClick={() => openCircumference(record)}><span>{record.date}</span><strong>허리 {record.waistIn}inch</strong><strong>엉덩이 {record.hipIn}inch</strong><b aria-hidden="true">›</b></button>)}</div></> : <EmptyState text="일요일 아침 측정값을 기록해보세요." action="둘레 기록하기" onClick={() => openCircumference()} showIcon={false} />}
+    </section>
+    <section className="card health-exam-card"><CardTitle title="건강검진 기록" aside={<button type="button" className="text-button" onClick={openHealthExams}>관리하기</button>} />
+      {latestHealthExam ? <><div className="health-exam-latest"><div><span>{latestHealthExam.date.replaceAll("-", ".")} · {latestHealthExam.examType}</span><strong>{latestHealthExam.institution || "검진기관 미입력"}</strong></div><div className="health-exam-metrics">{healthExamSummaryMetrics(latestHealthExam, 4).map((metric) => <span key={metric.label}><small>{metric.label}</small><b>{metric.value}<i>{metric.unit}</i></b></span>)}</div></div><button type="button" className="health-exam-open-button" onClick={openHealthExams}>검진 기록 {healthExamRecords.length}건 보기 <b aria-hidden="true">›</b></button></> : <EmptyState text="건강검진 결과를 한곳에 모아보세요." action="검진 결과 추가" onClick={openHealthExams} showIcon={false} />}
     </section>
     <section className="card"><CardTitle title="측정 기록" aside={`${filteredRecords.length}개`} />{visibleRecords.length ? <div className="data-table">{visibleRecords.map(({ record, phase }) => <button type="button" key={record.id} onClick={() => openDetail(record)} aria-label={`${record.date} 인바디 상세 보기, ${phase.label}`}><span><strong>{record.date}</strong><i className={`record-phase-badge phase-${phase.key}`}>{phase.label}</i><small>{record.time} · {record.measurementTiming ?? record.condition.split(" · ")[0]} · {record.device ?? record.condition.split(" · ")[1]}</small></span><span>{record.bodyFatMass}<small>kg 지방</small></span><span>{record.skeletalMuscle}<small>kg 골격근</small></span><b aria-hidden="true">›</b></button>)}</div> : <div className="phase-record-empty">이 구간의 측정 기록이 아직 없어요.</div>}</section>
   </div>;
@@ -2795,6 +2860,7 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
   const consultationWeekPayload = () => {
     const goalProgress = bodyGoalProgressFor(state, reviewEnd);
     const latestCompletedGoal = (state.goalHistory ?? [])[0];
+    const latestHealthExam = [...(state.healthExamRecords ?? [])].filter((item) => item.date <= reviewEnd).sort((a, b) => b.date.localeCompare(a.date))[0];
     return {
       weekStart: reviewStart,
       weekEnd: reviewEnd,
@@ -2831,6 +2897,7 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
       } : undefined,
       nutritionGoal: state.nutritionGoal,
       workoutGoal: state.workoutGoal,
+      latestHealthExam,
       weeklyNote: savedReview?.note ?? reviewNote.trim(),
       currentWeek: review,
       previousWeek: previousReview,
@@ -2841,6 +2908,7 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
     const today = todayKey();
     const recentStart = addDays(today, -84);
     const conditionStart = addDays(today, -180);
+    const latestHealthExam = [...(state.healthExamRecords ?? [])].filter((item) => item.date <= today).sort((a, b) => b.date.localeCompare(a.date))[0];
     const bodyHistory = [...state.bodyRecords]
       .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
       .map((item) => ({
@@ -2865,10 +2933,12 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
       profile: state.profile,
       currentNutritionGoal: state.nutritionGoal,
       currentWorkoutGoal: state.workoutGoal,
+      latestHealthExam,
       latestCompletedGoals: (state.goalHistory ?? []).slice(0, 5),
       bodyHistory,
       recentBodyHistory: bodyHistory.filter((item) => item.date >= recentStart),
       circumferenceHistory: [...(state.circumferenceRecords ?? [])].sort((a, b) => a.date.localeCompare(b.date)),
+      healthExamHistory: [...(state.healthExamRecords ?? [])].sort((a, b) => a.date.localeCompare(b.date)),
       recentNutritionByDay: nutritionByDay,
       recentWorkouts: state.workouts.filter((item) => item.kind === "actual" && item.date >= recentStart && item.date <= today).map((item) => ({ date: item.date, type: item.type, title: item.title, minutes: item.minutes, intensity: item.intensity, heartRate: item.heartRate, details: item.details })),
       recentActivity: (state.dailyActivities ?? []).filter((item) => item.date >= recentStart && item.date <= today).map((item) => ({ date: item.date, steps: item.steps, activeCalories: item.activeCalories, watchWorn: item.watchWorn })),
@@ -2878,6 +2948,7 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
       dataCounts: {
         body: bodyHistory.length,
         circumference: state.circumferenceRecords?.length ?? 0,
+        healthExams: state.healthExamRecords?.length ?? 0,
         nutritionDays: nutritionByDay.length,
         workouts: state.workouts.filter((item) => item.kind === "actual" && item.date >= recentStart).length,
         menstrualCycles: cycleHistories(state.cycles).length,
@@ -3893,6 +3964,7 @@ function DataManagementSheet({ state, today, close, backup, exportCsv: downloadC
   const csvItems: { kind: CsvKind; label: string; count: number }[] = [
     { kind: "body", label: "체성분", count: state.bodyRecords.length },
     { kind: "circumference", label: "신체둘레", count: (state.circumferenceRecords ?? []).length },
+    { kind: "health-exams", label: "건강검진", count: (state.healthExamRecords ?? []).length },
     { kind: "meals", label: "식단", count: state.meals.length },
     { kind: "workouts", label: "운동", count: state.workouts.length },
     { kind: "activity", label: "하루 활동", count: (state.dailyActivities ?? []).length },
@@ -3901,6 +3973,7 @@ function DataManagementSheet({ state, today, close, backup, exportCsv: downloadC
   const counts = preview ? [
     ["체성분", preview.state.bodyRecords.length],
     ["신체둘레", (preview.state.circumferenceRecords ?? []).length],
+    ["건강검진", (preview.state.healthExamRecords ?? []).length],
     ["식단", preview.state.meals.length],
     ["운동", preview.state.workouts.length],
     ["하루 활동", (preview.state.dailyActivities ?? []).length],
@@ -3911,6 +3984,7 @@ function DataManagementSheet({ state, today, close, backup, exportCsv: downloadC
   const dates = preview ? [
     ...preview.state.bodyRecords.map((item) => item.date),
     ...(preview.state.circumferenceRecords ?? []).map((item) => item.date),
+    ...(preview.state.healthExamRecords ?? []).map((item) => item.date),
     ...preview.state.meals.map((item) => item.date),
     ...preview.state.workouts.map((item) => item.date),
     ...(preview.state.dailyActivities ?? []).map((item) => item.date),
@@ -4307,6 +4381,53 @@ function WorkoutSheet({ today, kind, draft, presetType, close, save }: { today: 
   const previousHeartRate = draft?.heartRate ?? (typeof draft?.intensity === "string" && draft.intensity.includes("심박수") ? draft.intensity.replace("심박수", "").trim() : "");
   const previousIntensity = typeof draft?.intensity === "number" ? draft.intensity : 5;
   return <Sheet title={kind === "plan" ? "운동 계획" : editing ? "운동 기록 수정" : "한 운동 기록"} close={close}><form className="form-stack" onSubmit={(event) => save(event, kind)}><input type="hidden" name="editingId" value={editing ? draft.id : ""} /><div className="two-fields sheet-leading-fields"><Field label="날짜"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><Field label="운동 종류"><select name="type" value={workoutType} onChange={(event) => setWorkoutType(event.target.value as WorkoutEntry["type"])}><option>PT</option><option>유산소</option></select></Field></div>{kind === "plan" && <Field label="시작 시간 (선택)"><input type="time" name="startTime" defaultValue={draft?.startTime ?? ""} /></Field>}<Field label="운동 이름"><input name="title" defaultValue={draft?.title ?? ""} placeholder={workoutType === "PT" ? "예: 필라테스 + 기능운동" : "예: 인클라인 트레드밀"} required /></Field>{workoutType === "유산소" && <div className="check-field step-overlap-check"><input id="overlapsSteps" type="checkbox" name="overlapsSteps" defaultChecked={draft?.overlapsSteps} /><label htmlFor="overlapsSteps"><strong>일상 걸음 수와 중복되는 운동은 체크해주세요.</strong></label></div>}<div className="two-fields"><Field label="시간 (분)"><input type="number" name="minutes" defaultValue={draft?.minutes ?? ""} min="1" placeholder="예: 35" required /></Field><Field label="체감 강도 (1~10)"><select name="intensity" defaultValue={previousIntensity}>{[1,2,3,4,5,6,7,8,9,10].map((value) => <option value={value} key={value}>{value}</option>)}</select></Field></div><div className="rpe-scale"><span>1–2 아주 가벼움</span><span>3–4 가벼움</span><span>5–6 보통</span><span>7–8 힘듦</span><span>9–10 매우 힘듦</span></div><Field label="평균 심박수 (bpm, 선택)"><input name="heartRate" defaultValue={previousHeartRate} placeholder="예: 130~140" /></Field><Field label="운동 내용"><textarea name="details" defaultValue={draft?.details ?? ""} placeholder="종목, 중량, 횟수, 세트 또는 컨디션을 적어주세요." /></Field><button className="primary-button submit-button" type="submit">{kind === "plan" ? "운동 계획 저장" : editing ? "수정 저장" : "운동 기록 저장"}</button></form></Sheet>;
+}
+
+const healthExamMetricDefinitions: Array<{ key: keyof HealthExamRecord; label: string; unit: string }> = [
+  { key: "fastingGlucose", label: "공복혈당", unit: "mg/dL" },
+  { key: "hba1c", label: "당화혈색소", unit: "%" },
+  { key: "totalCholesterol", label: "총콜레스테롤", unit: "mg/dL" },
+  { key: "ldl", label: "LDL", unit: "mg/dL" },
+  { key: "hdl", label: "HDL", unit: "mg/dL" },
+  { key: "triglycerides", label: "중성지방", unit: "mg/dL" },
+  { key: "hemoglobin", label: "혈색소", unit: "g/dL" },
+  { key: "ast", label: "AST", unit: "U/L" },
+  { key: "alt", label: "ALT", unit: "U/L" },
+  { key: "gammaGtp", label: "감마GTP", unit: "U/L" },
+  { key: "creatinine", label: "크레아티닌", unit: "mg/dL" },
+  { key: "egfr", label: "eGFR", unit: "mL/min/1.73㎡" },
+];
+
+type HealthExamSummaryMetric = { label: string; value: string | number; unit: string };
+
+function healthExamSummaryMetrics(record: HealthExamRecord, limit = 6): HealthExamSummaryMetric[] {
+  const metrics: HealthExamSummaryMetric[] = [];
+  if (record.systolic !== undefined || record.diastolic !== undefined) metrics.push({ label: "혈압", value: `${record.systolic ?? "-"}/${record.diastolic ?? "-"}`, unit: "mmHg" });
+  healthExamMetricDefinitions.forEach(({ key, label, unit }) => {
+    const value = record[key];
+    if (typeof value === "number") metrics.push({ label, value, unit });
+  });
+  return metrics.slice(0, limit);
+}
+
+function HealthExamListSheet({ records, close, add, edit }: { records: HealthExamRecord[]; close: () => void; add: () => void; edit: (record: HealthExamRecord) => void }) {
+  const sorted = [...records].sort((a, b) => b.date.localeCompare(a.date));
+  return <Sheet title="건강검진 기록" titleAction={<button type="button" className="sheet-title-action" onClick={add}>검진 결과 추가</button>} close={close}>
+    {sorted.length ? <div className="health-exam-list">{sorted.map((record, index) => { const metrics = healthExamSummaryMetrics(record, 3); const previous = sorted[index + 1]; const previousMetrics = previous ? healthExamSummaryMetrics(previous, 20) : []; return <button type="button" key={record.id} className="health-exam-list-item" onClick={() => edit(record)}><div><span>{record.date.replaceAll("-", ".")} · {record.examType}</span><strong>{record.institution || "검진기관 미입력"}</strong>{previous && <small>이전 검사 {previous.date.replaceAll("-", ".")}</small>}</div><p>{metrics.length ? metrics.map((metric) => { const prior = previousMetrics.find((item) => item.label === metric.label); const delta = typeof metric.value === "number" && typeof prior?.value === "number" ? Number((metric.value - prior.value).toFixed(2)) : undefined; return <span key={metric.label}><small>{metric.label}</small><b>{metric.value} {metric.unit}</b>{delta !== undefined && delta !== 0 && <em className={delta > 0 ? "up" : "down"}>{delta > 0 ? "▲" : "▼"} {Math.abs(delta)}</em>}</span>; }) : <span><small>입력된 수치 없음</small></span>}</p><i aria-hidden="true">›</i></button>; })}</div> : <EmptyState text="건강검진 결과를 한곳에 모아보세요." action="첫 검진 결과 추가" onClick={add} showIcon={false} />}
+  </Sheet>;
+}
+
+function HealthExamSheet({ today, draft, close, save, remove }: { today: string; draft?: HealthExamRecord; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void; remove: (record: HealthExamRecord) => void }) {
+  return <Sheet title={draft ? "건강검진 기록 수정" : "건강검진 결과 추가"} close={close}><form className="form-stack health-exam-form" onSubmit={save}>
+    <input type="hidden" name="editingId" value={draft?.id ?? ""} />
+    <section className="health-exam-section"><div className="health-exam-section-title">검진 정보</div><Field label="검진일"><input type="date" name="date" defaultValue={draft?.date ?? today} required /></Field><div className="two-fields"><Field label="검진 종류"><select name="examType" defaultValue={draft?.examType ?? "국가건강검진"}><option>국가건강검진</option><option>종합검진</option><option>기타</option></select></Field><Field label="검진기관"><input name="institution" defaultValue={draft?.institution ?? ""} placeholder="예: 한국건강관리협회" /></Field></div></section>
+    <section className="health-exam-section"><div className="health-exam-section-title">혈압·혈당</div><div className="two-fields"><Field label="수축기 혈압 (mmHg)"><input type="number" inputMode="decimal" min="0" name="systolic" defaultValue={draft?.systolic ?? ""} /></Field><Field label="이완기 혈압 (mmHg)"><input type="number" inputMode="decimal" min="0" name="diastolic" defaultValue={draft?.diastolic ?? ""} /></Field></div><div className="two-fields"><Field label="공복혈당 (mg/dL)"><input type="number" inputMode="decimal" min="0" step="0.1" name="fastingGlucose" defaultValue={draft?.fastingGlucose ?? ""} /></Field><Field label="당화혈색소 (%)"><input type="number" inputMode="decimal" min="0" step="0.1" name="hba1c" defaultValue={draft?.hba1c ?? ""} /></Field></div></section>
+    <section className="health-exam-section"><div className="health-exam-section-title">콜레스테롤</div><div className="health-exam-field-grid"><Field label="총콜레스테롤 (mg/dL)"><input type="number" inputMode="decimal" min="0" step="0.1" name="totalCholesterol" defaultValue={draft?.totalCholesterol ?? ""} /></Field><Field label="HDL (mg/dL)"><input type="number" inputMode="decimal" min="0" step="0.1" name="hdl" defaultValue={draft?.hdl ?? ""} /></Field><Field label="LDL (mg/dL)"><input type="number" inputMode="decimal" min="0" step="0.1" name="ldl" defaultValue={draft?.ldl ?? ""} /></Field><Field label="중성지방 (mg/dL)"><input type="number" inputMode="decimal" min="0" step="0.1" name="triglycerides" defaultValue={draft?.triglycerides ?? ""} /></Field></div></section>
+    <section className="health-exam-section"><div className="health-exam-section-title">혈액·간·신장</div><div className="health-exam-field-grid"><Field label="혈색소 (g/dL)"><input type="number" inputMode="decimal" min="0" step="0.1" name="hemoglobin" defaultValue={draft?.hemoglobin ?? ""} /></Field><Field label="AST (U/L)"><input type="number" inputMode="decimal" min="0" step="0.1" name="ast" defaultValue={draft?.ast ?? ""} /></Field><Field label="ALT (U/L)"><input type="number" inputMode="decimal" min="0" step="0.1" name="alt" defaultValue={draft?.alt ?? ""} /></Field><Field label="감마GTP (U/L)"><input type="number" inputMode="decimal" min="0" step="0.1" name="gammaGtp" defaultValue={draft?.gammaGtp ?? ""} /></Field><Field label="크레아티닌 (mg/dL)"><input type="number" inputMode="decimal" min="0" step="0.01" name="creatinine" defaultValue={draft?.creatinine ?? ""} /></Field><Field label="eGFR (mL/min/1.73㎡)"><input type="number" inputMode="decimal" min="0" step="0.1" name="egfr" defaultValue={draft?.egfr ?? ""} /></Field></div></section>
+    <section className="health-exam-section"><div className="health-exam-section-title">소견</div><Field label="종합소견"><textarea name="overallFinding" defaultValue={draft?.overallFinding ?? ""} placeholder="검진 결과지의 소견을 그대로 적어주세요." /></Field><Field label="메모 (선택)"><textarea className="cycle-note-input" name="note" defaultValue={draft?.note ?? ""} /></Field></section>
+    <button className="primary-button submit-button" type="submit">{draft ? "수정 저장" : "검진 결과 저장"}</button>
+    {draft && <button className="delete-button full-delete-button" type="button" onClick={() => remove(draft)}>기록 삭제</button>}
+  </form></Sheet>;
 }
 
 function BodyDetailSheet({ record, close, edit, remove }: { record: BodyRecord; close: () => void; edit: () => void; remove: () => void }) {

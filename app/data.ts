@@ -65,6 +65,29 @@ export type CircumferenceRecord = {
   note?: string;
 };
 
+export type HealthExamRecord = {
+  id: string;
+  date: string;
+  institution?: string;
+  examType: "국가건강검진" | "종합검진" | "기타";
+  systolic?: number;
+  diastolic?: number;
+  fastingGlucose?: number;
+  hba1c?: number;
+  totalCholesterol?: number;
+  hdl?: number;
+  ldl?: number;
+  triglycerides?: number;
+  hemoglobin?: number;
+  ast?: number;
+  alt?: number;
+  gammaGtp?: number;
+  creatinine?: number;
+  egfr?: number;
+  overallFinding?: string;
+  note?: string;
+};
+
 export type MealEntry = {
   id: string;
   date: string;
@@ -210,6 +233,7 @@ export type WeeklyReview = {
 export type TrashPayload = {
   bodyRecords?: BodyRecord[];
   circumferenceRecords?: CircumferenceRecord[];
+  healthExamRecords?: HealthExamRecord[];
   foodLibrary?: FoodLibraryItem[];
   meals?: MealEntry[];
   workouts?: WorkoutEntry[];
@@ -332,6 +356,7 @@ export type AppState = {
   };
   bodyRecords: BodyRecord[];
   circumferenceRecords?: CircumferenceRecord[];
+  healthExamRecords?: HealthExamRecord[];
   foodLibrary?: FoodLibraryItem[];
   meals: MealEntry[];
   workouts: WorkoutEntry[];
@@ -414,6 +439,7 @@ export const initialState: AppState = {
     { id: "body-20260812", date: "2026-08-12", time: "07:18", weight: 62.0, skeletalMuscle: 23.2, bodyFatMass: 19.0, bodyFatRate: 30.6, visceralFat: 8, measurementTiming: "아침 공복", device: "InBody Dial H30", condition: "아침 공복 · InBody Dial H30" },
   ],
   circumferenceRecords: [],
+  healthExamRecords: [],
   foodLibrary: [],
   meals: [
     { id: "plan-b", date: "2026-08-14", mealType: "breakfast", kind: "plan", title: "무가당 그릭요거트와 단백질바", calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, confidence: "높음" },
@@ -461,6 +487,7 @@ export function createFreshState(): AppState {
       : undefined,
     bodyRecords: [],
     circumferenceRecords: [],
+    healthExamRecords: [],
     foodLibrary: [],
     meals: [],
     workouts: [],
