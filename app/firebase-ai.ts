@@ -30,6 +30,22 @@ export type AiUsageSummary = {
   krwReferenceRate: number;
 };
 
+export type AiBodyImportRecord = {
+  date: string;
+  time?: string;
+  weight: number;
+  skeletalMuscle: number;
+  bodyFatMass: number;
+  bodyFatRate: number;
+  visceralFat: number;
+  confidence: number;
+};
+
+export type AiBodyImportResult = {
+  records: AiBodyImportRecord[];
+  warnings: string[];
+};
+
 type WeeklySummaryRequest = { kind: "weekly-summary"; week: unknown };
 type WeeklyPlanRequest = { kind: "weekly-plan"; week: unknown; summary: string; userResponse: string };
 type FollowUpRequest = { kind: "followup"; question: string; previousConsultation: string };
@@ -47,5 +63,12 @@ export async function requestAiUsageSummary() {
   const functions = getFunctions(firebaseApp(), "asia-northeast3");
   const callable = httpsCallable<Record<string, never>, AiUsageSummary>(functions, "getAiUsageSummary");
   const response = await callable({});
+  return response.data;
+}
+
+export async function requestAiBodyImport(images: string[]) {
+  const functions = getFunctions(firebaseApp(), "asia-northeast3");
+  const callable = httpsCallable<{ images: string[] }, AiBodyImportResult>(functions, "extractInBodyRecords");
+  const response = await callable({ images });
   return response.data;
 }

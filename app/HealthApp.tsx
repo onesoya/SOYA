@@ -32,7 +32,8 @@ import {
   type User,
 } from "./firebase-client";
 import { loadUserState, saveUserState } from "./firebase-state";
-import { requestAiConsultation, requestAiUsageSummary, type AiUsageSummary } from "./firebase-ai";
+import { requestAiBodyImport, requestAiConsultation, requestAiUsageSummary, type AiBodyImportRecord, type AiUsageSummary } from "./firebase-ai";
+import { prepareBodyMedia } from "./body-media";
 import {
   createAppleHealthConnectionKey,
   getAppleHealthConnectionStatus,
@@ -3147,6 +3148,13 @@ function BodyBulkSheet({ existing, close, save }: { existing: BodyRecord[]; clos
   const [editingRowId, setEditingRowId] = useState<string>();
   const [attempted, setAttempted] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [mode, setMode] = useState<"media" | "manual">("media");
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileInputKey, setFileInputKey] = useState(0);
+  const [importing, setImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState("");
+  const [importError, setImportError] = useState("");
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const existingDates = useMemo(() => new Set(existing.map((record) => record.date)), [existing]);
   const draftError = () => {
     if (!draft.date || !draft.time || !draft.weight || !draft.skeletalMuscle || !draft.bodyFatMass || !draft.bodyFatRate || !draft.visceralFat) return "비어 있는 항목이 있어요.";
@@ -3189,6 +3197,7 @@ function BodyBulkSheet({ existing, close, save }: { existing: BodyRecord[]; clos
     setDraft(row);
     setEditingRowId(row.rowId);
     setAttempted(false);
+    setMode("manual");
   };
   const removePending = (rowId: string) => {
     setPending((current) => current.filter((row) => row.rowId !== rowId));
@@ -3200,10 +3209,86 @@ function BodyBulkSheet({ existing, close, save }: { existing: BodyRecord[]; clos
     measurementTiming: row.measurementTiming, device: row.device, condition: `${row.measurementTiming} · ${row.device}`,
   }));
 
-  return <Sheet title="인바디 데이터 이전" subtitle="과거 기록을 한 건씩 빠르게 옮긴 뒤 한 번에 저장해요." close={close}>
+  const importedDraft = (record: AiBodyImportRecord): BulkBodyDraft => ({
+    rowId: id("body-row"),
+    date: record.date,
+    time: record.time ?? "07:00",
+    weight: String(record.weight),
+    skeletalMuscle: String(record.skeletalMuscle),
+    bodyFatMass: String(record.bodyFatMass),
+    bodyFatRate: String(record.bodyFatRate),
+    visceralFat: String(record.visceralFat),
+    measurementTiming: "아침 공복",
+    device: "InBody Dial H30",
+  });
+
+  const analyzeMedia = async () => {
+    if (!files.length || importing) return;
+    setImporting(true);
+    setImportError("");
+    setImportWarnings([]);
+    try {
+      const frames = await prepareBodyMedia(files, setImportStatus);
+      const found: AiBodyImportRecord[] = [];
+      const warnings: string[] = [];
+      const batches = Math.ceil(frames.length / 6);
+      for (let offset = 0; offset < frames.length; offset += 6) {
+        setImportStatus(`AI가 체성분 기록을 읽고 있어요 · ${Math.floor(offset / 6) + 1}/${batches}`);
+        const result = await requestAiBodyImport(frames.slice(offset, offset + 6));
+        found.push(...result.records);
+        warnings.push(...result.warnings);
+      }
+      const bestByDate = new Map<string, AiBodyImportRecord>();
+      for (const record of found) {
+        const previous = bestByDate.get(record.date);
+        if (!previous || record.confidence > previous.confidence) bestByDate.set(record.date, record);
+      }
+      const occupied = new Set([...existingDates, ...pending.map((row) => row.date)]);
+      const additions: BulkBodyDraft[] = [];
+      let skipped = 0;
+      for (const record of bestByDate.values()) {
+        if (occupied.has(record.date)) {
+          skipped += 1;
+          continue;
+        }
+        occupied.add(record.date);
+        additions.push(importedDraft(record));
+      }
+      setPending((current) => {
+        const currentDates = new Set([...existingDates, ...current.map((row) => row.date)]);
+        return [...current, ...additions.filter((row) => !currentDates.has(row.date))];
+      });
+      setImportWarnings([...new Set(warnings)].slice(0, 5));
+      setImportStatus(additions.length
+        ? `${additions.length}개 기록을 찾았어요.${skipped ? ` 이미 있는 ${skipped}개는 제외했어요.` : ""}`
+        : skipped
+          ? `찾은 ${skipped}개 기록은 이미 저장되어 있어요.`
+          : "완전한 수치가 보이는 기록을 찾지 못했어요. 다른 사진을 선택하거나 직접 입력해주세요.");
+      setFiles([]);
+      setFileInputKey((value) => value + 1);
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "사진·동영상을 분석하지 못했어요.");
+      setImportStatus("");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return <Sheet title="인바디 과거 기록 가져오기" subtitle="사진·동영상에서 불러오거나 직접 입력한 뒤 확인해서 저장해요." close={close}>
     {!reviewing ? <div className="body-bulk-editor">
-      <div className="body-bulk-summary"><strong>직접 빠르게 입력</strong><span>한 건을 추가하면 아래 대기 목록에 쌓여요.</span></div>
-      <article className="body-bulk-entry">
+      <div className="body-import-tabs"><button type="button" className={mode === "media" ? "active" : ""} onClick={() => setMode("media")}>사진·동영상</button><button type="button" className={mode === "manual" ? "active" : ""} onClick={() => setMode("manual")}>직접 입력</button></div>
+      {mode === "media" ? <section className="body-media-import">
+        <div className="body-bulk-summary"><strong>인바디 화면 가져오기</strong><span>스크린샷 여러 장이나 화면 녹화 영상을 선택할 수 있어요.</span></div>
+        <label className={`body-media-picker${files.length ? " selected" : ""}`}>
+          <input key={fileInputKey} type="file" accept="image/*,video/*" multiple disabled={importing} onChange={(event) => { setFiles(Array.from(event.target.files ?? [])); setImportError(""); setImportStatus(""); setImportWarnings([]); }} />
+          <strong>{files.length ? `${files.length}개 파일 선택됨` : "사진·동영상 선택"}</strong>
+          <span>{files.length ? files.map((file) => file.name).join(" · ") : "사진 최대 24장 · 영상은 장면으로 나누어 분석"}</span>
+        </label>
+        <button type="button" className="primary-button body-media-analyze" disabled={!files.length || importing} onClick={() => void analyzeMedia()}>{importing ? "분석 중..." : "선택한 파일 분석하기"}</button>
+        {(importStatus || importError) && <p className={`body-media-status${importError ? " error" : ""}`}>{importError || importStatus}</p>}
+        {importWarnings.length > 0 && <div className="body-media-warnings">{importWarnings.map((warning) => <span key={warning}>{warning}</span>)}</div>}
+        <p className="body-media-privacy">원본 파일은 SOYA나 Firebase에 저장하지 않아요. 분석용 장면만 OpenAI로 보내고 결과 숫자만 대기 목록에 남겨요.</p>
+      </section> : <article className="body-bulk-entry">
         <div className="body-bulk-row-heading"><strong>{editingRowId ? "기록 수정" : "새 기록"}</strong><div>{(pending.length > 0 || existing.length > 0) && <button type="button" onClick={copyLatest}>직전 값 복사</button>}{editingRowId && <button type="button" onClick={() => resetDraft()}>수정 취소</button>}</div></div>
         <div className="two-fields sheet-leading-fields"><Field label="측정일"><input type="date" value={draft.date} onChange={(event) => update("date", event.target.value)} /></Field><Field label="측정시간"><input type="time" value={draft.time} onChange={(event) => update("time", event.target.value)} /></Field></div>
         <div className="body-bulk-metrics">
@@ -3216,10 +3301,10 @@ function BodyBulkSheet({ existing, close, save }: { existing: BodyRecord[]; clos
         <div className="two-fields"><Field label="측정 시점"><select value={draft.measurementTiming} onChange={(event) => update("measurementTiming", event.target.value)}><option>아침 공복</option><option>평소와 다른 시간</option><option>식후</option><option>운동 후</option></select></Field><Field label="측정 기기"><select value={draft.device} onChange={(event) => update("device", event.target.value)}><option>InBody Dial H30</option><option>헬스장 InBody</option><option>병원 InBody</option><option>다른 체성분 기기</option></select></Field></div>
         {attempted && error && <p className="body-bulk-error">{error}</p>}
         <button type="button" className="body-bulk-add" onClick={queueDraft}>{editingRowId ? "수정 완료" : "이 기록을 대기 목록에 추가"}</button>
-      </article>
+      </article>}
       <section className="body-bulk-queue"><div className="body-bulk-queue-heading"><strong>저장 대기</strong><span>{pending.length}개</span></div>{pending.length ? <div>{pending.slice().sort((a, b) => b.date.localeCompare(a.date)).map((row) => <article key={row.rowId}><div><strong>{row.date}</strong><span>체지방 {row.bodyFatMass}kg · 골격근 {row.skeletalMuscle}kg</span></div><div><button type="button" onClick={() => editPending(row)}>수정</button><button type="button" className="delete" onClick={() => removePending(row.rowId)}>삭제</button></div></article>)}</div> : <p>추가한 과거 기록이 아직 없어요.</p>}</section>
-      {hasDraftValues && pending.length > 0 && <p className="body-bulk-pending-note">작성 중인 값은 먼저 대기 목록에 추가해주세요.</p>}
-      <button type="button" className="primary-button submit-button" disabled={!pending.length || hasDraftValues} onClick={() => setReviewing(true)}>전체 저장 전 확인</button>
+      {mode === "manual" && hasDraftValues && pending.length > 0 && <p className="body-bulk-pending-note">작성 중인 값은 먼저 대기 목록에 추가해주세요.</p>}
+      <button type="button" className="primary-button submit-button" disabled={!pending.length || importing || (mode === "manual" && hasDraftValues)} onClick={() => setReviewing(true)}>전체 저장 전 확인</button>
     </div> : <div className="body-bulk-review">
       <div className="body-bulk-review-heading"><span className="eyebrow">저장 전 확인</span><h3>{pending.length}개 기록을 저장할까요?</h3></div>
       <div className="body-bulk-preview-list">{pending.slice().sort((a, b) => b.date.localeCompare(a.date)).map((row) => <article key={row.rowId}><div><strong>{row.date}</strong><span>{row.time} · {row.measurementTiming}</span></div><div><b>체지방 {row.bodyFatMass}kg</b><span>골격근 {row.skeletalMuscle}kg · 체중 {row.weight}kg</span></div></article>)}</div>

@@ -922,6 +922,23 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .step-overlap-check strong { font-size: 10px; line-height: 1.55; }
 .submit-button { width: 100%; min-height: 52px; margin-top: 6px; }
 .body-bulk-editor, .body-bulk-review { display: grid; gap: 14px; }
+.body-import-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--ink); background: var(--paper); }
+.body-import-tabs button { min-height: 43px; border: 0; background: transparent; color: var(--muted); font-family: inherit; font-size: 9px; font-weight: 850; cursor: pointer; }
+.body-import-tabs button + button { border-left: 1px solid var(--ink); }
+.body-import-tabs button.active { background: var(--coral); color: white; }
+.body-media-import { display: grid; gap: 11px; }
+.body-media-picker { min-height: 112px; padding: 16px; border: 1px dashed var(--ink); background: white; display: grid; place-content: center; gap: 7px; text-align: center; cursor: pointer; overflow: hidden; }
+.body-media-picker.selected { border-style: solid; background: var(--cream); }
+.body-media-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.body-media-picker strong { color: var(--coral); font-size: 11px; }
+.body-media-picker span { max-width: 100%; color: var(--muted); font-size: 8px; line-height: 1.6; overflow-wrap: anywhere; }
+.body-media-analyze { min-height: 46px; }
+.body-media-analyze:disabled { opacity: .45; cursor: default; }
+.body-media-status { margin: 0; padding: 10px 11px; border: 1px solid var(--sage); background: var(--sage-soft); color: #536d57; font-size: 8px; line-height: 1.6; }
+.body-media-status.error { border-color: #b65348; background: #fff0ed; color: #a5473e; }
+.body-media-warnings { display: grid; gap: 5px; }
+.body-media-warnings span { color: #9b6c3b; font-size: 8px; line-height: 1.5; }
+.body-media-privacy { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.65; }
 .body-bulk-summary { padding: 12px; border: 1px solid var(--line); background: var(--cream); display: grid; gap: 5px; }
 .body-bulk-summary strong { font-size: 10px; }
 .body-bulk-summary span { color: var(--muted); font-size: 8px; }
