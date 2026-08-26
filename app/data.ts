@@ -195,6 +195,19 @@ export type ReminderSettings = {
   travelBehavior: "기본 유지" | "핵심만" | "모두 끄기";
 };
 
+export type GoalHistoryEntry = {
+  id: string;
+  startedAt: string;
+  plannedEndAt: string;
+  completedAt: string;
+  mode: "감량기" | "유지기";
+  targetBodyFatChange: number;
+  targetMuscleChange: number;
+  bodyFatChange?: number;
+  muscleChange?: number;
+  outcome: "유지기로 전환" | "강도를 낮춰 이어가기" | "새 목표 시작";
+};
+
 export type AppState = {
   lastBackupAt?: string;
   profile: {
@@ -242,6 +255,7 @@ export type AppState = {
   loveRecords?: LoveRecord[];
   consultations: Consultation[];
   weeklyReviews?: WeeklyReview[];
+  goalHistory?: GoalHistoryEntry[];
   reminderSettings?: ReminderSettings;
   skippedTasks: string[];
 };
@@ -322,6 +336,7 @@ export const initialState: AppState = {
   loveRecords: [],
   consultations: [],
   weeklyReviews: [],
+  goalHistory: [],
   skippedTasks: [],
 };
 
@@ -360,6 +375,7 @@ export function createFreshState(): AppState {
     loveRecords: [],
     consultations: [],
     weeklyReviews: [],
+    goalHistory: [],
     skippedTasks: [],
     lastBackupAt: undefined,
   };

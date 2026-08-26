@@ -44,6 +44,7 @@ const coreKeys = [
   "workoutGoal",
   "reminderSettings",
   "skippedTasks",
+  "goalHistory",
   "lastBackupAt",
 ] as const satisfies readonly (keyof AppState)[];
 
@@ -62,6 +63,7 @@ function coreState(state: AppState) {
     workoutGoal: state.workoutGoal,
     reminderSettings: state.reminderSettings,
     skippedTasks: state.skippedTasks,
+    goalHistory: state.goalHistory,
     lastBackupAt: state.lastBackupAt,
   });
 }

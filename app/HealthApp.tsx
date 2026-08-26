@@ -48,7 +48,7 @@ import {
 } from "./firebase-notifications";
 
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
-type Modal = null | "quick" | "measurement-picker" | "movement-picker" | "body" | "body-bulk" | "body-detail" | "circumference" | "activity" | "apple-health" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "profile-settings" | "account" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "love" | "consultation-detail" | "reminders" | "data-management";
+type Modal = null | "quick" | "measurement-picker" | "movement-picker" | "body" | "body-bulk" | "body-detail" | "circumference" | "activity" | "apple-health" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "goal-complete" | "profile-settings" | "account" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "love" | "consultation-detail" | "reminders" | "data-management";
 type Consultation = AppState["consultations"][number];
 type WeeklyReview = NonNullable<AppState["weeklyReviews"]>[number];
 type BleedingState = Exclude<CycleEntry["state"], "없음">;
@@ -104,6 +104,13 @@ type BulkBodyDraft = {
 type BackupEnvelope = { format: "SOYA_BACKUP"; version: 1; exportedAt: string; state: AppState };
 type RestoreMode = "merge" | "replace";
 type CsvKind = "body" | "circumference" | "meals" | "workouts" | "activity" | "cycles";
+type GoalCompletionChoice = {
+  outcome: NonNullable<AppState["goalHistory"]>[number]["outcome"];
+  mode: AppState["profile"]["mode"];
+  goalEndDate: string;
+  targetBodyFatChange: number;
+  targetMuscleChange: number;
+};
 type OnboardingDraft = {
   nickname: string;
   birthDate: string;
@@ -252,6 +259,7 @@ function normalizeAppState(value: unknown): AppState {
     loveRecords: Array.isArray(saved.loveRecords) ? saved.loveRecords : legacyLoveRecords,
     consultations: Array.isArray(saved.consultations) ? saved.consultations : [],
     weeklyReviews: Array.isArray(saved.weeklyReviews) ? saved.weeklyReviews : [],
+    goalHistory: Array.isArray(saved.goalHistory) ? saved.goalHistory : [],
     reminderSettings: {
       ...defaultReminders,
       ...reminders,
@@ -290,6 +298,7 @@ function mergeAppState(current: AppState, imported: AppState): AppState {
     loveRecords: mergeById(current.loveRecords ?? [], imported.loveRecords ?? []),
     consultations: mergeById(current.consultations, imported.consultations),
     weeklyReviews: mergeById(current.weeklyReviews ?? [], imported.weeklyReviews ?? []),
+    goalHistory: mergeById(current.goalHistory ?? [], imported.goalHistory ?? []),
     skippedTasks: [...new Set([...current.skippedTasks, ...imported.skippedTasks])],
   });
 }
@@ -1347,6 +1356,38 @@ export function HealthApp() {
     setModal(null);
   };
 
+  const finishCurrentGoal = (choice: GoalCompletionChoice) => {
+    commit((current) => {
+      const progress = bodyGoalProgressFor(current, today);
+      const history = {
+        id: id("goal-history"),
+        startedAt: current.profile.goalStartDate ?? today,
+        plannedEndAt: current.profile.goalEndDate,
+        completedAt: today,
+        mode: current.profile.mode,
+        targetBodyFatChange: current.profile.targetBodyFatChange,
+        targetMuscleChange: current.profile.targetMuscleChange,
+        bodyFatChange: progress.baseline && progress.latestRecord ? progress.bodyFatChange : undefined,
+        muscleChange: progress.baseline && progress.latestRecord ? progress.muscleChange : undefined,
+        outcome: choice.outcome,
+      } satisfies NonNullable<AppState["goalHistory"]>[number];
+      return {
+        ...current,
+        profile: {
+          ...current.profile,
+          mode: choice.mode,
+          goalWeek: 1,
+          goalStartDate: today,
+          goalEndDate: choice.goalEndDate,
+          targetBodyFatChange: choice.targetBodyFatChange,
+          targetMuscleChange: choice.targetMuscleChange,
+        },
+        goalHistory: [history, ...(current.goalHistory ?? [])],
+      };
+    });
+    setModal(null);
+  };
+
   const saveProfileSettings = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -1869,6 +1910,7 @@ export function HealthApp() {
       {modal === "food-library" && <FoodLibrarySheet library={state.foodLibrary ?? []} close={closeModal} save={saveFoodLibraryItem} saveSet={saveFoodSet} remove={deleteFoodLibraryItem} />}
       {modal === "nutrition-goal" && <NutritionGoalSheet goal={state.nutritionGoal} close={closeModal} save={saveNutritionGoal} />}
       {modal === "profile-goal" && <ProfileGoalSheet profile={state.profile} latestBody={[...state.bodyRecords].sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`))[0]} today={today} close={closeModal} save={saveProfileGoal} />}
+      {modal === "goal-complete" && <GoalCompletionSheet state={state} today={today} close={closeModal} save={finishCurrentGoal} />}
       {modal === "profile-settings" && <ProfileSettingsSheet profile={state.profile} googleName={authUser.displayName ?? undefined} today={today} close={closeAccountChild} save={saveProfileSettings} />}
       {modal === "account" && <AccountSheet nickname={state.profile.nickname?.trim() || authUser.displayName?.split(" ")[0] || "사용자"} close={closeModal} openProfile={() => setModal("profile-settings")} openData={() => setModal("data-management")} logout={async () => { await saveQueue.current; await signOutGoogleUser(); }} />}
       {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={closeModal} save={saveWorkout} />}
@@ -1952,6 +1994,12 @@ function TodayView(props: TodayViewProps) {
   const workoutGoal = state.workoutGoal ?? initialState.workoutGoal!;
   const cardio = weeklyCardio(state, today);
   const targetTiming = goalTiming(state.profile, today);
+  const targetProgress = bodyGoalProgressFor(state, today);
+  const hasGoalTrend = Boolean(targetProgress.baseline && targetProgress.latestRecord && targetProgress.baseline.id !== targetProgress.latestRecord.id);
+  const goalTargetsReached = hasGoalTrend
+    && (state.profile.targetBodyFatChange === 0 || targetProgress.bodyFatPercent >= 100)
+    && (state.profile.targetMuscleChange === 0 || targetProgress.musclePercent >= 100);
+  const goalReady = targetTiming.daysLeft === 0 || goalTargetsReached;
   const todayTravelLevel = travelLevelForDate(state.profile, today);
   const travelToday = isTravelDate(state.profile, today);
   const energy = dailyEnergyGuide(state, today);
@@ -1964,8 +2012,9 @@ function TodayView(props: TodayViewProps) {
     <div className="home-layout-row home-layout-primary">
       <div className="home-layout-stack home-layout-primary-stack">
         <section className="card goal-summary-card">
-          <CardTitle title="현재 목표" aside={<button className="text-button" onClick={() => setModal("profile-goal")}>목표 수정</button>} />
+          <CardTitle title="현재 목표" aside={<span className="goal-summary-actions"><button className="text-button" onClick={() => setModal("profile-goal")}>목표 수정</button><button className="text-button" onClick={() => setModal("goal-complete")}>목표 정리</button></span>} />
           <div className="goal-mode-line"><span className={`goal-mode-badge mode-${state.profile.mode}`}>{state.profile.mode}</span><strong>{targetTiming.week}주차 · {targetTiming.daysLeft}일 남음</strong></div>
+          {goalReady && <button type="button" className="goal-ready-banner" onClick={() => setModal("goal-complete")}><span>{goalTargetsReached && targetTiming.daysLeft > 0 ? "목표를 일찍 달성했어요" : "목표 기간이 끝났어요"}</span><strong>결과 정리하기 →</strong></button>}
           <div className="goal-target-grid"><div><span>체지방량</span><strong>{signed(state.profile.targetBodyFatChange)}kg</strong></div><div><span>골격근량</span><strong>{signed(state.profile.targetMuscleChange)}kg</strong></div></div>
           {travelToday && <><div className="travel-level"><span>여행 모드 · 기본</span><strong>{state.profile.travelLevel ?? "균형 유지"}</strong></div><TravelDayControl date={today} level={todayTravelLevel} defaultLevel={state.profile.travelLevel ?? "균형 유지"} onChange={updateTravelDayLevel} /></>}
           <BodyGoalProgress state={state} endDate={today} />
@@ -2192,7 +2241,8 @@ function ChangeView({ state, today, setModal, openDetail, openCircumference }: {
   const travelToday = isTravelDate(state.profile, today);
   const goalCopy = `체지방 ${signed(state.profile.targetBodyFatChange)}kg · 골격근 ${signed(state.profile.targetMuscleChange)}kg${travelToday ? ` · 여행 기본 ${state.profile.travelLevel ?? "균형 유지"}` : ""}`;
   const trendInfo = bodyTrendMetrics[trendMetric];
-  return <div className="section-stack"><section className={`card change-overview ${travelToday ? "travel-change-overview" : ""}`}><div className="change-overview-main"><div><span className="eyebrow">{state.profile.mode} {timing.week}주차{travelToday ? " · 여행 중" : ""}</span><h2>{travelToday ? "측정 공백도 여행 기록의 일부예요" : <>체지방 {oldest && latest ? `${signed(latest.bodyFatMass - oldest.bodyFatMass)}kg` : "-"} · 골격근 {oldest && latest ? `${signed(latest.skeletalMuscle - oldest.skeletalMuscle)}kg` : "-"}</>}</h2><p>{goalCopy}</p></div><div className="change-overview-actions"><button className="ghost-button" onClick={() => setModal("profile-goal")}>목표 수정</button><button className="primary-button" onClick={() => setModal("body")}>인바디 입력</button></div></div><BodyGoalProgress state={state} endDate={today} /></section>
+  return <div className="section-stack"><section className={`card change-overview ${travelToday ? "travel-change-overview" : ""}`}><div className="change-overview-main"><div><span className="eyebrow">{state.profile.mode} {timing.week}주차{travelToday ? " · 여행 중" : ""}</span><h2>{travelToday ? "측정 공백도 여행 기록의 일부예요" : <>체지방 {oldest && latest ? `${signed(latest.bodyFatMass - oldest.bodyFatMass)}kg` : "-"} · 골격근 {oldest && latest ? `${signed(latest.skeletalMuscle - oldest.skeletalMuscle)}kg` : "-"}</>}</h2><p>{goalCopy}</p></div><div className="change-overview-actions"><button className="ghost-button" onClick={() => setModal("goal-complete")}>목표 정리</button><button className="ghost-button" onClick={() => setModal("profile-goal")}>목표 수정</button><button className="primary-button" onClick={() => setModal("body")}>인바디 입력</button></div></div><BodyGoalProgress state={state} endDate={today} /></section>
+    {(state.goalHistory ?? []).length > 0 && <details className="card goal-history-card"><summary><span>지난 목표</span><small>{state.goalHistory?.length}개</small><i aria-hidden="true">⌄</i></summary><div className="goal-history-list">{(state.goalHistory ?? []).map((goal) => <article key={goal.id}><div><span>{goal.mode} · {goal.startedAt.replaceAll("-", ".")} → {goal.completedAt.replaceAll("-", ".")}</span><strong>{goal.outcome}</strong></div><p><span>체지방 <b>{goal.bodyFatChange === undefined ? "-" : `${signed(goal.bodyFatChange)}kg`}</b><small>/ 목표 {signed(goal.targetBodyFatChange)}kg</small></span><span>골격근 <b>{goal.muscleChange === undefined ? "-" : `${signed(goal.muscleChange)}kg`}</b><small>/ 목표 {signed(goal.targetMuscleChange)}kg</small></span></p></article>)}</div></details>}
     <div className="metric-grid change-metric-grid"><MetricCard label="체지방량" value={String(latest?.bodyFatMass ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="골격근량" value={String(latest?.skeletalMuscle ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="체중" value={String(latest?.weight ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="내장지방" value={String(latest?.visceralFat ?? "-")} unit="Lv" hint={measuredAt} /></div>
     <section className="card chart-card cycle-aware-chart"><CardTitle title={`${trendInfo.label} 흐름`} aside={`${trendInfo.unit} · ${chartRecords.length}회`} /><div className="body-metric-filter" role="tablist" aria-label="체성분 그래프 항목 선택">{(Object.keys(bodyTrendMetrics) as BodyTrendMetric[]).map((metric) => <button type="button" role="tab" aria-selected={trendMetric === metric} className={trendMetric === metric ? "active" : ""} onClick={() => setTrendMetric(metric)} key={metric}>{bodyTrendMetrics[metric].label}</button>)}</div><div className="body-phase-filter" role="tablist" aria-label="월경 주기 구간으로 체성분 기록 보기"><button type="button" role="tab" aria-selected={phaseFilter === "all"} className={phaseFilter === "all" ? "active" : ""} onClick={() => setPhaseFilter("all")}>전체</button><button type="button" role="tab" aria-selected={phaseFilter === "focus"} className={phaseFilter === "focus" ? "active" : ""} onClick={() => setPhaseFilter("focus")}>월경 후 집중</button><button type="button" role="tab" aria-selected={phaseFilter === "influence"} className={phaseFilter === "influence" ? "active" : ""} onClick={() => setPhaseFilter("influence")}>월경 전·중</button></div><BodyTrendChart records={chartRecords} cycles={state.cycles} metric={trendMetric} showMenstrualBands={phaseFilter === "all"} emptyText={phaseFilter === "all" ? "체성분 기록을 입력하면 흐름이 보여요." : "이 주기 구간의 체성분 기록이 아직 없어요."} /></section>
     <section className="card circumference-card"><CardTitle title="허리·엉덩이둘레" aside={<button type="button" className="text-button" onClick={() => openCircumference()}>기록하기</button>} />
@@ -3268,6 +3318,39 @@ function NutritionGoalSheet({ goal, close, save }: { goal: AppState["nutritionGo
     <RangeFields label="지방" minName="fatMin" maxName="fatMax" minValue={goal.fatMin} maxValue={goal.fatMax} unit="g" />
     <div className="two-fields"><Field label="당류 상한 (g)"><input type="number" name="sugarMax" min="0" step="0.1" defaultValue={goal.sugarMax} required /></Field><Field label="식이섬유 하한 (g)"><input type="number" name="fiberMin" min="0" step="0.1" defaultValue={goal.fiberMin} required /></Field></div>
     <button className="primary-button submit-button" type="submit">영양 목표 저장</button>
+  </form></Sheet>;
+}
+
+function GoalCompletionSheet({ state, today, close, save }: { state: AppState; today: string; close: () => void; save: (choice: GoalCompletionChoice) => void }) {
+  const progress = bodyGoalProgressFor(state, today);
+  const [choice, setChoice] = useState<GoalCompletionChoice>({
+    outcome: "유지기로 전환",
+    mode: "유지기",
+    goalEndDate: addDays(today, 28),
+    targetBodyFatChange: 0,
+    targetMuscleChange: 0,
+  });
+  const choose = (outcome: GoalCompletionChoice["outcome"]) => {
+    if (outcome === "유지기로 전환") setChoice({ outcome, mode: "유지기", goalEndDate: addDays(today, 28), targetBodyFatChange: 0, targetMuscleChange: 0 });
+    else if (outcome === "강도를 낮춰 이어가기") setChoice({ outcome, mode: state.profile.mode, goalEndDate: addDays(today, 28), targetBodyFatChange: roundNutrient(state.profile.targetBodyFatChange / 2), targetMuscleChange: roundNutrient(state.profile.targetMuscleChange / 2) });
+    else setChoice({ outcome, mode: state.profile.mode, goalEndDate: addDays(today, 56), targetBodyFatChange: state.profile.targetBodyFatChange, targetMuscleChange: state.profile.targetMuscleChange });
+  };
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    save({ ...choice, goalEndDate: choice.goalEndDate < today ? today : choice.goalEndDate });
+  };
+  return <Sheet title="목표 마무리" close={close}><form className="form-stack goal-completion-form" onSubmit={submit}>
+    <section className="goal-result-card"><span>{state.profile.goalStartDate?.replaceAll("-", ".")} → {today.replaceAll("-", ".")}</span><strong>{state.profile.mode} 결과</strong><div><p><small>체지방량</small><b>{progress.baseline && progress.latestRecord ? `${signed(progress.bodyFatChange)}kg` : "측정 부족"}</b><em>목표 {signed(state.profile.targetBodyFatChange)}kg</em></p><p><small>골격근량</small><b>{progress.baseline && progress.latestRecord ? `${signed(progress.muscleChange)}kg` : "측정 부족"}</b><em>목표 {signed(state.profile.targetMuscleChange)}kg</em></p></div></section>
+    <section className="goal-next-section"><strong>이제 어떻게 이어갈까요?</strong><div className="goal-completion-options">
+      {([
+        ["유지기로 전환", "현재 변화를 편안하게 유지해요."],
+        ["강도를 낮춰 이어가기", "같은 방향을 절반 정도의 목표로 이어가요."],
+        ["새 목표 시작", "기간과 변화량을 새로 정해요."],
+      ] as const).map(([outcome, detail]) => <button key={outcome} type="button" className={choice.outcome === outcome ? "active" : ""} onClick={() => choose(outcome)}><span><b>{outcome}</b><small>{detail}</small></span><i aria-hidden="true">{choice.outcome === outcome ? "✓" : ""}</i></button>)}
+    </div></section>
+    <section className="goal-next-fields"><div className="two-fields"><Field label="다음 관리 모드"><select value={choice.mode} onChange={(event) => setChoice((current) => ({ ...current, mode: event.target.value as GoalCompletionChoice["mode"] }))}><option>감량기</option><option>유지기</option></select></Field><Field label="다음 목표일"><input type="date" min={today} value={choice.goalEndDate} onChange={(event) => setChoice((current) => ({ ...current, goalEndDate: event.target.value }))} required /></Field></div><div className="two-fields"><Field label="체지방량 변화 (kg)"><input type="number" step="0.1" value={choice.targetBodyFatChange} onChange={(event) => setChoice((current) => ({ ...current, targetBodyFatChange: Number(event.target.value) }))} required /></Field><Field label="골격근량 변화 (kg)"><input type="number" step="0.1" value={choice.targetMuscleChange} onChange={(event) => setChoice((current) => ({ ...current, targetMuscleChange: Number(event.target.value) }))} required /></Field></div></section>
+    <p className="goal-archive-note">지금 목표의 결과는 ‘변화’ 탭에 보관되고, 오늘부터 다음 목표가 시작돼요.</p>
+    <button type="submit" className="primary-button submit-button">결과 저장하고 이어가기</button>
   </form></Sheet>;
 }
 
