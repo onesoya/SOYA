@@ -788,12 +788,11 @@ html, body {
 .topbar-heading { position: relative; display: flex; align-items: center; gap: 13px; }
 .topbar-tiger-button { width: 76px; height: 76px; flex: none; display: grid; place-items: center; padding: 0; border: 0; background: transparent; line-height: 0; }
 .topbar-tiger { width: 48px; height: 48px; display: block; object-fit: cover; image-rendering: pixelated; border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--coral); }
-.account-menu-wrap { position: relative; flex: 0 0 auto; }
-.account-menu-button { min-height: 42px; max-width: 96px; padding: 0 10px; overflow: hidden; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-family: inherit; font-size: 10px; font-weight: 850; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.account-popover { position: absolute; z-index: 70; top: calc(100% + 9px); right: 0; width: 176px; padding: 11px; border: 2px solid var(--ink); background: var(--paper); box-shadow: 4px 4px 0 var(--ink); display: grid; gap: 7px; }
-.account-popover > strong { padding: 3px 3px 7px; border-bottom: 1px solid var(--line); overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.account-popover button { min-height: 36px; border: 1px solid var(--ink); background: var(--cream); font-family: inherit; font-size: 9px; font-weight: 850; cursor: pointer; }
-.account-popover .logout-button { background: var(--coral); color: white; }
+.account-menu-button { min-width: 88px; min-height: 42px; max-width: 106px; padding: 0 11px; overflow: hidden; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-family: inherit; font-size: 10px; font-weight: 850; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.account-sheet-actions { display: grid; gap: 12px; }
+.account-sheet-actions button { min-height: 64px; padding: 0 18px; border: 2px solid var(--ink); background: var(--paper); color: var(--ink); box-shadow: 3px 3px 0 var(--ink); display: flex; align-items: center; justify-content: space-between; gap: 16px; font-family: inherit; font-size: 14px; font-weight: 900; text-align: left; cursor: pointer; }
+.account-sheet-actions button b { font-size: 20px; line-height: 1; }
+.account-sheet-actions .logout { background: var(--coral); color: white; }
 .mobile-nav-shield { display: none; }
 
 .card, .next-card, .metric-card, .consult-checks > div,
@@ -958,11 +957,11 @@ h1, h2, h3, strong, b { font-weight: 700; }
   justify-content: flex-end;
   gap: 5px;
 }
-.calendar-toolbar-actions button { min-width: 44px; min-height: 30px; padding: 0 8px; font-size: 8px; box-shadow: 2px 2px 0 var(--ink); }
+.calendar-toolbar-actions button { min-width: 52px; min-height: 32px; padding: 0 9px; font-size: 9px; box-shadow: 2px 2px 0 var(--ink); }
 .calendar-toolbar-actions .ghost-button { color: var(--ink); background: var(--cream); }
 .food-calendar-actions {
   top: calc(var(--calendar-action-top) - 35px);
-  width: 93px;
+  width: 109px;
   display: grid;
   align-items: stretch;
   justify-content: stretch;
@@ -976,7 +975,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
   border: 1px solid var(--ink);
   background: var(--paper);
   color: var(--coral);
-  font-size: 7px;
+  font-size: 8px;
   font-weight: 900;
   white-space: nowrap;
   cursor: pointer;
@@ -1069,13 +1068,13 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .menstrual-summary > * { padding: 7px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--cream); font-size: 9px; }
 .menstrual-summary strong { background: #f4d8d2; }
 .cycle-detail-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-.cycle-history-card { display: grid; gap: 14px; }
+.cycle-history-card { display: grid; gap: 0; }
 .cycle-history-card > summary { list-style: none; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
 .cycle-history-card > summary::-webkit-details-marker { display: none; }
 .cycle-history-card > summary span { font-size: 16px; font-weight: 900; }
 .cycle-history-card > summary i { font-style: normal; font-size: 18px; transition: transform .18s ease; }
 .cycle-history-card[open] > summary i { transform: rotate(180deg); }
-.cycle-history-controls { display: flex; justify-content: flex-end; margin: 5px 0 3px; }
+.cycle-history-controls { display: flex; justify-content: flex-end; margin: 0 0 14px; }
 .cycle-year-select { min-width: 92px; height: 36px; padding: 0 28px 0 10px; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); font-family: inherit; font-size: 9px; font-weight: 850; }
 .cycle-history-list { border: 1px solid var(--line); background: white; display: grid; }
 .cycle-history-item { padding: 14px; border-bottom: 1px solid var(--line); display: grid; gap: 11px; }
@@ -1329,7 +1328,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
 /* Readable type scale for compact pixel UI */
 .sheet-title-action { font-size: 10px; }
 .field > span, .measure-field > div:first-child > span { font-size: 11px; }
-.calendar-legend { font-size: 10px; }
+.calendar-legend { font-size: 9px; }
 .menstrual-phase-card p { font-size: 10px; }
 .menstrual-summary > * { font-size: 10px; }
 .cycle-history-heading small { font-size: 9px; }
@@ -1352,6 +1351,50 @@ h1, h2, h3, strong, b { font-weight: 700; }
 .love-date-cell.selected { border-color: var(--ink); background: #f7d2ce; box-shadow: inset 0 0 0 2px var(--coral); }
 .love-date-cell.recorded:not(.selected) { background: #fff4f1; }
 .love-date-picker > p { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.6; overflow-wrap: anywhere; }
+.love-draft-list { display: grid; gap: 12px; }
+.love-draft-card { padding: 14px; border: 2px solid var(--ink); background: var(--paper); box-shadow: 3px 3px 0 rgba(51, 46, 43, .14); display: grid; gap: 12px; }
+.love-draft-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.love-draft-heading strong { font-size: 12px; }
+.love-draft-heading button { width: 30px; height: 30px; padding: 0; border: 0; background: transparent; color: var(--muted); font-family: inherit; font-size: 18px; cursor: pointer; }
+.love-draft-card textarea { min-height: 72px; }
+.love-delete-existing { justify-self: end; min-height: 32px; padding: 0 10px; border: 1px solid #c46d64; background: var(--paper); color: #a94f46; font-family: inherit; font-size: 9px; font-weight: 850; cursor: pointer; }
+.love-empty-guide { margin: 0; padding: 14px; border: 1px dashed var(--line); color: var(--muted); font-size: 10px; line-height: 1.65; text-align: center; }
+.submit-button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Small supporting copy stays readable without competing with headings. */
+.goal-progress small,
+.goal-current-body > span,
+.travel-day-control small,
+.travel-level-picker small,
+.travel-toggle small,
+.reminder-row small,
+.push-permission-section p,
+.cycle-reminder-note,
+.data-section-heading small,
+.csv-export-grid button small,
+.restore-preview-title small,
+.travel-reminder-section p,
+.energy-guide-mini span,
+.energy-guide-mini span > small,
+.activity-energy-panel span,
+.daily-activity-stats span,
+.activity-energy-panel small,
+.activity-priority-note span,
+.consult-followup small,
+.weekly-goal-progress-heading small,
+.weekly-goal-progress-grid p,
+.weekly-auto-review-heading small,
+.saved-food-results span,
+.saved-food-results em,
+.official-food-search-heading span,
+.official-food-results span,
+.official-food-results em,
+.food-library-list span,
+.food-library-list small,
+.cycle-period-list small,
+.bleeding-date-grid button small,
+.entry-item .confidence-badge,
+.record-phase-badge { font-size: 8px; }
 
 @media (max-width: 900px) {
   .main-content { padding-bottom: 190px; }
@@ -1373,8 +1416,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .topbar { gap: 9px; }
   .header-actions { gap: 6px; }
   .save-state { display: none; }
-  .account-menu-button { min-height: 40px; max-width: 76px; padding-inline: 7px; font-size: 9px; }
-  .account-popover { width: 164px; }
+  .account-menu-button { min-width: 80px; min-height: 40px; max-width: 84px; padding-inline: 8px; font-size: 10px; }
   .reminder-button { width: 38px; height: 40px; }
   .header-library-button { max-width: 82px; min-height: 40px; padding: 0 8px; font-size: 8px; line-height: 1.45; white-space: normal; }
   .pixel-calendar-card {
@@ -1390,16 +1432,16 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .calendar-toolbar .month-navigator { max-width: 100%; grid-template-columns: 26px minmax(72px, auto) 26px auto; gap: 3px; }
   .calendar-toolbar .month-arrow { width: 26px; }
   .calendar-toolbar .month-current { font-size: 13px; }
-  .calendar-toolbar .month-today { padding-inline: 5px; font-size: 7px; }
+  .calendar-toolbar .month-today { padding-inline: 5px; font-size: 8px; }
   .calendar-toolbar-actions { gap: 4px; }
-  .calendar-toolbar-actions button { min-width: 44px; min-height: 28px; padding-inline: 6px; font-size: 7px; }
-  .food-calendar-actions { top: calc(var(--calendar-action-top) - 32px); width: 92px; gap: 4px; }
-  .food-calendar-actions > .food-calendar-library-button { min-width: 0; padding-inline: 2px; font-size: 6px; }
+  .calendar-toolbar-actions button { min-width: 52px; min-height: 30px; padding-inline: 7px; font-size: 8px; }
+  .food-calendar-actions { top: calc(var(--calendar-action-top) - 34px); width: 108px; gap: 4px; }
+  .food-calendar-actions > .food-calendar-library-button { min-width: 0; padding-inline: 3px; font-size: 8px; }
   .food-calendar-action-row { gap: 4px; }
   .food-calendar-action-row button { min-width: 0; }
   .calendar-day, .calendar-blank { min-height: 46px; }
   .calendar-day.today::before { display: none; }
-  .calendar-legend { gap: 9px 12px; }
+  .calendar-legend { gap: 9px 12px; font-size: 8px; }
   .daily-nutrient-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .travel-day-control { padding: 10px; }
   .travel-day-options button { font-size: 7px; }
@@ -1453,7 +1495,7 @@ h1, h2, h3, strong, b { font-weight: 700; }
   .daily-activity-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .daily-activity-stats > div { padding: 9px 7px; }
   .daily-activity-stats strong { font-size: 12px; }
-  .rpe-scale span { font-size: 6px; padding-inline: 2px; }
+  .rpe-scale span { font-size: 7px; padding-inline: 2px; }
   .cycle-period-calendar { padding: 11px 9px; }
   .cycle-period-calendar > .month-navigator { grid-template-columns: 26px minmax(104px, auto) 26px auto; }
 }

@@ -48,7 +48,7 @@ import {
 } from "./firebase-notifications";
 
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
-type Modal = null | "quick" | "measurement-picker" | "movement-picker" | "body" | "body-bulk" | "body-detail" | "circumference" | "activity" | "apple-health" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "profile-settings" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "love" | "consultation-detail" | "reminders" | "data-management";
+type Modal = null | "quick" | "measurement-picker" | "movement-picker" | "body" | "body-bulk" | "body-detail" | "circumference" | "activity" | "apple-health" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "profile-settings" | "account" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "love" | "consultation-detail" | "reminders" | "data-management";
 type Consultation = AppState["consultations"][number];
 type WeeklyReview = NonNullable<AppState["weeklyReviews"]>[number];
 type BleedingState = Exclude<CycleEntry["state"], "없음">;
@@ -761,7 +761,6 @@ export function HealthApp() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authMessage, setAuthMessage] = useState("");
   const [authSigningIn, setAuthSigningIn] = useState(false);
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "offline">("saved");
   const [pushStatus, setPushStatus] = useState<PushStatus>("off");
   const [pushMessage, setPushMessage] = useState("");
@@ -1174,7 +1173,6 @@ export function HealthApp() {
         sex: String(data.get("sex") || "여성") as NonNullable<AppState["profile"]["sex"]>,
       },
     }));
-    setAccountMenuOpen(false);
     setModal(null);
   };
 
@@ -1452,8 +1450,6 @@ export function HealthApp() {
   const deleteLove = (entry: LoveRecord) => {
     if (!window.confirm(`${entry.date} 사랑 기록을 삭제할까요?`)) return;
     commit((current) => ({ ...current, loveRecords: (current.loveRecords ?? []).filter((item) => item.id !== entry.id) }));
-    setLoveDate(undefined);
-    setModal(null);
   };
 
   const deleteCycleRange = (date: string) => {
@@ -1516,16 +1512,16 @@ export function HealthApp() {
     setModal(null);
   };
 
-  const saveLove = (dates: string[], count: number, contraception: LoveRecord["contraception"], note?: string) => {
-    const selectedDates = [...new Set(dates)].sort();
+  const saveLove = (drafts: Array<{ date: string; count: number; contraception: LoveRecord["contraception"]; note?: string }>) => {
+    const selectedDates = [...new Set(drafts.map((draft) => draft.date))].sort();
     commit((current) => {
       const previous = new Map((current.loveRecords ?? []).map((entry) => [entry.date, entry]));
-      const nextEntries = selectedDates.map((date): LoveRecord => ({
-        id: previous.get(date)?.id ?? id("love"),
-        date,
-        count: Math.max(1, count),
-        contraception,
-        note: note?.trim() || undefined,
+      const nextEntries = drafts.map((draft): LoveRecord => ({
+        id: previous.get(draft.date)?.id ?? id("love"),
+        date: draft.date,
+        count: Math.max(1, draft.count),
+        contraception: draft.contraception,
+        note: draft.note?.trim() || undefined,
       }));
       return { ...current, loveRecords: [...(current.loveRecords ?? []).filter((item) => !selectedDates.includes(item.date)), ...nextEntries].sort((a, b) => a.date.localeCompare(b.date)) };
     });
@@ -1612,7 +1608,7 @@ export function HealthApp() {
       <main className="main-content">
         <header className="topbar">
           <div className="topbar-heading"><span className="topbar-tiger-button" aria-hidden="true"><Image className="topbar-tiger" src="/mascot-top-transparent.png" width={76} height={76} alt="" /></span><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? travelToday ? <>여행 중에도<br />내 리듬대로</> : <>오늘도<br />가볍게 기록해요</> : tabs.find((item) => item.id === tab)?.label}</h1></div></div>
-          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "저장 확인 필요" : "저장됨"}</span><button className="icon-button reminder-button" onClick={() => setModal("reminders")} aria-label="알림 설정"><span className="pixel-bell" aria-hidden="true" /></button><div className="account-menu-wrap"><button className="account-menu-button" type="button" aria-haspopup="dialog" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((current) => !current)}>{state.profile.nickname?.trim() || authUser.displayName?.split(" ")[0] || "사용자"}님</button>{accountMenuOpen && <div className="account-popover" role="dialog" aria-label="내 정보 메뉴"><strong>{state.profile.nickname?.trim() || authUser.displayName || "사용자"}님</strong><button type="button" onClick={() => { setAccountMenuOpen(false); setModal("profile-settings"); }}>내 정보 수정</button><button type="button" onClick={() => { setAccountMenuOpen(false); setModal("data-management"); }}>데이터 관리</button><button type="button" className="logout-button" onClick={() => { setAccountMenuOpen(false); void signOutGoogleUser(); }}>로그아웃</button></div>}</div></div>
+          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "저장 확인 필요" : "저장됨"}</span><button className="icon-button reminder-button" onClick={() => setModal("reminders")} aria-label="알림 설정"><span className="pixel-bell" aria-hidden="true" /></button><button className="account-menu-button" type="button" onClick={() => setModal("account")}>{state.profile.nickname?.trim() || authUser.displayName?.split(" ")[0] || "사용자"}님</button></div>
         </header>
 
         {tab === "today" && (
@@ -1642,11 +1638,12 @@ export function HealthApp() {
       {modal === "nutrition-goal" && <NutritionGoalSheet goal={state.nutritionGoal} close={closeModal} save={saveNutritionGoal} />}
       {modal === "profile-goal" && <ProfileGoalSheet profile={state.profile} latestBody={[...state.bodyRecords].sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`))[0]} today={today} close={closeModal} save={saveProfileGoal} />}
       {modal === "profile-settings" && <ProfileSettingsSheet profile={state.profile} googleName={authUser.displayName ?? undefined} today={today} close={closeModal} save={saveProfileSettings} />}
+      {modal === "account" && <AccountSheet nickname={state.profile.nickname?.trim() || authUser.displayName?.split(" ")[0] || "사용자"} close={closeModal} openProfile={() => setModal("profile-settings")} openData={() => setModal("data-management")} logout={() => void signOutGoogleUser()} />}
       {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={closeModal} save={saveWorkout} />}
       {modal === "workout-goal" && <WorkoutGoalSheet goal={state.workoutGoal ?? initialState.workoutGoal!} close={closeModal} save={saveWorkoutGoal} />}
       {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} initialStart={weeklyPlanStart} close={closeModal} save={saveWeeklyPlan} />}
       {modal === "cycle" && <CycleSheet today={cycleDate ?? today} draft={state.cycles.find((item) => item.date === (cycleDate ?? today))} previous={state.cycles.find((item) => item.date === addDays(cycleDate ?? today, -1))} existing={state.cycles} initialRange={cycleRangeDraft} openLove={() => { setLoveDate(cycleDate ?? today); setModal("love"); }} close={closeModal} save={saveCycle} saveRanges={saveCycleRanges} remove={deleteCycle} />}
-      {modal === "love" && <LoveSheet today={loveDate ?? today} existing={state.loveRecords ?? []} close={closeModal} save={saveLove} remove={deleteLove} />}
+      {modal === "love" && <LoveSheet today={today} anchorDate={loveDate ?? today} existing={state.loveRecords ?? []} close={closeModal} save={saveLove} remove={deleteLove} />}
       {modal === "consultation-detail" && selectedConsultation && <ConsultationDetailSheet consultation={selectedConsultation} close={closeModal} remove={() => deleteConsultation(selectedConsultation)} />}
       {modal === "reminders" && <ReminderSettingsSheet settings={state.reminderSettings ?? defaultReminders} pushStatus={pushStatus} pushMessage={pushMessage} enablePush={() => { void enableActualNotifications(); }} disablePush={() => { void disableActualNotifications(); }} close={closeModal} save={saveReminders} />}
       {modal === "data-management" && <DataManagementSheet state={state} today={today} close={closeModal} backup={backupData} exportCsv={(kind) => exportCsv(state, kind, today)} restore={restoreData} />}
@@ -2905,6 +2902,14 @@ function ProfileSettingsSheet({ profile, googleName, today, close, save }: { pro
   </form></Sheet>;
 }
 
+function AccountSheet({ nickname, close, openProfile, openData, logout }: { nickname: string; close: () => void; openProfile: () => void; openData: () => void; logout: () => void }) {
+  return <Sheet title={`${nickname}님`} close={close}><div className="account-sheet-actions">
+    <button type="button" onClick={openProfile}><span>내 정보 수정</span><b aria-hidden="true">›</b></button>
+    <button type="button" onClick={openData}><span>데이터 관리</span><b aria-hidden="true">›</b></button>
+    <button type="button" className="logout" onClick={logout}><span>로그아웃</span><b aria-hidden="true">›</b></button>
+  </div></Sheet>;
+}
+
 function ActivitySheet({ today, draft, openAppleHealth, close, save, remove }: { today: string; draft?: DailyActivity; openAppleHealth: () => void; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void; remove: (entry: DailyActivity) => void }) {
   return <Sheet title={draft ? "하루 활동 수정" : "하루 활동 기록"} titleAction={<button type="button" className="sheet-title-action" onClick={openAppleHealth}>Apple 건강 연결</button>} close={close}><form className="form-stack" onSubmit={save}>
     {draft?.source === "apple_health" && <div className="health-import-badge">Apple 건강에서 가져온 기록 · 수정하면 직접 기록으로 전환돼요</div>}
@@ -3046,26 +3051,24 @@ function ConsultationDetailSheet({ consultation, close, remove }: { consultation
   return <Sheet title="상담 다시보기" close={close}><div className="detail-date"><strong>{consultation.date}</strong></div><span className={`source-badge ${consultation.source}`}>{consultation.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span><div className="consultation-text consultation-popup-text">{consultation.text}</div><button type="button" className="delete-button full-delete-button" onClick={remove}>상담 삭제</button></Sheet>;
 }
 
-function LoveSheet({ today, existing, close, save, remove }: { today: string; existing: LoveRecord[]; close: () => void; save: (dates: string[], count: number, contraception: LoveRecord["contraception"], note?: string) => void; remove: (entry: LoveRecord) => void }) {
-  const initial = existing.find((entry) => entry.date === today);
-  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
-  const [selectedDates, setSelectedDates] = useState<Set<string>>(() => new Set([today]));
-  const [count, setCount] = useState(initial?.count ?? 1);
-  const [contraception, setContraception] = useState<LoveRecord["contraception"]>(initial?.contraception ?? "피임함");
-  const [note, setNote] = useState(initial?.note ?? "");
+type LoveFormDraft = { date: string; count: string; contraception: LoveRecord["contraception"]; note: string };
+
+function LoveSheet({ today, anchorDate, existing, close, save, remove }: { today: string; anchorDate: string; existing: LoveRecord[]; close: () => void; save: (drafts: Array<{ date: string; count: number; contraception: LoveRecord["contraception"]; note?: string }>) => void; remove: (entry: LoveRecord) => void }) {
+  const [selectedMonth, setSelectedMonth] = useState(anchorDate.slice(0, 7));
+  const [drafts, setDrafts] = useState<LoveFormDraft[]>([]);
   const cells = monthCells(`${selectedMonth}-01`);
-  const toggleDate = (date: string) => setSelectedDates((current) => {
-    const next = new Set(current);
-    if (next.has(date) && next.size > 1) next.delete(date);
-    else next.add(date);
-    return next;
+  const selectedDates = new Set(drafts.map((draft) => draft.date));
+  const selectDate = (date: string) => setDrafts((current) => {
+    if (current.some((draft) => draft.date === date)) return current.filter((draft) => draft.date !== date);
+    const saved = existing.find((entry) => entry.date === date);
+    return [...current, { date, count: saved ? String(saved.count) : "1", contraception: saved?.contraception ?? "피임함", note: saved?.note ?? "" }].sort((a, b) => a.date.localeCompare(b.date));
   });
-  return <Sheet title="사랑 기록" close={close}><form className="form-stack love-record-form" onSubmit={(event) => { event.preventDefault(); save([...selectedDates], count, contraception, note); }}>
-    <section className="love-date-picker"><MonthNavigator value={selectedMonth} onChange={setSelectedMonth} onToday={() => setSelectedMonth(today.slice(0, 7))} /><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <button type="button" key={date} className={`love-date-cell ${selectedDates.has(date) ? "selected" : ""} ${existing.some((entry) => entry.date === date) ? "recorded" : ""}`} onClick={() => toggleDate(date)}><b>{Number(date.slice(-2))}</b>{existing.some((entry) => entry.date === date) && <span aria-hidden="true">♥</span>}</button> : <span className="calendar-blank" key={`blank-${index}`} />)}</div><p>{[...selectedDates].sort().map((date) => date.replaceAll("-", ".")).join(" · ")}</p></section>
-    <div className="two-fields"><Field label="횟수"><input type="number" min="1" max="20" value={count} onChange={(event) => setCount(Math.max(1, Number(event.target.value) || 1))} required /></Field><Field label="피임 여부"><select value={contraception} onChange={(event) => setContraception(event.target.value as LoveRecord["contraception"])}><option>피임함</option><option>피임하지 않음</option></select></Field></div>
-    <Field label="메모 (선택)"><textarea className="cycle-note-input" value={note} onChange={(event) => setNote(event.target.value)} placeholder="필요한 내용만 남겨주세요." /></Field>
-    <button className="primary-button submit-button" type="submit">{selectedDates.size}개 날짜 저장</button>
-    {initial && selectedDates.size === 1 && selectedDates.has(initial.date) && <button className="delete-button full-delete-button" type="button" onClick={() => remove(initial)}>이 날짜의 사랑 기록 삭제</button>}
+  const updateDraft = (date: string, patch: Partial<LoveFormDraft>) => setDrafts((current) => current.map((draft) => draft.date === date ? { ...draft, ...patch } : draft));
+  const valid = drafts.length > 0 && drafts.every((draft) => Number(draft.count) >= 1);
+  return <Sheet title="사랑 기록" close={close}><form className="form-stack love-record-form" onSubmit={(event) => { event.preventDefault(); if (!valid) return; save(drafts.map((draft) => ({ date: draft.date, count: Number(draft.count), contraception: draft.contraception, note: draft.note }))); }}>
+    <section className="love-date-picker"><MonthNavigator value={selectedMonth} onChange={setSelectedMonth} onToday={() => setSelectedMonth(today.slice(0, 7))} /><div className="calendar-weekdays">{["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{cells.map((date, index) => date ? <button type="button" key={date} className={`love-date-cell ${selectedDates.has(date) ? "selected" : ""} ${existing.some((entry) => entry.date === date) ? "recorded" : ""}`} onClick={() => selectDate(date)} aria-pressed={selectedDates.has(date)}><b>{Number(date.slice(-2))}</b>{existing.some((entry) => entry.date === date) && <span aria-hidden="true">♥</span>}</button> : <span className="calendar-blank" key={`blank-${index}`} />)}</div></section>
+    {drafts.length ? <div className="love-draft-list">{drafts.map((draft) => { const saved = existing.find((entry) => entry.date === draft.date); return <section className="love-draft-card" key={draft.date}><div className="love-draft-heading"><strong>{dateLabel(draft.date)}</strong><button type="button" onClick={() => setDrafts((current) => current.filter((item) => item.date !== draft.date))} aria-label={`${draft.date} 입력 상자 닫기`}>×</button></div><div className="two-fields"><Field label="횟수"><input type="number" inputMode="numeric" min="1" max="20" value={draft.count} onChange={(event) => updateDraft(draft.date, { count: event.target.value })} placeholder="1" required /></Field><Field label="피임 여부"><select value={draft.contraception} onChange={(event) => updateDraft(draft.date, { contraception: event.target.value as LoveRecord["contraception"] })}><option>피임함</option><option>피임하지 않음</option></select></Field></div><Field label="메모 (선택)"><textarea className="cycle-note-input" value={draft.note} onChange={(event) => updateDraft(draft.date, { note: event.target.value })} placeholder="필요한 내용만 남겨주세요." /></Field>{saved && <button className="delete-text-button love-delete-existing" type="button" onClick={() => { remove(saved); setDrafts((current) => current.filter((item) => item.date !== draft.date)); }}>저장된 기록 삭제</button>}</section>; })}</div> : <p className="love-empty-guide">캘린더에서 기록할 날짜를 선택해주세요.</p>}
+    <button className="primary-button submit-button" type="submit" disabled={!valid}>{drafts.length ? `${drafts.length}개 날짜 저장` : "날짜를 선택해주세요"}</button>
   </form></Sheet>;
 }
 
