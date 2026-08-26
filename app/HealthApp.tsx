@@ -775,10 +775,13 @@ export function HealthApp() {
   const [pushStatus, setPushStatus] = useState<PushStatus>("off");
   const [pushMessage, setPushMessage] = useState("");
   const [appleHealthSyncing, setAppleHealthSyncing] = useState(false);
+  const [fabVisible, setFabVisible] = useState(true);
   const saveQueue = useRef(Promise.resolve());
   const lastPersistedState = useRef<AppState | undefined>(undefined);
   const lastPersistedUid = useRef<string | undefined>(undefined);
   const deepLinkHandled = useRef(false);
+  const lastScrollY = useRef(0);
+  const fabScrollFrame = useRef(0);
   const today = todayKey();
 
   useEffect(() => {
@@ -855,7 +858,29 @@ export function HealthApp() {
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
+    setFabVisible(true);
   }, [tab]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    lastScrollY.current = Math.max(0, window.scrollY);
+    const handleScroll = () => {
+      if (fabScrollFrame.current) return;
+      fabScrollFrame.current = window.requestAnimationFrame(() => {
+        const currentScrollY = Math.max(0, window.scrollY);
+        const delta = currentScrollY - lastScrollY.current;
+        if (currentScrollY <= 32) setFabVisible(true);
+        else if (Math.abs(delta) >= 7) setFabVisible(delta < 0);
+        lastScrollY.current = currentScrollY;
+        fabScrollFrame.current = 0;
+      });
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (fabScrollFrame.current) window.cancelAnimationFrame(fabScrollFrame.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!modal) return;
@@ -1655,7 +1680,7 @@ export function HealthApp() {
         {tab === "change" && <ChangeConsultView state={state} today={today} setModal={setModal} commit={commit} openWeeklyPlan={(start) => { setWeeklyPlanStart(start); setModal("weekly-plan"); }} deleteConsultation={deleteConsultation} openBodyDetail={(record) => { setSelectedBodyRecord(record); setModal("body-detail"); }} openCircumference={(record) => { setSelectedCircumferenceRecord(record); setModal("circumference"); }} openConsultationDetail={(consultation) => { setSelectedConsultation(consultation); setModal("consultation-detail"); }} />}
       </main>
 
-      <button className="fab" onClick={() => setModal("quick")} aria-label="빠른 추가">+</button>
+      <button className={`fab${fabVisible ? "" : " fab-hidden"}`} onClick={() => setModal("quick")} aria-label="빠른 추가" aria-hidden={!fabVisible} tabIndex={fabVisible ? 0 : -1}>+</button>
       <div className="mobile-nav-shield" aria-hidden="true" />
       <nav className="mobile-nav">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}><NavPixelIcon tab={item.id} /><small>{item.label}</small></button>)}</nav>
 
@@ -2315,23 +2340,35 @@ const bodyTrendMetrics: Record<BodyTrendMetric, { label: string; unit: string }>
 };
 
 function BodyTrendChart({ records, cycles, metric, showMenstrualBands = false, emptyText = "체성분 기록을 입력하면 흐름이 보여요." }: { records: BodyRecord[]; cycles: CycleEntry[]; metric: BodyTrendMetric; showMenstrualBands?: boolean; emptyText?: string }) {
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomScale, setZoomScale] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const pointerPositions = useRef(new Map<number, { x: number; y: number }>());
+  const pinchStart = useRef<{ distance: number; scale: number; anchorRatio: number } | undefined>(undefined);
+  const zoomAnchor = useRef<{ ratio: number; viewportX: number } | undefined>(undefined);
   useEffect(() => {
     const viewport = scrollRef.current;
     if (viewport) viewport.scrollLeft = viewport.scrollWidth - viewport.clientWidth;
-  }, [metric, records.length, zoomLevel]);
+  }, [metric, records.length]);
+  useEffect(() => {
+    const viewport = scrollRef.current;
+    const anchor = zoomAnchor.current;
+    if (!viewport || !anchor) return;
+    const frame = window.requestAnimationFrame(() => {
+      viewport.scrollLeft = anchor.ratio * viewport.scrollWidth - anchor.viewportX;
+      zoomAnchor.current = undefined;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [zoomScale]);
   if (!records.length) return <div className="empty-chart">{emptyText}</div>;
   const metricInfo = bodyTrendMetrics[metric];
-  const pointGaps = [30, 52, 82, 116];
-  const pointGap = pointGaps[zoomLevel];
+  const pointGap = 52 * zoomScale;
   const height = 250;
   const left = 52;
   const right = 28;
   const top = 34;
   const bottom = 46;
   const effectiveGap = records.length > 1 ? Math.max(pointGap, (700 - left - right) / (records.length - 1)) : 0;
-  const width = Math.max(700, left + right + Math.max(1, records.length - 1) * effectiveGap);
+  const width = Math.min(60000, Math.max(700, left + right + Math.max(1, records.length - 1) * effectiveGap));
   const values = records.map((item) => item[metric]);
   const min = Math.floor((Math.min(...values) - 0.2) * 10) / 10;
   const max = Math.ceil((Math.max(...values) + 0.2) * 10) / 10;
@@ -2367,7 +2404,47 @@ function BodyTrendChart({ records, cycles, metric, showMenstrualBands = false, e
     return { x: startX, width: Math.max(4, endX - startX) };
   }) : [];
 
-  return <div className="trend-explorer"><div className="trend-explorer-toolbar"><div>{showMenstrualBands && <span className="menstrual-band-legend"><i />본 출혈 구간</span>}<span className="trend-pan-hint">좌우로 밀어 기록 보기</span></div><div className="trend-zoom-controls" aria-label="그래프 확대 축소"><button type="button" onClick={() => setZoomLevel((level) => Math.max(0, level - 1))} disabled={zoomLevel === 0} aria-label="그래프 축소, 더 많은 기록 보기">−</button><span>{zoomLevel === 0 ? "더 많이" : zoomLevel === pointGaps.length - 1 ? "자세히" : "보기"}</span><button type="button" onClick={() => setZoomLevel((level) => Math.min(pointGaps.length - 1, level + 1))} disabled={zoomLevel === pointGaps.length - 1} aria-label="그래프 확대, 더 적은 기록 자세히 보기">＋</button></div></div><div className="trend-chart-wrap" ref={scrollRef}><svg className="trend-chart" style={{ width: `${width}px` }} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metricInfo.label} 전체 변화 선 그래프`}>
+  const updatePinchStart = (viewport: HTMLDivElement) => {
+    const touches = [...pointerPositions.current.values()];
+    if (touches.length !== 2) return;
+    const [first, second] = touches;
+    const distance = Math.hypot(second.x - first.x, second.y - first.y);
+    const rect = viewport.getBoundingClientRect();
+    const viewportX = (first.x + second.x) / 2 - rect.left;
+    pinchStart.current = {
+      distance: Math.max(1, distance),
+      scale: zoomScale,
+      anchorRatio: (viewport.scrollLeft + viewportX) / Math.max(1, viewport.scrollWidth),
+    };
+  };
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "touch") return;
+    pointerPositions.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointerPositions.current.size === 2) updatePinchStart(event.currentTarget);
+  };
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!pointerPositions.current.has(event.pointerId)) return;
+    pointerPositions.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const start = pinchStart.current;
+    const touches = [...pointerPositions.current.values()];
+    if (!start || touches.length !== 2) return;
+    event.preventDefault();
+    const [first, second] = touches;
+    const distance = Math.hypot(second.x - first.x, second.y - first.y);
+    const rect = event.currentTarget.getBoundingClientRect();
+    zoomAnchor.current = {
+      ratio: start.anchorRatio,
+      viewportX: (first.x + second.x) / 2 - rect.left,
+    };
+    const nextScale = Math.min(4, Math.max(0.5, start.scale * (distance / start.distance)));
+    setZoomScale((current) => Math.abs(current - nextScale) >= 0.015 ? nextScale : current);
+  };
+  const handlePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    pointerPositions.current.delete(event.pointerId);
+    if (pointerPositions.current.size < 2) pinchStart.current = undefined;
+  };
+
+  return <div className="trend-explorer"><div className="trend-explorer-toolbar"><div>{showMenstrualBands && <span className="menstrual-band-legend"><i />본 출혈 구간</span>}<span className="trend-pan-hint">한 손가락으로 이동 · 두 손가락으로 확대</span></div></div><div className="trend-chart-wrap" ref={scrollRef} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd}><svg className="trend-chart" style={{ width: `${width}px` }} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metricInfo.label} 전체 변화 선 그래프`}>
     {bleedingBands.map((band, index) => <rect key={`bleeding-${index}`} x={band.x} y={top - 13} width={band.width} height={height - top - bottom + 26} className="chart-menstrual-band" />)}
     {[0, 0.5, 1].map((ratio) => { const y = top + ratio * (height - top - bottom); const value = max - ratio * range; return <g key={ratio}><line x1={left} x2={width - right} y1={y} y2={y} className="chart-grid-line" /><text x={left - 10} y={y + 4} textAnchor="end" className="chart-axis-value">{value.toFixed(1)}</text></g>; })}
     <polyline points={points.map((point) => `${point.x},${point.y}`).join(" ")} className="trend-line" />
@@ -2980,7 +3057,7 @@ function ProfileGoalSheet({ profile, latestBody, today, close, save }: { profile
     <div className="two-fields sheet-leading-fields"><Field label="시작일"><input type="date" name="goalStartDate" defaultValue={profile.goalStartDate ?? today} required /></Field><Field label="종료일"><input type="date" name="goalEndDate" defaultValue={profile.goalEndDate} required /></Field></div>
     <section className="body-goal-fields"><strong>기간 동안의 변화 목표</strong>{latestBody ? <div className="goal-current-body"><span>최근 측정 · {latestBody.date}</span><div><b>체지방량 {latestBody.bodyFatMass}kg</b><b>골격근량 {latestBody.skeletalMuscle}kg</b></div></div> : <div className="goal-current-body empty"><span>최근 인바디 기록이 없어요</span></div>}<div className="two-fields"><Field label="체지방량 변화 (kg)"><input type="number" name="targetBodyFatChange" step="0.1" defaultValue={profile.targetBodyFatChange} required /></Field><Field label="골격근량 변화 (kg)"><input type="number" name="targetMuscleChange" step="0.1" defaultValue={profile.targetMuscleChange} required /></Field></div></section>
     <section className="profile-layer-section travel-layer-section"><label className="travel-toggle"><span><b>여행 모드</b><small>감량기·유지기 위에 별도로 적용해요</small></span><input type="checkbox" name="travelActive" checked={travelActive} onChange={(event) => setTravelActive(event.target.checked)} /></label>
-      {travelActive && <div className="travel-layer-fields"><div className="two-fields sheet-leading-fields"><Field label="여행 시작일"><input type="date" name="travelStartDate" defaultValue={profile.travelStartDate ?? today} required /></Field><Field label="여행 종료일"><input type="date" name="travelEndDate" defaultValue={profile.travelEndDate ?? profile.travelStartDate ?? today} required /></Field></div><section className="travel-level-picker"><strong>여행 기본 관리 수준</strong>{travelLevels.map((level) => <label key={level}><input type="radio" name="travelLevel" value={level} defaultChecked={(profile.travelLevel ?? "균형 유지") === level} /><span><b>{level}</b><small>{level === "가볍게 기록" ? "먹은 것과 활동만 편하게 남겨요" : level === "균형 유지" ? "단백질과 식이섬유, 과식 여부를 살펴요" : "현재 감량기·유지기의 목표를 그대로 이어가요"}</small></span></label>)}</section></div>}
+      {travelActive && <div className="travel-layer-fields"><div className="travel-date-fields"><Field label="여행 시작일"><input type="date" name="travelStartDate" defaultValue={profile.travelStartDate ?? today} required /></Field><Field label="여행 종료일"><input type="date" name="travelEndDate" defaultValue={profile.travelEndDate ?? profile.travelStartDate ?? today} required /></Field></div><section className="travel-level-picker"><strong>여행 기본 관리 수준</strong>{travelLevels.map((level) => <label key={level}><input type="radio" name="travelLevel" value={level} defaultChecked={(profile.travelLevel ?? "균형 유지") === level} /><span><b>{level}</b><small>{level === "가볍게 기록" ? "먹은 것과 활동만 편하게 남겨요" : level === "균형 유지" ? "단백질과 식이섬유, 과식 여부를 살펴요" : "현재 감량기·유지기의 목표를 그대로 이어가요"}</small></span></label>)}</section></div>}
       {!travelActive && <input type="hidden" name="travelLevel" value={profile.travelLevel ?? "균형 유지"} />}
     </section>
     <button className="primary-button submit-button" type="submit">설정 저장</button>
