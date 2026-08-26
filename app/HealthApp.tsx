@@ -2341,17 +2341,33 @@ function BodyTrendChart({ records, cycles, metric, showMenstrualBands = false, e
     x: left + (records.length === 1 ? (width - left - right) / 2 : index * effectiveGap),
     y: top + ((max - record[metric]) / range) * (height - top - bottom),
   }));
-  const cycleByDate = new Map(cycles.map((entry) => [entry.date, entry.state]));
-  const bleedingBands = points.flatMap((point, index) => {
-    if (!showMenstrualBands || cycleByDate.get(point.record.date) !== "본 출혈") return [];
-    const previousX = points[index - 1]?.x;
-    const nextX = points[index + 1]?.x;
-    const startX = previousX === undefined ? Math.max(left, point.x - effectiveGap / 2) : (previousX + point.x) / 2;
-    const endX = nextX === undefined ? Math.min(width - right, point.x + effectiveGap / 2) : (point.x + nextX) / 2;
-    return [{ x: startX, width: Math.max(4, endX - startX) }];
-  });
+  const recordTimes = records.map((record) => new Date(`${record.date}T12:00:00`).getTime());
+  const xForTime = (time: number) => {
+    if (records.length === 1 || time <= recordTimes[0]) return left;
+    if (time >= recordTimes.at(-1)!) return width - right;
+    const nextIndex = recordTimes.findIndex((recordTime) => recordTime >= time);
+    const previousIndex = Math.max(0, nextIndex - 1);
+    const timeSpan = Math.max(1, recordTimes[nextIndex] - recordTimes[previousIndex]);
+    const ratio = (time - recordTimes[previousIndex]) / timeSpan;
+    return points[previousIndex].x + ratio * (points[nextIndex].x - points[previousIndex].x);
+  };
+  const bleedingRanges = cycles
+    .filter((entry) => entry.state === "본 출혈" && entry.date >= records[0].date && entry.date <= records.at(-1)!.date)
+    .map((entry) => entry.date)
+    .sort()
+    .reduce<{ start: string; end: string }[]>((ranges, date) => {
+      const latestRange = ranges.at(-1);
+      if (latestRange && addDays(latestRange.end, 1) === date) latestRange.end = date;
+      else ranges.push({ start: date, end: date });
+      return ranges;
+    }, []);
+  const bleedingBands = showMenstrualBands ? bleedingRanges.map((range) => {
+    const startX = xForTime(new Date(`${range.start}T00:00:00`).getTime());
+    const endX = xForTime(new Date(`${range.end}T23:59:59`).getTime());
+    return { x: startX, width: Math.max(4, endX - startX) };
+  }) : [];
 
-  return <div className="trend-explorer"><div className="trend-explorer-toolbar"><div>{showMenstrualBands && <span className="menstrual-band-legend"><i />본 출혈 측정</span>}<span className="trend-pan-hint">좌우로 밀어 기록 보기</span></div><div className="trend-zoom-controls" aria-label="그래프 확대 축소"><button type="button" onClick={() => setZoomLevel((level) => Math.max(0, level - 1))} disabled={zoomLevel === 0} aria-label="그래프 축소, 더 많은 기록 보기">−</button><span>{zoomLevel === 0 ? "더 많이" : zoomLevel === pointGaps.length - 1 ? "자세히" : "보기"}</span><button type="button" onClick={() => setZoomLevel((level) => Math.min(pointGaps.length - 1, level + 1))} disabled={zoomLevel === pointGaps.length - 1} aria-label="그래프 확대, 더 적은 기록 자세히 보기">＋</button></div></div><div className="trend-chart-wrap" ref={scrollRef}><svg className="trend-chart" style={{ width: `${width}px` }} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metricInfo.label} 전체 변화 선 그래프`}>
+  return <div className="trend-explorer"><div className="trend-explorer-toolbar"><div>{showMenstrualBands && <span className="menstrual-band-legend"><i />본 출혈 구간</span>}<span className="trend-pan-hint">좌우로 밀어 기록 보기</span></div><div className="trend-zoom-controls" aria-label="그래프 확대 축소"><button type="button" onClick={() => setZoomLevel((level) => Math.max(0, level - 1))} disabled={zoomLevel === 0} aria-label="그래프 축소, 더 많은 기록 보기">−</button><span>{zoomLevel === 0 ? "더 많이" : zoomLevel === pointGaps.length - 1 ? "자세히" : "보기"}</span><button type="button" onClick={() => setZoomLevel((level) => Math.min(pointGaps.length - 1, level + 1))} disabled={zoomLevel === pointGaps.length - 1} aria-label="그래프 확대, 더 적은 기록 자세히 보기">＋</button></div></div><div className="trend-chart-wrap" ref={scrollRef}><svg className="trend-chart" style={{ width: `${width}px` }} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metricInfo.label} 전체 변화 선 그래프`}>
     {bleedingBands.map((band, index) => <rect key={`bleeding-${index}`} x={band.x} y={top - 13} width={band.width} height={height - top - bottom + 26} className="chart-menstrual-band" />)}
     {[0, 0.5, 1].map((ratio) => { const y = top + ratio * (height - top - bottom); const value = max - ratio * range; return <g key={ratio}><line x1={left} x2={width - right} y1={y} y2={y} className="chart-grid-line" /><text x={left - 10} y={y + 4} textAnchor="end" className="chart-axis-value">{value.toFixed(1)}</text></g>; })}
     <polyline points={points.map((point) => `${point.x},${point.y}`).join(" ")} className="trend-line" />
