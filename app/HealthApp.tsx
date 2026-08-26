@@ -334,15 +334,21 @@ function daysBetween(start: string, end: string) {
   return Math.round((new Date(`${end}T12:00:00`).getTime() - new Date(`${start}T12:00:00`).getTime()) / 86_400_000);
 }
 
+function median(values: number[]) {
+  if (!values.length) return undefined;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
 function menstrualPrediction(entries: CycleEntry[], today: string) {
   const byDate = new Map(entries.map((entry) => [entry.date, entry]));
   const starts = entries
     .filter((entry) => entry.state === "본 출혈" && byDate.get(addDays(entry.date, -1))?.state !== "본 출혈")
     .map((entry) => entry.date)
     .sort();
-  const intervals = starts.slice(1).map((date, index) => daysBetween(starts[index], date)).filter((days) => days >= 15 && days <= 60).slice(-6);
-  const sortedIntervals = [...intervals].sort((a, b) => a - b);
-  const cycleLength = sortedIntervals.length ? Math.round(sortedIntervals[Math.floor(sortedIntervals.length / 2)]) : 28;
+  const intervals = starts.slice(1).map((date, index) => daysBetween(starts[index], date)).filter((days) => days >= 15 && days <= 60).slice(-7);
+  const cycleLength = Math.round(median(intervals) ?? 28);
   const lastStart = starts.at(-1);
   const fertileDates = new Set<string>();
   const ovulationDates = new Set<string>();
@@ -1897,7 +1903,9 @@ function MenstrualView({ state, today, openRecord, openLove, editRange, deleteRa
   const cycleYears = [...new Set(histories.map((history) => history.start.slice(0, 4)))];
   const [cycleYear, setCycleYear] = useState(() => cycleYears.includes(today.slice(0, 4)) ? today.slice(0, 4) : cycleYears[0] ?? "전체");
   const visibleHistories = cycleYear === "전체" ? histories : histories.filter((history) => history.start.startsWith(cycleYear));
-  const averageMainBleeding = histories.length ? Math.round(histories.reduce((sum, history) => sum + history.mainBleedingDays, 0) / histories.length * 10) / 10 : undefined;
+  const completedHistories = histories.filter((history) => history.cycleLength);
+  const recentBleedingHistories = (completedHistories.length ? completedHistories : histories).slice(0, 7);
+  const averageMainBleeding = recentBleedingHistories.length ? Math.round(recentBleedingHistories.reduce((sum, history) => sum + history.mainBleedingDays, 0) / recentBleedingHistories.length * 10) / 10 : undefined;
   const selected = state.cycles.find((entry) => entry.date === selectedDate);
   const selectedLove = (state.loveRecords ?? []).find((entry) => entry.date === selectedDate);
   const selectedPhase = menstrualPhase(state.cycles, selectedDate);
@@ -1941,7 +1949,7 @@ function MenstrualView({ state, today, openRecord, openLove, editRange, deleteRa
       <div><span className="eyebrow">{dateLabel(selectedDate)}의 주기</span><strong>{selectedPhase.label}</strong><p>{selectedPhase.detail}</p></div>
       {selectedPhase.cycleDay && <b>DAY {selectedPhase.cycleDay}</b>}
     </section>
-    <div className="metric-grid menstrual-metrics"><MetricCard label="평균 주기" value={prediction.lastStart ? String(prediction.cycleLength) : "-"} unit="일" hint={prediction.basedOnCycles ? `최근 ${prediction.basedOnCycles + 1}주기 기준` : prediction.lastStart ? "기록 1회 · 28일 기준" : "본 출혈 기록 필요"} /><MetricCard label="평균 본 출혈" value={averageMainBleeding ? String(averageMainBleeding) : "-"} unit="일" hint="전체 주기 기준" /><MetricCard label="다음 예상 월경일" value={prediction.nextPeriod ? prediction.nextPeriod.slice(5).replace("-", ".") : "-"} unit="" hint={prediction.nextPeriod ? "기록을 바탕으로 계산" : "기록이 쌓이면 계산"} /><MetricCard label="다음 예상 배란일" value={prediction.nextOvulation ? prediction.nextOvulation.slice(5).replace("-", ".") : "-"} unit="" hint={prediction.nextOvulation ? "기록을 바탕으로 계산" : "기록이 쌓이면 계산"} /></div>
+    <div className="metric-grid menstrual-metrics"><MetricCard label="평균 주기" value={prediction.lastStart ? String(prediction.cycleLength) : "-"} unit="일" hint={prediction.basedOnCycles ? `최근 ${prediction.basedOnCycles}주기 기준` : prediction.lastStart ? "기록 1회 · 28일 기준" : "본 출혈 기록 필요"} /><MetricCard label="평균 본 출혈" value={averageMainBleeding ? String(averageMainBleeding) : "-"} unit="일" hint={recentBleedingHistories.length ? `최근 ${recentBleedingHistories.length}주기 기준` : "본 출혈 기록 필요"} /><MetricCard label="다음 예상 월경일" value={prediction.nextPeriod ? prediction.nextPeriod.slice(5).replace("-", ".") : "-"} unit="" hint={prediction.nextPeriod ? `최근 ${prediction.basedOnCycles || 1}주기 기준` : "기록이 쌓이면 계산"} /><MetricCard label="다음 예상 배란일" value={prediction.nextOvulation ? prediction.nextOvulation.slice(5).replace("-", ".") : "-"} unit="" hint={prediction.nextOvulation ? `최근 ${prediction.basedOnCycles || 1}주기 기준 · 예상` : "기록이 쌓이면 계산"} /></div>
     <details className="card cycle-history-card"><summary><span>주기별 기록</span><i aria-hidden="true">⌄</i></summary><div className="cycle-history-controls">{cycleYears.length ? <select className="cycle-year-select" value={cycleYear} onChange={(event) => setCycleYear(event.target.value)} aria-label="주기 기록 연도"><option value="전체">전체</option>{cycleYears.map((year) => <option key={year} value={year}>{year}년</option>)}</select> : undefined}</div>
       {visibleHistories.length ? <div className="cycle-history-list">{visibleHistories.map((history) => <article className="cycle-history-item" key={history.start}><div className="cycle-history-heading"><div><small>{history.cycleLength ? `주기 ${history.cycleLength}일` : "최근 주기"}</small><strong>{history.start.replaceAll("-", ".")} ~ {history.end.replaceAll("-", ".")}</strong></div><div className="cycle-history-actions"><button type="button" onClick={() => jumpToCycle(history.start)}>달력</button><button type="button" onClick={() => editRange(history.start)}>출혈 구분</button><button type="button" className="delete" onClick={() => deleteRange(history.start)}>삭제</button></div></div><div className="cycle-history-facts"><span className="main">본 출혈 <b>{history.mainBleedingDays}일</b></span>{history.brownBefore > 0 && <span className="brown">앞 갈색 <b>{history.brownBefore}일</b></span>}{history.brownAfter > 0 && <span className="brown">뒤 갈색 <b>{history.brownAfter}일</b></span>}{history.irregularDays > 0 && <span className="irregular">부정출혈 <b>{history.irregularDays}일</b></span>}</div></article>)}</div> : <EmptyState text={histories.length ? `${cycleYear}년의 주기 기록이 없어요.` : "기간 기록을 저장하면 주기별로 정리해드려요."} showIcon={false} />}
     </details>
@@ -1965,7 +1973,7 @@ function ChangeView({ state, today, setModal, openDetail, openCircumference }: {
     if (phaseFilter === "focus") return phase.key === "focus";
     return phase.key === "premenstrual" || phase.key === "bleeding";
   });
-  const chartRecords = filteredRecords.slice(0, 7).map(({ record }) => record).reverse();
+  const chartRecords = filteredRecords.map(({ record }) => record).reverse();
   const visibleRecords = filteredRecords.slice(0, 8);
   const circumferenceRecords = [...(state.circumferenceRecords ?? [])].sort((a, b) => b.date.localeCompare(a.date));
   const latestCircumference = circumferenceRecords[0];
@@ -1977,7 +1985,7 @@ function ChangeView({ state, today, setModal, openDetail, openCircumference }: {
   const trendInfo = bodyTrendMetrics[trendMetric];
   return <div className="section-stack"><section className={`card change-overview ${travelToday ? "travel-change-overview" : ""}`}><div className="change-overview-main"><div><span className="eyebrow">{state.profile.mode} {timing.week}주차{travelToday ? " · 여행 중" : ""}</span><h2>{travelToday ? "측정 공백도 여행 기록의 일부예요" : <>체지방 {oldest && latest ? `${signed(latest.bodyFatMass - oldest.bodyFatMass)}kg` : "-"} · 골격근 {oldest && latest ? `${signed(latest.skeletalMuscle - oldest.skeletalMuscle)}kg` : "-"}</>}</h2><p>{goalCopy}</p></div><div className="change-overview-actions"><button className="ghost-button" onClick={() => setModal("profile-goal")}>목표 수정</button><button className="primary-button" onClick={() => setModal("body")}>인바디 입력</button></div></div><BodyGoalProgress state={state} endDate={today} /></section>
     <div className="metric-grid change-metric-grid"><MetricCard label="체지방량" value={String(latest?.bodyFatMass ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="골격근량" value={String(latest?.skeletalMuscle ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="체중" value={String(latest?.weight ?? "-")} unit="kg" hint={measuredAt} /><MetricCard label="내장지방" value={String(latest?.visceralFat ?? "-")} unit="Lv" hint={measuredAt} /></div>
-    <section className="card chart-card cycle-aware-chart"><CardTitle title={`최근 ${trendInfo.label}`} aside={`${trendInfo.unit} · ${chartRecords.length}회`} /><div className="body-metric-filter" role="tablist" aria-label="체성분 그래프 항목 선택">{(Object.keys(bodyTrendMetrics) as BodyTrendMetric[]).map((metric) => <button type="button" role="tab" aria-selected={trendMetric === metric} className={trendMetric === metric ? "active" : ""} onClick={() => setTrendMetric(metric)} key={metric}>{bodyTrendMetrics[metric].label}</button>)}</div><div className="body-phase-filter" role="tablist" aria-label="월경 주기 구간으로 체성분 기록 보기"><button type="button" role="tab" aria-selected={phaseFilter === "all"} className={phaseFilter === "all" ? "active" : ""} onClick={() => setPhaseFilter("all")}>전체</button><button type="button" role="tab" aria-selected={phaseFilter === "focus"} className={phaseFilter === "focus" ? "active" : ""} onClick={() => setPhaseFilter("focus")}>월경 후 집중</button><button type="button" role="tab" aria-selected={phaseFilter === "influence"} className={phaseFilter === "influence" ? "active" : ""} onClick={() => setPhaseFilter("influence")}>월경 전·중</button></div><BodyTrendChart records={chartRecords} metric={trendMetric} emptyText={phaseFilter === "all" ? "체성분 기록을 입력하면 흐름이 보여요." : "이 주기 구간의 체성분 기록이 아직 없어요."} /></section>
+    <section className="card chart-card cycle-aware-chart"><CardTitle title={`${trendInfo.label} 흐름`} aside={`${trendInfo.unit} · ${chartRecords.length}회`} /><div className="body-metric-filter" role="tablist" aria-label="체성분 그래프 항목 선택">{(Object.keys(bodyTrendMetrics) as BodyTrendMetric[]).map((metric) => <button type="button" role="tab" aria-selected={trendMetric === metric} className={trendMetric === metric ? "active" : ""} onClick={() => setTrendMetric(metric)} key={metric}>{bodyTrendMetrics[metric].label}</button>)}</div><div className="body-phase-filter" role="tablist" aria-label="월경 주기 구간으로 체성분 기록 보기"><button type="button" role="tab" aria-selected={phaseFilter === "all"} className={phaseFilter === "all" ? "active" : ""} onClick={() => setPhaseFilter("all")}>전체</button><button type="button" role="tab" aria-selected={phaseFilter === "focus"} className={phaseFilter === "focus" ? "active" : ""} onClick={() => setPhaseFilter("focus")}>월경 후 집중</button><button type="button" role="tab" aria-selected={phaseFilter === "influence"} className={phaseFilter === "influence" ? "active" : ""} onClick={() => setPhaseFilter("influence")}>월경 전·중</button></div><BodyTrendChart records={chartRecords} cycles={state.cycles} metric={trendMetric} showMenstrualBands={phaseFilter === "all"} emptyText={phaseFilter === "all" ? "체성분 기록을 입력하면 흐름이 보여요." : "이 주기 구간의 체성분 기록이 아직 없어요."} /></section>
     <section className="card circumference-card"><CardTitle title="허리·엉덩이둘레" aside={<button type="button" className="text-button" onClick={() => openCircumference()}>기록하기</button>} />
       {latestCircumference ? <><div className="circumference-latest"><MetricCard label="허리둘레" value={String(latestCircumference.waistIn)} unit="inch" hint={latestCircumference.date} /><MetricCard label="엉덩이둘레" value={String(latestCircumference.hipIn)} unit="inch" hint={latestCircumference.date} /></div><CircumferenceTrendChart records={circumferenceChartRecords} /><div className="circumference-history">{circumferenceRecords.slice(0, 5).map((record) => <button type="button" key={record.id} onClick={() => openCircumference(record)}><span>{record.date}</span><strong>허리 {record.waistIn}inch</strong><strong>엉덩이 {record.hipIn}inch</strong><b aria-hidden="true">›</b></button>)}</div></> : <EmptyState text="일요일 아침 측정값을 기록해보세요." action="둘레 기록하기" onClick={() => openCircumference()} showIcon={false} />}
     </section>
@@ -2306,29 +2314,49 @@ const bodyTrendMetrics: Record<BodyTrendMetric, { label: string; unit: string }>
   visceralFat: { label: "내장지방", unit: "Lv" },
 };
 
-function BodyTrendChart({ records, metric, emptyText = "체성분 기록을 입력하면 흐름이 보여요." }: { records: BodyRecord[]; metric: BodyTrendMetric; emptyText?: string }) {
+function BodyTrendChart({ records, cycles, metric, showMenstrualBands = false, emptyText = "체성분 기록을 입력하면 흐름이 보여요." }: { records: BodyRecord[]; cycles: CycleEntry[]; metric: BodyTrendMetric; showMenstrualBands?: boolean; emptyText?: string }) {
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const viewport = scrollRef.current;
+    if (viewport) viewport.scrollLeft = viewport.scrollWidth - viewport.clientWidth;
+  }, [metric, records.length, zoomLevel]);
   if (!records.length) return <div className="empty-chart">{emptyText}</div>;
   const metricInfo = bodyTrendMetrics[metric];
-  const width = 700;
+  const pointGaps = [30, 52, 82, 116];
+  const pointGap = pointGaps[zoomLevel];
   const height = 250;
   const left = 52;
   const right = 28;
   const top = 34;
   const bottom = 46;
+  const effectiveGap = records.length > 1 ? Math.max(pointGap, (700 - left - right) / (records.length - 1)) : 0;
+  const width = Math.max(700, left + right + Math.max(1, records.length - 1) * effectiveGap);
   const values = records.map((item) => item[metric]);
   const min = Math.floor((Math.min(...values) - 0.2) * 10) / 10;
   const max = Math.ceil((Math.max(...values) + 0.2) * 10) / 10;
   const range = Math.max(max - min, 0.4);
   const points = records.map((record, index) => ({
     record,
-    x: left + (records.length === 1 ? (width - left - right) / 2 : index * ((width - left - right) / (records.length - 1))),
+    x: left + (records.length === 1 ? (width - left - right) / 2 : index * effectiveGap),
     y: top + ((max - record[metric]) / range) * (height - top - bottom),
   }));
-  return <div className="trend-chart-wrap"><svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`최근 ${metricInfo.label} 변화 선 그래프`}>
+  const cycleByDate = new Map(cycles.map((entry) => [entry.date, entry.state]));
+  const bleedingBands = points.flatMap((point, index) => {
+    if (!showMenstrualBands || cycleByDate.get(point.record.date) !== "본 출혈") return [];
+    const previousX = points[index - 1]?.x;
+    const nextX = points[index + 1]?.x;
+    const startX = previousX === undefined ? Math.max(left, point.x - effectiveGap / 2) : (previousX + point.x) / 2;
+    const endX = nextX === undefined ? Math.min(width - right, point.x + effectiveGap / 2) : (point.x + nextX) / 2;
+    return [{ x: startX, width: Math.max(4, endX - startX) }];
+  });
+
+  return <div className="trend-explorer"><div className="trend-explorer-toolbar"><div>{showMenstrualBands && <span className="menstrual-band-legend"><i />본 출혈 측정</span>}<span className="trend-pan-hint">좌우로 밀어 기록 보기</span></div><div className="trend-zoom-controls" aria-label="그래프 확대 축소"><button type="button" onClick={() => setZoomLevel((level) => Math.max(0, level - 1))} disabled={zoomLevel === 0} aria-label="그래프 축소, 더 많은 기록 보기">−</button><span>{zoomLevel === 0 ? "더 많이" : zoomLevel === pointGaps.length - 1 ? "자세히" : "보기"}</span><button type="button" onClick={() => setZoomLevel((level) => Math.min(pointGaps.length - 1, level + 1))} disabled={zoomLevel === pointGaps.length - 1} aria-label="그래프 확대, 더 적은 기록 자세히 보기">＋</button></div></div><div className="trend-chart-wrap" ref={scrollRef}><svg className="trend-chart" style={{ width: `${width}px` }} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metricInfo.label} 전체 변화 선 그래프`}>
+    {bleedingBands.map((band, index) => <rect key={`bleeding-${index}`} x={band.x} y={top - 13} width={band.width} height={height - top - bottom + 26} className="chart-menstrual-band" />)}
     {[0, 0.5, 1].map((ratio) => { const y = top + ratio * (height - top - bottom); const value = max - ratio * range; return <g key={ratio}><line x1={left} x2={width - right} y1={y} y2={y} className="chart-grid-line" /><text x={left - 10} y={y + 4} textAnchor="end" className="chart-axis-value">{value.toFixed(1)}</text></g>; })}
     <polyline points={points.map((point) => `${point.x},${point.y}`).join(" ")} className="trend-line" />
     {points.map(({ record, x, y }) => <g key={record.id}><circle cx={x} cy={y} r="6" className="trend-point" /><text x={x} y={y - 14} textAnchor="middle" className="trend-value">{record[metric]}{metricInfo.unit}</text><text x={x} y={height - 16} textAnchor="middle" className="trend-date">{record.date.slice(5).replace("-", "/")}</text></g>)}
-  </svg></div>;
+  </svg></div></div>;
 }
 
 function CircumferenceTrendChart({ records }: { records: CircumferenceRecord[] }) {
