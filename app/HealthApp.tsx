@@ -879,12 +879,17 @@ export function HealthApp() {
     window.sessionStorage.setItem(appleHealthSyncPendingKey, "1");
     const returnUrl = new URL(window.location.href);
     returnUrl.searchParams.set("healthSync", "1");
-    const shortcutUrl = new URL("shortcuts://x-callback-url/run-shortcut");
-    shortcutUrl.searchParams.set("name", appleHealthShortcutName);
-    shortcutUrl.searchParams.set("x-success", returnUrl.toString());
-    shortcutUrl.searchParams.set("x-cancel", returnUrl.toString());
-    shortcutUrl.searchParams.set("x-error", returnUrl.toString());
-    window.location.assign(shortcutUrl.toString());
+    // URLSearchParams serializes spaces as `+`, but the Shortcuts URL scheme
+    // treats that plus sign as part of the shortcut name. Encode each value
+    // directly so "SOYA 건강 보내기" remains the exact shortcut name on iOS.
+    const encodedReturnUrl = encodeURIComponent(returnUrl.toString());
+    const shortcutUrl = [
+      `shortcuts://x-callback-url/run-shortcut?name=${encodeURIComponent(appleHealthShortcutName)}`,
+      `x-success=${encodedReturnUrl}`,
+      `x-cancel=${encodedReturnUrl}`,
+      `x-error=${encodedReturnUrl}`,
+    ].join("&");
+    window.location.assign(shortcutUrl);
   }, []);
 
   useEffect(() => {
@@ -927,7 +932,6 @@ export function HealthApp() {
   const todayMeals = state.meals.filter((entry) => entry.date === today);
   const actualMeals = todayMeals.filter((entry) => entry.kind === "actual" && !entry.skipped);
   const todayWorkouts = state.workouts.filter((entry) => entry.date === today);
-  const todayActivity = (state.dailyActivities ?? []).find((entry) => entry.date === today);
   const actualWorkouts = todayWorkouts.filter((entry) => entry.kind === "actual");
   const plannedWorkout = todayWorkouts.find((entry) => entry.kind === "plan");
   const goalClock = goalTiming(state.profile, today);
@@ -938,7 +942,7 @@ export function HealthApp() {
   const mealActual = useCallback((type: MealType) => todayMeals.find((entry) => entry.kind === "actual" && entry.mealType === type), [todayMeals]);
   const mealPlan = useCallback((type: MealType) => todayMeals.find((entry) => entry.kind === "plan" && entry.mealType === type), [todayMeals]);
   const workoutExpected = Boolean(plannedWorkout || actualWorkouts.length);
-  const completed = [...(travelToday ? [] : [Boolean(todayBody)]), Boolean(todayActivity), ...(["breakfast", "lunch", "dinner"] as MealType[]).map((type) => Boolean(mealActual(type))), ...(workoutExpected ? [actualWorkouts.length > 0] : [])];
+  const completed = [...(travelToday ? [] : [Boolean(todayBody)]), ...(["breakfast", "lunch", "dinner"] as MealType[]).map((type) => Boolean(mealActual(type))), ...(workoutExpected ? [actualWorkouts.length > 0] : [])];
   const completedCount = completed.filter(Boolean).length;
 
   const nextAction = useMemo(() => {
@@ -1613,7 +1617,6 @@ function TodayView(props: TodayViewProps) {
       <CardTitle title="오늘 기록" aside={`${completedCount}/${totalCount}`} />
       <div className="record-list">
         {!travelToday && <RecordRow label="인바디" detail={todayBody ? `${todayBody.bodyFatMass}kg 체지방 · ${todayBody.skeletalMuscle}kg 골격근` : "아직 기록하지 않음"} done={Boolean(todayBody)} onClick={() => setModal("body")} />}
-        <RecordRow label="하루 활동" detail={energy.activity ? `${energy.activity.steps.toLocaleString()}걸음 · 활동 ${energy.activityCalories.toLocaleString()}kcal` : "아직 기록하지 않음"} done={Boolean(energy.activity)} onClick={() => openActivity(today)} />
         {(["breakfast", "lunch", "dinner"] as MealType[]).map((type) => { const actual = mealActual(type); const plan = mealPlan(type); return <RecordRow key={type} label={mealLabels[type]} detail={actual ? actual.title : plan ? `계획 · ${plan.title}` : "아직 기록하지 않음"} done={Boolean(actual)} onClick={() => openMeal("actual", type, actual ?? plan, today)} />; })}
         {plannedWorkout && <RecordRow label="운동" detail={actualWorkouts[0]?.title ?? `계획 · ${plannedWorkout.title}`} done={actualWorkouts.length > 0} onClick={() => openWorkout("actual", plannedWorkout)} />}
         {cycle && <RecordRow label="몸 상태" detail={cycleSummary(cycle)} done onClick={() => setModal("cycle")} />}
@@ -1623,7 +1626,7 @@ function TodayView(props: TodayViewProps) {
     <section className="card nutrition-card">
       <CardTitle title="오늘의 영양" aside={<button className="text-button" onClick={() => setModal("nutrition-goal")}>목표 설정</button>} />
       <div className="calorie-total"><strong>{nutrition.calories.toLocaleString()}</strong><span>kcal</span>{!(travelToday && todayTravelLevel === "가볍게 기록") && <small>/ {energy.intakeMin.toLocaleString()}~{energy.intakeMax.toLocaleString()}</small>}</div>
-      {!(travelToday && todayTravelLevel === "가볍게 기록") && <div className="energy-guide-mini"><span>{energy.activity ? `활동 ${energy.activityCalories.toLocaleString()} kcal · 총소모 약 ${energy.expenditure.toLocaleString()} kcal${energy.activity.source === "apple_health" && energy.activity.importedAt ? ` · ${new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit" }).format(new Date(energy.activity.importedAt))} 동기화` : ""}` : "활동을 기록하면 오늘의 섭취 범위를 조정해요"}</span><div className="energy-guide-actions"><button type="button" className="health-sync-mini-button" disabled={appleHealthSyncing} onClick={syncAppleHealth}>{appleHealthSyncing ? "동기화 중" : "지금 동기화"}</button><button type="button" onClick={() => openActivity(today)}>{energy.activity ? "수정" : "직접 기록"}</button></div></div>}
+      {!(travelToday && todayTravelLevel === "가볍게 기록") && <div className="energy-guide-mini"><span>{energy.activity ? `걸음 ${energy.activity.steps.toLocaleString()}걸음 · 활동 ${energy.activityCalories.toLocaleString()} kcal · 총소모 약 ${energy.expenditure.toLocaleString()} kcal${energy.activity.source === "apple_health" && energy.activity.importedAt ? ` · ${new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit" }).format(new Date(energy.activity.importedAt))} 동기화` : ""}` : "활동을 기록하면 오늘의 섭취 범위를 조정해요"}</span><div className="energy-guide-actions"><button type="button" className="health-sync-mini-button" disabled={appleHealthSyncing} onClick={syncAppleHealth}>{appleHealthSyncing ? "동기화 중" : "지금 동기화"}</button><button type="button" onClick={() => openActivity(today)}>{energy.activity ? "수정" : "직접 기록"}</button></div></div>}
       {!(travelToday && todayTravelLevel === "가볍게 기록") && <NutrientBar label="단백질" value={nutrition.protein} min={goal.proteinMin} max={goal.proteinMax} unit="g" tone="coral" />}
       {!(travelToday && todayTravelLevel !== "목표 유지") && <><NutrientBar label="탄수화물" value={nutrition.carbs} min={goal.carbsMin} max={goal.carbsMax} unit="g" tone="gold" /><NutrientBar label="지방" value={nutrition.fat} min={goal.fatMin} max={goal.fatMax} unit="g" tone="sage" /></>}
       <div className="micro-grid"><MicroStat label="당류" value={travelToday && todayTravelLevel === "가볍게 기록" ? `${nutrition.sugar}g` : `${nutrition.sugar} / ${goal.sugarMax}g`} hint={travelToday && todayTravelLevel === "가볍게 기록" ? "기록값" : "상한 기준"} /><MicroStat label="식이섬유" value={travelToday && todayTravelLevel === "가볍게 기록" ? `${nutrition.fiber}g` : `${nutrition.fiber} / ${goal.fiberMin}g`} hint={travelToday && todayTravelLevel === "가볍게 기록" ? "기록값" : "최소 목표"} /></div>
@@ -2895,6 +2898,7 @@ function AppleHealthSheet({ close, refresh, syncNow, syncing }: { close: () => v
       <section className="health-shortcut-guide">
         <strong>아이폰 단축어에서 한 번만 설정해요</strong>
         <ol><li>건강 앱에서 오늘의 걸음 수와 활동 에너지를 가져와요.</li><li>현재 날짜를 <b>yyyy-MM-dd</b> 형식으로 만들어요.</li><li>‘URL 콘텐츠 가져오기’에서 POST·JSON을 선택하고 위 주소와 연결 키를 넣어요.</li><li>앱의 ‘지금 동기화’ 버튼이나 개인용 자동화로 실행해요.</li></ol>
+        <details><summary>매일 정해진 시간에 자동 동기화하기</summary><ol><li>아이폰의 <b>단축어 → 자동화 → + → 개인용 자동화</b>로 들어가요.</li><li><b>시간대</b>에서 원하는 시각과 <b>매일</b>을 선택해요.</li><li><b>단축어 실행</b>에서 ‘SOYA 건강 보내기’를 선택해요.</li><li><b>즉시 실행</b>을 켜고 실행 알림은 원하는 대로 정해요.</li></ol></details>
         <details><summary>보낼 항목 이름 보기</summary><pre>{`date\nsteps\nactiveCalories\nwatchWorn\nworkouts (선택)`}</pre></details>
       </section>
 
