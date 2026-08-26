@@ -1690,15 +1690,17 @@ export function HealthApp() {
       visceralFat: number(data.get("visceralFat")), measurementTiming, device,
       condition: `${measurementTiming} · ${device}`,
     };
-    commit((current) => ({ ...current, bodyRecords: [record, ...current.bodyRecords.filter((item) => item.id !== editingId && item.date !== record.date)].sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`)) }));
+    const recordKey = bodyRecordKey(record.date, record.time);
+    commit((current) => ({ ...current, bodyRecords: [record, ...current.bodyRecords.filter((item) => item.id !== editingId && bodyRecordKey(item.date, item.time) !== recordKey)].sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`)) }));
     setSelectedBodyRecord(undefined);
     setModal(null);
   };
 
   const saveBodyBulk = (records: BodyRecord[]) => {
+    const importedKeys = new Set(records.map((record) => bodyRecordKey(record.date, record.time)));
     commit((current) => ({
       ...current,
-      bodyRecords: [...records, ...current.bodyRecords]
+      bodyRecords: [...records, ...current.bodyRecords.filter((item) => !importedKeys.has(bodyRecordKey(item.date, item.time)))]
         .sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`)),
     }));
     setModal(null);
@@ -3398,25 +3400,169 @@ function emptyBulkBodyDraft(): BulkBodyDraft {
   };
 }
 
+const bodyRecordKey = (date: string, time: string) => `${date}T${time || "07:00"}`;
+
+function parseCsvRows(text: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '"') {
+      if (quoted && text[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+      continue;
+    }
+    if (character === "," && !quoted) {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+    if ((character === "\n" || character === "\r") && !quoted) {
+      if (character === "\r" && text[index + 1] === "\n") index += 1;
+      row.push(cell);
+      if (row.some((value) => value.trim())) rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+    cell += character;
+  }
+  row.push(cell);
+  if (row.some((value) => value.trim())) rows.push(row);
+  return rows;
+}
+
+function normalizedCsvHeader(value: string) {
+  return value
+    .replace(/^\uFEFF/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\([^)]*\)|（[^）]*）/g, "")
+    .replace(/[^a-z0-9가-힣]/g, "");
+}
+
+const bodyCsvAliases: Record<Exclude<keyof BulkBodyDraft, "rowId">, string[]> = {
+  date: ["date", "날짜", "측정일"],
+  time: ["time", "시간", "측정시간"],
+  weight: ["weight", "체중"],
+  skeletalMuscle: ["skeletalmuscle", "골격근량"],
+  bodyFatMass: ["bodyfatmass", "체지방량"],
+  bodyFatRate: ["bodyfatrate", "체지방률"],
+  visceralFat: ["visceralfat", "내장지방", "내장지방레벨"],
+  measurementTiming: ["measurementtiming", "측정시점"],
+  device: ["device", "측정기기", "기기"],
+};
+
+function normalizedCsvDate(value: string) {
+  const match = value.trim().match(/^(\d{4})[.\/-](\d{1,2})[.\/-](\d{1,2})$/);
+  if (!match) return "";
+  const date = `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+  const parsed = new Date(`${date}T12:00:00`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date ? "" : date;
+}
+
+function normalizedCsvTime(value: string) {
+  const match = value.trim().match(/^(오전|오후|am|pm)?\s*(\d{1,2}):(\d{2})(?::\d{2})?$/i);
+  if (!match) return "";
+  let hour = Number(match[2]);
+  const minute = Number(match[3]);
+  if (minute > 59) return "";
+  const period = match[1]?.toLowerCase();
+  if (period) {
+    if (hour < 1 || hour > 12) return "";
+    if ((period === "오후" || period === "pm") && hour !== 12) hour += 12;
+    if ((period === "오전" || period === "am") && hour === 12) hour = 0;
+  } else if (hour > 23) return "";
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function csvMetric(value: string) {
+  const normalized = value.trim().replaceAll(",", "").replace(/[^0-9.+-]/g, "");
+  const parsed = Number(normalized);
+  return normalized && Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseBodyCsv(text: string) {
+  const rows = parseCsvRows(text);
+  if (rows.length < 2) throw new Error("CSV에 불러올 기록이 없어요.");
+  const headers = rows[0].map(normalizedCsvHeader);
+  const column = (key: keyof typeof bodyCsvAliases) => headers.findIndex((header) => bodyCsvAliases[key].includes(header));
+  const columns = {
+    date: column("date"), time: column("time"), weight: column("weight"), skeletalMuscle: column("skeletalMuscle"),
+    bodyFatMass: column("bodyFatMass"), bodyFatRate: column("bodyFatRate"), visceralFat: column("visceralFat"),
+    measurementTiming: column("measurementTiming"), device: column("device"),
+  };
+  const required = [columns.date, columns.weight, columns.skeletalMuscle, columns.bodyFatMass, columns.bodyFatRate, columns.visceralFat];
+  if (required.some((index) => index < 0)) throw new Error("날짜·체중·골격근량·체지방량·체지방률·내장지방 열을 확인해주세요.");
+
+  const drafts: BulkBodyDraft[] = [];
+  const issues: string[] = [];
+  let defaultedTimes = 0;
+  const fileKeys = new Set<string>();
+  let repeatedRows = 0;
+  rows.slice(1).forEach((row, rowIndex) => {
+    const line = rowIndex + 2;
+    const date = normalizedCsvDate(row[columns.date] ?? "");
+    const rawTime = columns.time >= 0 ? row[columns.time] ?? "" : "";
+    const time = rawTime.trim() ? normalizedCsvTime(rawTime) : "07:00";
+    const weight = csvMetric(row[columns.weight] ?? "");
+    const skeletalMuscle = csvMetric(row[columns.skeletalMuscle] ?? "");
+    const bodyFatMass = csvMetric(row[columns.bodyFatMass] ?? "");
+    const bodyFatRate = csvMetric(row[columns.bodyFatRate] ?? "");
+    const visceralFat = csvMetric(row[columns.visceralFat] ?? "");
+    const values = [weight, skeletalMuscle, bodyFatMass, bodyFatRate, visceralFat];
+    if (!date || !time || values.some((value) => value === undefined || value <= 0)) {
+      issues.push(`${line}번째 줄의 날짜·시간·측정값을 확인해주세요.`);
+      return;
+    }
+    if (!rawTime.trim()) defaultedTimes += 1;
+    const key = bodyRecordKey(date, time);
+    if (fileKeys.has(key)) {
+      repeatedRows += 1;
+      return;
+    }
+    fileKeys.add(key);
+    drafts.push({
+      rowId: id("body-row"), date, time,
+      weight: String(weight), skeletalMuscle: String(skeletalMuscle), bodyFatMass: String(bodyFatMass),
+      bodyFatRate: String(bodyFatRate), visceralFat: String(visceralFat),
+      measurementTiming: columns.measurementTiming >= 0 && row[columns.measurementTiming]?.trim() ? row[columns.measurementTiming].trim() : "아침 공복",
+      device: columns.device >= 0 && row[columns.device]?.trim() ? row[columns.device].trim() : "InBody Dial H30",
+    });
+  });
+  return { drafts, issues, defaultedTimes, repeatedRows };
+}
+
 function BodyBulkSheet({ existing, close, save }: { existing: BodyRecord[]; close: () => void; save: (records: BodyRecord[]) => void }) {
   const [draft, setDraft] = useState<BulkBodyDraft>(emptyBulkBodyDraft());
   const [pending, setPending] = useState<BulkBodyDraft[]>([]);
   const [editingRowId, setEditingRowId] = useState<string>();
   const [attempted, setAttempted] = useState(false);
   const [reviewing, setReviewing] = useState(false);
-  const [mode, setMode] = useState<"media" | "manual">("media");
+  const [mode, setMode] = useState<"media" | "csv" | "manual">("media");
   const [files, setFiles] = useState<File[]>([]);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [importing, setImporting] = useState(false);
   const [importStatus, setImportStatus] = useState("");
   const [importError, setImportError] = useState("");
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
-  const existingDates = useMemo(() => new Set(existing.map((record) => record.date)), [existing]);
+  const [csvInputKey, setCsvInputKey] = useState(0);
+  const [csvStatus, setCsvStatus] = useState("");
+  const [csvError, setCsvError] = useState("");
+  const [csvWarnings, setCsvWarnings] = useState<string[]>([]);
+  const existingKeys = useMemo(() => new Set(existing.map((record) => bodyRecordKey(record.date, record.time))), [existing]);
   const draftError = () => {
     if (!draft.date || !draft.time || !draft.weight || !draft.skeletalMuscle || !draft.bodyFatMass || !draft.bodyFatRate || !draft.visceralFat) return "비어 있는 항목이 있어요.";
     if ([draft.weight, draft.skeletalMuscle, draft.bodyFatMass, draft.bodyFatRate, draft.visceralFat].some((value) => !Number.isFinite(Number(value)) || Number(value) <= 0)) return "측정값은 0보다 큰 숫자로 적어주세요.";
-    if (pending.some((row) => row.rowId !== editingRowId && row.date === draft.date)) return "대기 목록에 같은 날짜가 있어요.";
-    if (existingDates.has(draft.date)) return "이 날짜의 인바디 기록이 이미 있어요.";
+    const key = bodyRecordKey(draft.date, draft.time);
+    if (pending.some((row) => row.rowId !== editingRowId && bodyRecordKey(row.date, row.time) === key)) return "대기 목록에 같은 날짜와 시간의 기록이 있어요.";
+    if (existingKeys.has(key)) return "이 날짜와 시간의 인바디 기록이 이미 있어요.";
     return "";
   };
   const error = draftError();
@@ -3494,23 +3640,25 @@ function BodyBulkSheet({ existing, close, save }: { existing: BodyRecord[]; clos
       });
       const bestByDate = new Map<string, AiBodyImportRecord>();
       for (const record of found) {
-        const previous = bestByDate.get(record.date);
-        if (!previous || record.confidence > previous.confidence) bestByDate.set(record.date, record);
+        const key = bodyRecordKey(record.date, record.time ?? "07:00");
+        const previous = bestByDate.get(key);
+        if (!previous || record.confidence > previous.confidence) bestByDate.set(key, record);
       }
-      const occupied = new Set([...existingDates, ...pending.map((row) => row.date)]);
+      const occupied = new Set([...existingKeys, ...pending.map((row) => bodyRecordKey(row.date, row.time))]);
       const additions: BulkBodyDraft[] = [];
       let skipped = 0;
       for (const record of bestByDate.values()) {
-        if (occupied.has(record.date)) {
+        const key = bodyRecordKey(record.date, record.time ?? "07:00");
+        if (occupied.has(key)) {
           skipped += 1;
           continue;
         }
-        occupied.add(record.date);
+        occupied.add(key);
         additions.push(importedDraft(record));
       }
       setPending((current) => {
-        const currentDates = new Set([...existingDates, ...current.map((row) => row.date)]);
-        return [...current, ...additions.filter((row) => !currentDates.has(row.date))];
+        const currentKeys = new Set([...existingKeys, ...current.map((row) => bodyRecordKey(row.date, row.time))]);
+        return [...current, ...additions.filter((row) => !currentKeys.has(bodyRecordKey(row.date, row.time)))];
       });
       const safetyWarning = summary.reachedSafetyLimit
         ? "서로 다른 화면이 240개를 넘어 나머지는 분석하지 않았어요. 빠진 기록이 있다면 영상을 둘로 나누어 다시 선택해주세요."
@@ -3531,9 +3679,43 @@ function BodyBulkSheet({ existing, close, save }: { existing: BodyRecord[]; clos
     }
   };
 
-  return <Sheet title="인바디 과거 기록 가져오기" subtitle="사진·동영상에서 불러오거나 직접 입력한 뒤 확인해서 저장해요." close={close}>
+  const importCsvFile = async (file?: File) => {
+    if (!file) return;
+    setCsvError("");
+    setCsvStatus("");
+    setCsvWarnings([]);
+    try {
+      const result = parseBodyCsv(await file.text());
+      const occupied = new Set([...existingKeys, ...pending.map((row) => bodyRecordKey(row.date, row.time))]);
+      const additions = result.drafts.filter((row) => {
+        const key = bodyRecordKey(row.date, row.time);
+        if (occupied.has(key)) return false;
+        occupied.add(key);
+        return true;
+      });
+      const skipped = result.drafts.length - additions.length;
+      setPending((current) => [...current, ...additions]);
+      const warnings = [
+        result.issues.length ? `${result.issues.length}줄은 값이 완전하지 않아 제외했어요. ${result.issues.slice(0, 2).join(" ")}` : "",
+        result.defaultedTimes ? `시간이 없던 ${result.defaultedTimes}개 기록은 오전 7시로 넣었어요.` : "",
+        result.repeatedRows ? `파일 안에서 완전히 같은 날짜·시간 ${result.repeatedRows}개는 한 번만 가져왔어요.` : "",
+      ].filter(Boolean);
+      setCsvWarnings(warnings);
+      setCsvStatus(additions.length
+        ? `${additions.length}개 기록을 대기 목록에 넣었어요.${skipped ? ` 이미 있는 ${skipped}개는 제외했어요.` : ""}`
+        : skipped
+          ? `파일의 ${skipped}개 기록은 이미 저장되어 있거나 대기 중이에요.`
+          : "가져올 수 있는 기록을 찾지 못했어요.");
+    } catch (error) {
+      setCsvError(error instanceof Error ? error.message : "CSV 파일을 읽지 못했어요.");
+    } finally {
+      setCsvInputKey((value) => value + 1);
+    }
+  };
+
+  return <Sheet title="인바디 과거 기록 가져오기" subtitle="사진·동영상, CSV 파일 또는 직접 입력으로 가져온 뒤 확인해서 저장해요." close={close}>
     {!reviewing ? <div className="body-bulk-editor">
-      <div className="body-import-tabs"><button type="button" className={mode === "media" ? "active" : ""} onClick={() => setMode("media")}>사진·동영상</button><button type="button" className={mode === "manual" ? "active" : ""} onClick={() => setMode("manual")}>직접 입력</button></div>
+      <div className="body-import-tabs"><button type="button" className={mode === "media" ? "active" : ""} onClick={() => setMode("media")}>사진·동영상</button><button type="button" className={mode === "csv" ? "active" : ""} onClick={() => setMode("csv")}>CSV 파일</button><button type="button" className={mode === "manual" ? "active" : ""} onClick={() => setMode("manual")}>직접 입력</button></div>
       {mode === "media" ? <section className="body-media-import">
         <div className="body-bulk-summary"><strong>인바디 화면 가져오기</strong><span>스크린샷 여러 장이나 화면 녹화 영상을 선택할 수 있어요.</span></div>
         <label className={`body-media-picker${files.length ? " selected" : ""}`}>
@@ -3545,6 +3727,16 @@ function BodyBulkSheet({ existing, close, save }: { existing: BodyRecord[]; clos
         {(importStatus || importError) && <p className={`body-media-status${importError ? " error" : ""}`}>{importError || importStatus}</p>}
         {importWarnings.length > 0 && <div className="body-media-warnings">{importWarnings.map((warning) => <span key={warning}>{warning}</span>)}</div>}
         <p className="body-media-privacy">원본 파일은 SOYA나 Firebase에 저장하지 않아요. 분석용 장면만 OpenAI로 보내고 결과 숫자만 대기 목록에 남겨요.</p>
+      </section> : mode === "csv" ? <section className="body-media-import">
+        <div className="body-bulk-summary"><strong>CSV로 한꺼번에 가져오기</strong><span>SOYA 형식이나 한글 제목이 있는 인바디 CSV를 바로 읽어요.</span></div>
+        <label className="body-media-picker">
+          <input key={csvInputKey} type="file" accept=".csv,text/csv" onChange={(event) => void importCsvFile(event.target.files?.[0])} />
+          <strong>CSV 파일 선택</strong>
+          <span>날짜 · 시간 · 체중 · 골격근량 · 체지방량 · 체지방률 · 내장지방</span>
+        </label>
+        {(csvStatus || csvError) && <p className={`body-media-status${csvError ? " error" : ""}`}>{csvError || csvStatus}</p>}
+        {csvWarnings.length > 0 && <div className="body-media-warnings">{csvWarnings.map((warning) => <span key={warning}>{warning}</span>)}</div>}
+        <p className="body-media-privacy">CSV는 이 기기 안에서만 읽어요. 파일 자체는 Firebase나 OpenAI로 보내지 않아요.</p>
       </section> : <article className="body-bulk-entry">
         <div className="body-bulk-row-heading"><strong>{editingRowId ? "기록 수정" : "새 기록"}</strong><div>{(pending.length > 0 || existing.length > 0) && <button type="button" onClick={copyLatest}>직전 값 복사</button>}{editingRowId && <button type="button" onClick={() => resetDraft()}>수정 취소</button>}</div></div>
         <div className="two-fields sheet-leading-fields"><Field label="측정일"><input type="date" value={draft.date} onChange={(event) => update("date", event.target.value)} /></Field><Field label="측정시간"><input type="time" value={draft.time} onChange={(event) => update("time", event.target.value)} /></Field></div>
@@ -3559,12 +3751,12 @@ function BodyBulkSheet({ existing, close, save }: { existing: BodyRecord[]; clos
         {attempted && error && <p className="body-bulk-error">{error}</p>}
         <button type="button" className="body-bulk-add" onClick={queueDraft}>{editingRowId ? "수정 완료" : "이 기록을 대기 목록에 추가"}</button>
       </article>}
-      <section className="body-bulk-queue"><div className="body-bulk-queue-heading"><strong>저장 대기</strong><span>{pending.length}개</span></div>{pending.length ? <div>{pending.slice().sort((a, b) => b.date.localeCompare(a.date)).map((row) => <article key={row.rowId}><div><strong>{row.date}</strong><span>체지방 {row.bodyFatMass}kg · 골격근 {row.skeletalMuscle}kg</span></div><div><button type="button" onClick={() => editPending(row)}>수정</button><button type="button" className="delete" onClick={() => removePending(row.rowId)}>삭제</button></div></article>)}</div> : <p>추가한 과거 기록이 아직 없어요.</p>}</section>
+      <section className="body-bulk-queue"><div className="body-bulk-queue-heading"><strong>저장 대기</strong><span>{pending.length}개</span></div>{pending.length ? <div>{pending.slice().sort((a, b) => bodyRecordKey(b.date, b.time).localeCompare(bodyRecordKey(a.date, a.time))).map((row) => <article key={row.rowId}><div><strong>{row.date} · {row.time}</strong><span>체지방 {row.bodyFatMass}kg · 골격근 {row.skeletalMuscle}kg</span></div><div><button type="button" onClick={() => editPending(row)}>수정</button><button type="button" className="delete" onClick={() => removePending(row.rowId)}>삭제</button></div></article>)}</div> : <p>추가한 과거 기록이 아직 없어요.</p>}</section>
       {mode === "manual" && hasDraftValues && pending.length > 0 && <p className="body-bulk-pending-note">작성 중인 값은 먼저 대기 목록에 추가해주세요.</p>}
       <button type="button" className="primary-button submit-button" disabled={!pending.length || importing || (mode === "manual" && hasDraftValues)} onClick={() => setReviewing(true)}>전체 저장 전 확인</button>
     </div> : <div className="body-bulk-review">
       <div className="body-bulk-review-heading"><span className="eyebrow">저장 전 확인</span><h3>{pending.length}개 기록을 저장할까요?</h3></div>
-      <div className="body-bulk-preview-list">{pending.slice().sort((a, b) => b.date.localeCompare(a.date)).map((row) => <article key={row.rowId}><div><strong>{row.date}</strong><span>{row.time} · {row.measurementTiming}</span></div><div><b>체지방 {row.bodyFatMass}kg</b><span>골격근 {row.skeletalMuscle}kg · 체중 {row.weight}kg</span></div></article>)}</div>
+      <div className="body-bulk-preview-list">{pending.slice().sort((a, b) => bodyRecordKey(b.date, b.time).localeCompare(bodyRecordKey(a.date, a.time))).map((row) => <article key={row.rowId}><div><strong>{row.date}</strong><span>{row.time} · {row.measurementTiming}</span></div><div><b>체지방 {row.bodyFatMass}kg</b><span>골격근 {row.skeletalMuscle}kg · 체중 {row.weight}kg</span></div></article>)}</div>
       <div className="body-bulk-review-actions"><button type="button" className="ghost-button" onClick={() => setReviewing(false)}>입력 수정</button><button type="button" className="primary-button" onClick={() => save(records())}>{pending.length}개 한 번에 저장</button></div>
     </div>}
   </Sheet>;
