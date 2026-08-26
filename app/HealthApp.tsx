@@ -51,7 +51,7 @@ import {
 } from "./firebase-notifications";
 
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
-type Modal = null | "quick" | "measurement-picker" | "movement-picker" | "body" | "body-bulk" | "body-detail" | "circumference" | "activity" | "apple-health" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "goal-complete" | "goal-history-detail" | "profile-settings" | "account" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "love" | "consultation-detail" | "reminders" | "data-management";
+type Modal = null | "quick" | "measurement-picker" | "movement-picker" | "body" | "body-bulk" | "body-detail" | "circumference" | "activity" | "apple-health" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "goal-complete" | "goal-history-detail" | "profile-settings" | "account" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "love" | "consultation-detail" | "reminders" | "data-management" | "data-audit";
 type Consultation = AppState["consultations"][number];
 type WeeklyReview = NonNullable<AppState["weeklyReviews"]>[number];
 type BleedingState = Exclude<CycleEntry["state"], "없음">;
@@ -114,6 +114,24 @@ type GoalCompletionChoice = {
   targetBodyFatChange: number;
   targetMuscleChange: number;
   note: string;
+};
+type RecordAuditTarget =
+  | { kind: "body"; record: BodyRecord }
+  | { kind: "circumference"; record: CircumferenceRecord }
+  | { kind: "meal"; record: MealEntry }
+  | { kind: "meal-actual"; record: MealEntry }
+  | { kind: "workout"; record: WorkoutEntry }
+  | { kind: "workout-actual"; record: WorkoutEntry }
+  | { kind: "activity"; record: DailyActivity }
+  | { kind: "cycle"; date: string }
+  | { kind: "love"; date: string }
+  | { kind: "food-library" };
+type RecordAuditIssue = { id: string; title: string; detail: string; target?: RecordAuditTarget; action?: string };
+type RecordAuditResult = {
+  duplicates: RecordAuditIssue[];
+  cycles: RecordAuditIssue[];
+  bodyChanges: RecordAuditIssue[];
+  missingActuals: RecordAuditIssue[];
 };
 type OnboardingDraft = {
   nickname: string;
@@ -625,6 +643,166 @@ function cycleHistories(entries: CycleEntry[]): CycleHistory[] {
       irregularDays: entries.filter((entry) => entry.date >= start && entry.date <= intervalEnd && entry.state === "부정출혈").length,
     };
   }).reverse();
+}
+
+const auditText = (value: string | undefined) => (value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ko-KR");
+
+function auditDateIsValid(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T12:00:00`);
+  return !Number.isNaN(parsed.getTime()) && dateKey(parsed) === value;
+}
+
+function recordAuditFor(state: AppState, today: string): RecordAuditResult {
+  const duplicates: RecordAuditIssue[] = [];
+  const cycles: RecordAuditIssue[] = [];
+  const bodyChanges: RecordAuditIssue[] = [];
+  const missingActuals: RecordAuditIssue[] = [];
+
+  const duplicateGroups = <T,>(items: T[], keyFor: (item: T) => string, describe: (items: T[]) => RecordAuditIssue) => {
+    const groups = new Map<string, T[]>();
+    items.forEach((item) => {
+      const key = keyFor(item);
+      groups.set(key, [...(groups.get(key) ?? []), item]);
+    });
+    groups.forEach((group) => { if (group.length > 1) duplicates.push(describe(group)); });
+  };
+
+  duplicateGroups(state.bodyRecords, (item) => item.date, (group) => ({
+    id: `body-${group[0].date}`,
+    title: `${group[0].date} 체성분 ${group.length}건`,
+    detail: "같은 날짜에 체성분 기록이 여러 개 있어요.",
+    target: { kind: "body", record: group[1] }, action: "확인",
+  }));
+  duplicateGroups(state.circumferenceRecords ?? [], (item) => item.date, (group) => ({
+    id: `circumference-${group[0].date}`,
+    title: `${group[0].date} 둘레 기록 ${group.length}건`,
+    detail: "같은 날짜에 허리·엉덩이 둘레 기록이 여러 개 있어요.",
+    target: { kind: "circumference", record: group[1] }, action: "확인",
+  }));
+  duplicateGroups(state.dailyActivities ?? [], (item) => item.date, (group) => ({
+    id: `activity-${group[0].date}`,
+    title: `${group[0].date} 하루 활동 ${group.length}건`,
+    detail: "같은 날짜에 하루 활동 기록이 여러 개 있어요.",
+    target: { kind: "activity", record: group[1] }, action: "확인",
+  }));
+  duplicateGroups(state.cycles, (item) => item.date, (group) => ({
+    id: `cycle-${group[0].date}`,
+    title: `${group[0].date} 월경·컨디션 ${group.length}건`,
+    detail: "같은 날짜에 월경·컨디션 기록이 여러 개 있어요.",
+    target: { kind: "cycle", date: group[0].date }, action: "확인",
+  }));
+  duplicateGroups(state.loveRecords ?? [], (item) => item.date, (group) => ({
+    id: `love-${group[0].date}`,
+    title: `${group[0].date} 사랑 기록 ${group.length}건`,
+    detail: "같은 날짜에 사랑 기록이 여러 개 있어요.",
+    target: { kind: "love", date: group[0].date }, action: "확인",
+  }));
+  duplicateGroups(state.foodLibrary ?? [], (item) => auditText(item.name), (group) => ({
+    id: `food-${group[0].id}`,
+    title: `‘${group[0].name}’ ${group.length}개`,
+    detail: "음식 보관함에 이름이 같은 항목이 있어요.",
+    target: { kind: "food-library" }, action: "보관함 열기",
+  }));
+
+  const componentSignature = (components: MealFoodComponent[] | undefined) => (components ?? []).map((item) => [
+    auditText(item.name), item.quantity ?? "", item.unit ?? "", item.calories, item.protein, item.carbs, item.fat, item.sugar, item.fiber,
+  ]);
+  duplicateGroups(state.meals, (item) => JSON.stringify([
+    item.date, item.mealType, item.kind, auditText(item.title), item.calories, item.protein, item.carbs, item.fat, item.sugar, item.fiber,
+    item.skipped ?? false, componentSignature(item.components),
+  ]), (group) => ({
+    id: `meal-${group[0].id}`,
+    title: `${group[0].date} ${mealLabels[group[0].mealType]} ${group[0].kind === "plan" ? "계획" : "기록"} ${group.length}건`,
+    detail: `‘${group[0].title || "내용 없음"}’이(가) 똑같이 저장되어 있어요.`,
+    target: { kind: "meal", record: group[1] }, action: "확인",
+  }));
+  duplicateGroups(state.workouts, (item) => JSON.stringify([
+    item.date, item.kind, item.type, auditText(item.title), item.minutes, item.intensity, item.heartRate ?? "", item.overlapsSteps ?? false, auditText(item.details),
+  ]), (group) => ({
+    id: `workout-${group[0].id}`,
+    title: `${group[0].date} ${group[0].kind === "plan" ? "운동 계획" : "한 운동"} ${group.length}건`,
+    detail: `‘${group[0].title || group[0].type}’이(가) 똑같이 저장되어 있어요.`,
+    target: { kind: "workout", record: group[1] }, action: "확인",
+  }));
+
+  state.cycles.filter((item) => !auditDateIsValid(item.date)).forEach((item) => cycles.push({
+    id: `cycle-invalid-${item.id}`,
+    title: "날짜를 읽을 수 없는 월경 기록",
+    detail: `저장된 날짜 ‘${item.date}’을 확인해주세요.`,
+  }));
+  const periodRanges = [...new Set(state.cycles.filter((item) => item.periodId && item.state !== "없음" && auditDateIsValid(item.date)).map((item) => item.periodId!))]
+    .map((periodId) => {
+      const entries = state.cycles.filter((item) => item.periodId === periodId && item.state !== "없음").sort((a, b) => a.date.localeCompare(b.date));
+      return { periodId, start: entries[0].date, end: entries.at(-1)!.date };
+    }).sort((a, b) => a.start.localeCompare(b.start));
+  for (let index = 1; index < periodRanges.length; index += 1) {
+    const previous = periodRanges[index - 1];
+    const current = periodRanges[index];
+    if (current.start <= previous.end) cycles.push({
+      id: `cycle-overlap-${previous.periodId}-${current.periodId}`,
+      title: `${current.start} 주기 날짜 확인`,
+      detail: `${previous.start}~${previous.end} 기록과 ${current.start}~${current.end} 기록이 서로 겹쳐요.`,
+      target: { kind: "cycle", date: current.start }, action: "확인",
+    });
+  }
+
+  const bodySorted = [...state.bodyRecords].filter((item) => auditDateIsValid(item.date)).sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+  const changeRules: Array<{ key: keyof Pick<BodyRecord, "weight" | "bodyFatMass" | "skeletalMuscle" | "bodyFatRate" | "visceralFat">; label: string; limit: number; unit: string }> = [
+    { key: "weight", label: "체중", limit: 2.5, unit: "kg" },
+    { key: "bodyFatMass", label: "체지방량", limit: 2, unit: "kg" },
+    { key: "skeletalMuscle", label: "골격근량", limit: 1.2, unit: "kg" },
+    { key: "bodyFatRate", label: "체지방률", limit: 3, unit: "%p" },
+    { key: "visceralFat", label: "내장지방레벨", limit: 3, unit: "Lv" },
+  ];
+  for (let index = 1; index < bodySorted.length; index += 1) {
+    const previous = bodySorted[index - 1];
+    const current = bodySorted[index];
+    const interval = daysBetween(previous.date, current.date);
+    if (interval < 1 || interval > 7) continue;
+    const changes = changeRules.filter((rule) => previous[rule.key] > 0 && current[rule.key] > 0 && Math.abs(current[rule.key] - previous[rule.key]) >= rule.limit);
+    if (!changes.length) continue;
+    bodyChanges.push({
+      id: `body-change-${current.id}`,
+      title: `${current.date} 체성분 변화 확인`,
+      detail: changes.map((rule) => `${rule.label} ${current[rule.key] >= previous[rule.key] ? "+" : ""}${roundNutrient(current[rule.key] - previous[rule.key])}${rule.unit}`).join(" · "),
+      target: { kind: "body", record: current }, action: "측정값 확인",
+    });
+  }
+
+  const goalStart = state.profile.goalStartDate && state.profile.goalStartDate < today ? state.profile.goalStartDate : addDays(today, -90);
+  const auditStart = goalStart > addDays(today, -90) ? goalStart : addDays(today, -90);
+  const pastPlans = state.meals.filter((item) => item.kind === "plan" && item.date >= auditStart && item.date < today);
+  const mealPlanGroups = new Map<string, MealEntry[]>();
+  pastPlans.forEach((item) => {
+    const key = `${item.date}-${item.mealType}`;
+    mealPlanGroups.set(key, [...(mealPlanGroups.get(key) ?? []), item]);
+  });
+  mealPlanGroups.forEach((plans) => {
+    const first = plans[0];
+    const hasActual = state.meals.some((item) => item.kind === "actual" && item.date === first.date && item.mealType === first.mealType);
+    if (!hasActual) missingActuals.push({
+      id: `missing-meal-${first.date}-${first.mealType}`,
+      title: `${first.date} ${mealLabels[first.mealType]} 기록 없음`,
+      detail: plans.map((item) => item.title).filter(Boolean).join(" · ") || "식사 계획은 저장되어 있어요.",
+      target: { kind: "meal-actual", record: first }, action: "기록하기",
+    });
+  });
+  const pastWorkoutPlans = state.workouts.filter((item) => item.kind === "plan" && item.date >= auditStart && item.date < today);
+  pastWorkoutPlans.forEach((plan) => {
+    const sameDayTypePlans = pastWorkoutPlans.filter((item) => item.date === plan.date && item.type === plan.type);
+    const sameDayActuals = state.workouts.filter((item) => item.kind === "actual" && item.date === plan.date);
+    const matched = sameDayActuals.some((actual) => auditText(actual.title) === auditText(plan.title) && actual.type === plan.type)
+      || (sameDayTypePlans.length === 1 && sameDayActuals.some((actual) => actual.type === plan.type));
+    if (!matched) missingActuals.push({
+      id: `missing-workout-${plan.id}`,
+      title: `${plan.date} 운동 기록 없음`,
+      detail: `${plan.type} · ${plan.title || "운동 계획"}${plan.minutes ? ` · ${plan.minutes}분` : ""}`,
+      target: { kind: "workout-actual", record: plan }, action: "기록하기",
+    });
+  });
+
+  return { duplicates, cycles, bodyChanges, missingActuals };
 }
 
 function weekDates(start: string) {
@@ -1604,6 +1782,36 @@ export function HealthApp() {
     setModal(kind === "plan" ? "meal-plan" : "meal-actual");
   };
 
+  const openAuditTarget = (target: RecordAuditTarget) => {
+    if (target.kind === "body") {
+      setSelectedBodyRecord(target.record);
+      setModal("body-detail");
+    } else if (target.kind === "circumference") {
+      setSelectedCircumferenceRecord(target.record);
+      setModal("circumference");
+    } else if (target.kind === "meal") {
+      openMeal(target.record.kind, target.record.mealType, target.record, target.record.date);
+    } else if (target.kind === "meal-actual") {
+      openMeal("actual", target.record.mealType, { ...target.record, id: "", kind: "actual" }, target.record.date);
+    } else if (target.kind === "workout") {
+      openWorkout(target.record.kind, target.record);
+    } else if (target.kind === "workout-actual") {
+      openWorkout("actual", { ...target.record, id: "", kind: "actual" });
+    } else if (target.kind === "activity") {
+      setActivityDate(target.record.date);
+      setModal("activity");
+    } else if (target.kind === "cycle") {
+      setCycleDate(target.date);
+      setCycleRangeDraft(cycleRangeAround(state.cycles, target.date));
+      setModal("cycle");
+    } else if (target.kind === "love") {
+      setLoveDate(target.date);
+      setModal("love");
+    } else if (target.kind === "food-library") {
+      setModal("food-library");
+    }
+  };
+
   const deleteMeal = (entry: MealEntry) => {
     if (!window.confirm(`${mealLabels[entry.mealType]} ${entry.kind === "plan" ? "계획" : "기록"}을 삭제할까요?`)) return;
     commit((current) => ({ ...moveToTrash(current, `${entry.date} ${mealLabels[entry.mealType]} ${entry.kind === "plan" ? "계획" : "기록"}`, { meals: [entry] }), meals: current.meals.filter((item) => item.id !== entry.id) }));
@@ -1955,7 +2163,7 @@ export function HealthApp() {
       {modal === "goal-complete" && <GoalCompletionSheet state={state} today={today} close={closeModal} save={finishCurrentGoal} />}
       {modal === "goal-history-detail" && selectedGoalHistory && <GoalHistoryDetailSheet goal={selectedGoalHistory} close={closeModal} />}
       {modal === "profile-settings" && <ProfileSettingsSheet profile={state.profile} googleName={authUser.displayName ?? undefined} today={today} close={closeAccountChild} save={saveProfileSettings} />}
-      {modal === "account" && <AccountSheet nickname={state.profile.nickname?.trim() || authUser.displayName?.split(" ")[0] || "사용자"} close={closeModal} openProfile={() => setModal("profile-settings")} openData={() => setModal("data-management")} logout={async () => { await saveQueue.current; await signOutGoogleUser(); }} />}
+      {modal === "account" && <AccountSheet nickname={state.profile.nickname?.trim() || authUser.displayName?.split(" ")[0] || "사용자"} close={closeModal} openProfile={() => setModal("profile-settings")} openAudit={() => setModal("data-audit")} openData={() => setModal("data-management")} logout={async () => { await saveQueue.current; await signOutGoogleUser(); }} />}
       {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={closeModal} save={saveWorkout} />}
       {modal === "workout-goal" && <WorkoutGoalSheet goal={state.workoutGoal ?? initialState.workoutGoal!} close={closeModal} save={saveWorkoutGoal} />}
       {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} initialStart={weeklyPlanStart} consultation={weeklyPlanConsultation} close={() => { setWeeklyPlanStart(undefined); setWeeklyPlanConsultation(undefined); closeModal(); }} save={saveWeeklyPlan} />}
@@ -1964,6 +2172,7 @@ export function HealthApp() {
       {modal === "consultation-detail" && selectedConsultation && <ConsultationDetailSheet consultation={selectedConsultation} close={closeModal} remove={() => deleteConsultation(selectedConsultation)} />}
       {modal === "reminders" && <ReminderSettingsSheet settings={state.reminderSettings ?? defaultReminders} pushStatus={pushStatus} pushMessage={pushMessage} enablePush={() => { void enableActualNotifications(); }} disablePush={() => { void disableActualNotifications(); }} close={closeModal} save={saveReminders} />}
       {modal === "data-management" && <DataManagementSheet state={state} today={today} close={closeAccountChild} backup={backupData} exportCsv={(kind) => exportCsv(state, kind, today)} restore={restoreData} restoreDeleted={restoreDeletedItem} permanentlyDelete={permanentlyDeleteTrashItem} emptyTrash={emptyTrash} />}
+      {modal === "data-audit" && <RecordAuditSheet state={state} today={today} close={closeAccountChild} openTarget={openAuditTarget} />}
     </div>
   );
 }
@@ -3513,9 +3722,48 @@ function ProfileSettingsSheet({ profile, googleName, today, close, save }: { pro
   </form></Sheet>;
 }
 
-function AccountSheet({ nickname, close, openProfile, openData, logout }: { nickname: string; close: () => void; openProfile: () => void; openData: () => void; logout: () => void | Promise<void> }) {
+function RecordAuditSheet({ state, today, close, openTarget }: { state: AppState; today: string; close: () => void; openTarget: (target: RecordAuditTarget) => void }) {
+  const audit = useMemo(() => recordAuditFor(state, today), [state, today]);
+  const groups: Array<{ key: keyof RecordAuditResult; label: string; shortLabel: string; empty: string }> = [
+    { key: "duplicates", label: "중복 기록", shortLabel: "중복", empty: "똑같이 저장된 기록이 없어요." },
+    { key: "cycles", label: "월경 주기 날짜", shortLabel: "월경 날짜", empty: "겹치거나 읽을 수 없는 주기 날짜가 없어요." },
+    { key: "bodyChanges", label: "체성분 큰 변화", shortLabel: "체성분", empty: "7일 이내 확인이 필요한 큰 변화가 없어요." },
+    { key: "missingActuals", label: "계획 후 실제 기록", shortLabel: "기록 누락", empty: "지난 계획에 대응하는 실제 기록이 모두 있어요." },
+  ];
+  const total = groups.reduce((sum, group) => sum + audit[group.key].length, 0);
+  return <Sheet title="기록 점검" close={close}><div className="record-audit-stack">
+    <section className={`record-audit-hero${total ? " has-issues" : " all-clear"}`}>
+      <span>{total ? "확인할 기록" : "점검 완료"}</span>
+      <strong>{total ? `${total}개를 살펴봐주세요` : "지금은 이상이 없어요"}</strong>
+      <p>{total ? "자동 점검 결과예요. 실제 기록이 맞다면 그대로 두어도 괜찮아요." : "중복·날짜·급격한 변화·계획 누락을 모두 확인했어요."}</p>
+    </section>
+
+    <section className="record-audit-summary" aria-label="점검 결과 요약">
+      {groups.map((group) => <button type="button" key={group.key} onClick={() => document.getElementById(`audit-${group.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+        <span>{group.shortLabel}</span><strong>{audit[group.key].length}</strong>
+      </button>)}
+    </section>
+
+    <div className="record-audit-groups">
+      {groups.map((group) => {
+        const issues = audit[group.key];
+        return <section className="record-audit-group" id={`audit-${group.key}`} key={group.key}>
+          <header><strong>{group.label}</strong><span className={issues.length ? "has-count" : ""}>{issues.length}</span></header>
+          {issues.length ? <div className="record-audit-list">{issues.map((issue) => <article key={issue.id}>
+            <div><strong>{issue.title}</strong><p>{issue.detail}</p></div>
+            {issue.target && <button type="button" onClick={() => openTarget(issue.target!)}>{issue.action ?? "확인"}<b aria-hidden="true">›</b></button>}
+          </article>)}</div> : <p className="record-audit-empty"><span aria-hidden="true">✓</span>{group.empty}</p>}
+        </section>;
+      })}
+    </div>
+    <p className="record-audit-footnote">체성분 변화는 7일 안에 체중 2.5kg, 체지방량 2kg, 골격근량 1.2kg, 체지방률 3%p 또는 내장지방레벨 3 이상 변한 경우만 표시해요.</p>
+  </div></Sheet>;
+}
+
+function AccountSheet({ nickname, close, openProfile, openAudit, openData, logout }: { nickname: string; close: () => void; openProfile: () => void; openAudit: () => void; openData: () => void; logout: () => void | Promise<void> }) {
   return <Sheet title={`${nickname}님`} close={close}><div className="account-sheet-actions">
     <button type="button" onClick={openProfile}><span>내 정보 수정</span><b aria-hidden="true">›</b></button>
+    <button type="button" onClick={openAudit}><span>기록 점검</span><b aria-hidden="true">›</b></button>
     <button type="button" onClick={openData}><span>데이터 관리</span><b aria-hidden="true">›</b></button>
     <button type="button" className="logout" onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) void logout(); }}><span>로그아웃</span><b aria-hidden="true">›</b></button>
   </div></Sheet>;
