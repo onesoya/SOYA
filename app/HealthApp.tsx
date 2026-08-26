@@ -347,7 +347,7 @@ function menstrualPrediction(entries: CycleEntry[], today: string) {
     .filter((entry) => entry.state === "본 출혈" && byDate.get(addDays(entry.date, -1))?.state !== "본 출혈")
     .map((entry) => entry.date)
     .sort();
-  const intervals = starts.slice(1).map((date, index) => daysBetween(starts[index], date)).filter((days) => days >= 15 && days <= 60).slice(-7);
+  const intervals = starts.slice(1).map((date, index) => daysBetween(starts[index], date)).slice(-7);
   const cycleLength = Math.round(median(intervals) ?? 28);
   const lastStart = starts.at(-1);
   const fertileDates = new Set<string>();
