@@ -205,7 +205,7 @@ function boundedNumber(value, min, max) {
 
 export const getAppleHealthConnectionStatus = onCall({
   region: "asia-northeast3",
-  memory: "128MiB",
+  memory: "256MiB",
   timeoutSeconds: 30,
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Google 로그인 후 연결할 수 있어요.");
@@ -222,7 +222,7 @@ export const getAppleHealthConnectionStatus = onCall({
 
 export const createAppleHealthConnectionKey = onCall({
   region: "asia-northeast3",
-  memory: "128MiB",
+  memory: "256MiB",
   timeoutSeconds: 30,
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Google 로그인 후 연결할 수 있어요.");
@@ -239,7 +239,7 @@ export const createAppleHealthConnectionKey = onCall({
 
 export const revokeAppleHealthConnection = onCall({
   region: "asia-northeast3",
-  memory: "128MiB",
+  memory: "256MiB",
   timeoutSeconds: 30,
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Google 로그인 후 연결을 해제할 수 있어요.");

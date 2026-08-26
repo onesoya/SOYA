@@ -239,6 +239,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .travel-reminder-section p { margin: 0; color: var(--muted); font-size: 7px; line-height: 1.6; }
 .energy-guide-mini { margin: -2px 0 10px; padding: 8px 10px; border: 1px solid var(--line); background: var(--cream); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .energy-guide-mini span { min-width: 0; color: var(--muted); font-size: 7px; line-height: 1.5; }
+.energy-guide-mini span > b { display: block; color: inherit; font: inherit; }
+.energy-guide-mini span > small { display: block; margin-top: 2px; color: var(--coral); font-size: 6px; }
 .energy-guide-mini button, .activity-energy-panel button { flex: 0 0 auto; min-height: 28px; padding: 0 8px; border: 1px solid var(--ink); background: var(--paper); color: var(--coral); font: inherit; font-size: 7px; font-weight: 850; cursor: pointer; }
 .energy-guide-mini button:disabled { opacity: .55; cursor: default; }
 .energy-guide-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 5px; }
@@ -1010,6 +1012,8 @@ h1, h2, h3, strong, b { font-weight: 700; }
   cursor: pointer;
 }
 .calendar-day b { font-size: 10px; }
+.food-calendar-card .calendar-day > b,
+.menstrual-calendar-card .calendar-day > b { transform: translateY(-7px); }
 .calendar-day.balanced { background: #dcebd8; color: #263323; }
 .calendar-day.partial { background: #f6e5a9; color: #3a311b; }
 .calendar-day.attention { background: #f3c0b7; color: #43201b; }

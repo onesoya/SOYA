@@ -724,7 +724,18 @@ function assessNutrition(total: NutritionTotal, mealCount: number, complete: boo
 export function HealthApp() {
   const [state, setState] = useState<AppState>(() => createFreshState());
   const [tab, setTab] = useState<Tab>("today");
-  const [modal, setModal] = useState<Modal>(null);
+  const [modalStack, setModalStack] = useState<Exclude<Modal, null>[]>([]);
+  const modal: Modal = modalStack[modalStack.length - 1] ?? null;
+  const setModal = useCallback((next: Modal) => {
+    if (next === null) {
+      setModalStack([]);
+      return;
+    }
+    setModalStack((current) => current[current.length - 1] === next ? current : [...current, next]);
+  }, []);
+  const closeModal = useCallback(() => {
+    setModalStack((current) => current.length > 1 ? current.slice(0, -1) : []);
+  }, []);
   const [mealPresetType, setMealPresetType] = useState<MealType>();
   const [mealDraft, setMealDraft] = useState<MealEntry>();
   const [mealDate, setMealDate] = useState<string>();
@@ -877,6 +888,16 @@ export function HealthApp() {
     setAppleHealthSyncing(true);
     setModal(null);
     window.sessionStorage.setItem(appleHealthSyncPendingKey, "1");
+    const standalone = window.matchMedia("(display-mode: standalone)").matches
+      || Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+    if (standalone) {
+      // An HTTPS callback is always opened by Safari on iOS, even when the
+      // request started in an installed Home Screen web app. Keeping the
+      // shortcut in the foreground avoids unexpectedly opening a Safari tab;
+      // SOYA refreshes as soon as the user returns to the Home Screen app.
+      window.location.assign(`shortcuts://run-shortcut?name=${encodeURIComponent(appleHealthShortcutName)}`);
+      return;
+    }
     const returnUrl = new URL(window.location.href);
     returnUrl.searchParams.set("healthSync", "1");
     // URLSearchParams serializes spaces as `+`, but the Shortcuts URL scheme
@@ -1531,26 +1552,26 @@ export function HealthApp() {
       <button className="fab" onClick={() => setModal("quick")} aria-label="빠른 추가">+</button>
       <nav className="mobile-nav">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}><NavPixelIcon tab={item.id} /><small>{item.label}</small></button>)}</nav>
 
-      {modal === "quick" && <QuickSheet close={() => setModal(null)} select={(next) => { if (next === "body") setSelectedBodyRecord(undefined); if (next === "circumference") setSelectedCircumferenceRecord(undefined); if (next === "cycle") { setCycleDate(undefined); setCycleRangeDraft(undefined); } if (next === "workout-plan" || next === "workout-actual") { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); } if (next === "meal-plan" || next === "meal-actual") { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); } setModal(next); }} />}
-      {modal === "measurement-picker" && <MeasurementPickerSheet close={() => setModal(null)} select={(next) => { setSelectedBodyRecord(undefined); setSelectedCircumferenceRecord(undefined); setModal(next); }} />}
-      {modal === "movement-picker" && <MovementPickerSheet close={() => setModal(null)} select={(next) => { if (next === "workout-actual") { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); } if (next === "activity") setActivityDate(undefined); setModal(next); }} />}
-      {modal === "body" && <BodySheet today={today} latest={state.bodyRecords.find((item) => item.id !== selectedBodyRecord?.id)} draft={selectedBodyRecord} openHistory={() => { setSelectedBodyRecord(undefined); setModal("body-bulk"); }} close={() => { setSelectedBodyRecord(undefined); setModal(null); }} save={saveBody} />}
-      {modal === "body-bulk" && <BodyBulkSheet existing={state.bodyRecords} close={() => setModal(null)} save={saveBodyBulk} />}
-      {modal === "body-detail" && selectedBodyRecord && <BodyDetailSheet record={selectedBodyRecord} close={() => { setSelectedBodyRecord(undefined); setModal(null); }} edit={() => setModal("body")} remove={() => deleteBody(selectedBodyRecord)} />}
-      {modal === "circumference" && <CircumferenceSheet today={today} latest={(state.circumferenceRecords ?? []).find((item) => item.id !== selectedCircumferenceRecord?.id)} draft={selectedCircumferenceRecord} close={() => { setSelectedCircumferenceRecord(undefined); setModal(null); }} save={saveCircumference} remove={deleteCircumference} />}
-      {modal === "activity" && <ActivitySheet today={activityDate ?? today} draft={(state.dailyActivities ?? []).find((item) => item.date === (activityDate ?? today))} openAppleHealth={() => setModal("apple-health")} close={() => { setActivityDate(undefined); setModal(null); }} save={saveActivity} remove={deleteActivity} />}
-      {modal === "apple-health" && <AppleHealthSheet close={() => setModal(null)} refresh={refreshFromCloud} syncNow={startAppleHealthSync} syncing={appleHealthSyncing} />}
-      {(modal === "meal-plan" || modal === "meal-actual") && <MealSheet today={mealDate ?? today} kind={modal === "meal-plan" ? "plan" : "actual"} library={state.foodLibrary ?? []} draft={mealDraft} presetType={mealPresetType} close={() => { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); setModal(null); }} save={saveMeal} />}
-      {modal === "food-library" && <FoodLibrarySheet library={state.foodLibrary ?? []} close={() => setModal(null)} save={saveFoodLibraryItem} saveSet={saveFoodSet} remove={deleteFoodLibraryItem} />}
-      {modal === "nutrition-goal" && <NutritionGoalSheet goal={state.nutritionGoal} close={() => setModal(null)} save={saveNutritionGoal} />}
-      {modal === "profile-goal" && <ProfileGoalSheet profile={state.profile} latestBody={[...state.bodyRecords].sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`))[0]} today={today} close={() => setModal(null)} save={saveProfileGoal} />}
-      {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={() => { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); setModal(null); }} save={saveWorkout} />}
-      {modal === "workout-goal" && <WorkoutGoalSheet goal={state.workoutGoal ?? initialState.workoutGoal!} close={() => setModal(null)} save={saveWorkoutGoal} />}
-      {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} initialStart={weeklyPlanStart} close={() => { setWeeklyPlanStart(undefined); setModal(null); }} save={saveWeeklyPlan} />}
-      {modal === "cycle" && <CycleSheet today={cycleDate ?? today} draft={state.cycles.find((item) => item.date === (cycleDate ?? today))} previous={state.cycles.find((item) => item.date === addDays(cycleDate ?? today, -1))} existing={state.cycles} initialRange={cycleRangeDraft} close={() => { setCycleDate(undefined); setCycleRangeDraft(undefined); setModal(null); }} save={saveCycle} saveRanges={saveCycleRanges} remove={deleteCycle} />}
-      {modal === "consultation-detail" && selectedConsultation && <ConsultationDetailSheet consultation={selectedConsultation} close={() => { setSelectedConsultation(undefined); setModal(null); }} remove={() => deleteConsultation(selectedConsultation)} />}
-      {modal === "reminders" && <ReminderSettingsSheet settings={state.reminderSettings ?? defaultReminders} pushStatus={pushStatus} pushMessage={pushMessage} enablePush={() => { void enableActualNotifications(); }} disablePush={() => { void disableActualNotifications(); }} close={() => setModal(null)} save={saveReminders} />}
-      {modal === "data-management" && <DataManagementSheet state={state} today={today} close={() => setModal(null)} backup={backupData} exportCsv={(kind) => exportCsv(state, kind, today)} restore={restoreData} />}
+      {modal === "quick" && <QuickSheet close={closeModal} select={(next) => { if (next === "body") setSelectedBodyRecord(undefined); if (next === "circumference") setSelectedCircumferenceRecord(undefined); if (next === "cycle") { setCycleDate(undefined); setCycleRangeDraft(undefined); } if (next === "workout-plan" || next === "workout-actual") { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); } if (next === "meal-plan" || next === "meal-actual") { setMealPresetType(undefined); setMealDraft(undefined); setMealDate(undefined); } setModal(next); }} />}
+      {modal === "measurement-picker" && <MeasurementPickerSheet close={closeModal} select={(next) => { setSelectedBodyRecord(undefined); setSelectedCircumferenceRecord(undefined); setModal(next); }} />}
+      {modal === "movement-picker" && <MovementPickerSheet close={closeModal} select={(next) => { if (next === "workout-actual") { setWorkoutDraft(undefined); setWorkoutPresetType(undefined); } if (next === "activity") setActivityDate(undefined); setModal(next); }} />}
+      {modal === "body" && <BodySheet today={today} latest={state.bodyRecords.find((item) => item.id !== selectedBodyRecord?.id)} draft={selectedBodyRecord} openHistory={() => { setSelectedBodyRecord(undefined); setModal("body-bulk"); }} close={closeModal} save={saveBody} />}
+      {modal === "body-bulk" && <BodyBulkSheet existing={state.bodyRecords} close={closeModal} save={saveBodyBulk} />}
+      {modal === "body-detail" && selectedBodyRecord && <BodyDetailSheet record={selectedBodyRecord} close={closeModal} edit={() => setModal("body")} remove={() => deleteBody(selectedBodyRecord)} />}
+      {modal === "circumference" && <CircumferenceSheet today={today} latest={(state.circumferenceRecords ?? []).find((item) => item.id !== selectedCircumferenceRecord?.id)} draft={selectedCircumferenceRecord} close={closeModal} save={saveCircumference} remove={deleteCircumference} />}
+      {modal === "activity" && <ActivitySheet today={activityDate ?? today} draft={(state.dailyActivities ?? []).find((item) => item.date === (activityDate ?? today))} openAppleHealth={() => setModal("apple-health")} close={closeModal} save={saveActivity} remove={deleteActivity} />}
+      {modal === "apple-health" && <AppleHealthSheet close={closeModal} refresh={refreshFromCloud} syncNow={startAppleHealthSync} syncing={appleHealthSyncing} />}
+      {(modal === "meal-plan" || modal === "meal-actual") && <MealSheet today={mealDate ?? today} kind={modal === "meal-plan" ? "plan" : "actual"} library={state.foodLibrary ?? []} draft={mealDraft} presetType={mealPresetType} close={closeModal} save={saveMeal} />}
+      {modal === "food-library" && <FoodLibrarySheet library={state.foodLibrary ?? []} close={closeModal} save={saveFoodLibraryItem} saveSet={saveFoodSet} remove={deleteFoodLibraryItem} />}
+      {modal === "nutrition-goal" && <NutritionGoalSheet goal={state.nutritionGoal} close={closeModal} save={saveNutritionGoal} />}
+      {modal === "profile-goal" && <ProfileGoalSheet profile={state.profile} latestBody={[...state.bodyRecords].sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`))[0]} today={today} close={closeModal} save={saveProfileGoal} />}
+      {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={closeModal} save={saveWorkout} />}
+      {modal === "workout-goal" && <WorkoutGoalSheet goal={state.workoutGoal ?? initialState.workoutGoal!} close={closeModal} save={saveWorkoutGoal} />}
+      {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} initialStart={weeklyPlanStart} close={closeModal} save={saveWeeklyPlan} />}
+      {modal === "cycle" && <CycleSheet today={cycleDate ?? today} draft={state.cycles.find((item) => item.date === (cycleDate ?? today))} previous={state.cycles.find((item) => item.date === addDays(cycleDate ?? today, -1))} existing={state.cycles} initialRange={cycleRangeDraft} close={closeModal} save={saveCycle} saveRanges={saveCycleRanges} remove={deleteCycle} />}
+      {modal === "consultation-detail" && selectedConsultation && <ConsultationDetailSheet consultation={selectedConsultation} close={closeModal} remove={() => deleteConsultation(selectedConsultation)} />}
+      {modal === "reminders" && <ReminderSettingsSheet settings={state.reminderSettings ?? defaultReminders} pushStatus={pushStatus} pushMessage={pushMessage} enablePush={() => { void enableActualNotifications(); }} disablePush={() => { void disableActualNotifications(); }} close={closeModal} save={saveReminders} />}
+      {modal === "data-management" && <DataManagementSheet state={state} today={today} close={closeModal} backup={backupData} exportCsv={(kind) => exportCsv(state, kind, today)} restore={restoreData} />}
     </div>
   );
 }
@@ -1626,7 +1647,7 @@ function TodayView(props: TodayViewProps) {
     <section className="card nutrition-card">
       <CardTitle title="오늘의 영양" aside={<button className="text-button" onClick={() => setModal("nutrition-goal")}>목표 설정</button>} />
       <div className="calorie-total"><strong>{nutrition.calories.toLocaleString()}</strong><span>kcal</span>{!(travelToday && todayTravelLevel === "가볍게 기록") && <small>/ {energy.intakeMin.toLocaleString()}~{energy.intakeMax.toLocaleString()}</small>}</div>
-      {!(travelToday && todayTravelLevel === "가볍게 기록") && <div className="energy-guide-mini"><span>{energy.activity ? `걸음 ${energy.activity.steps.toLocaleString()}걸음 · 활동 ${energy.activityCalories.toLocaleString()} kcal · 총소모 약 ${energy.expenditure.toLocaleString()} kcal${energy.activity.source === "apple_health" && energy.activity.importedAt ? ` · ${new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit" }).format(new Date(energy.activity.importedAt))} 동기화` : ""}` : "활동을 기록하면 오늘의 섭취 범위를 조정해요"}</span><div className="energy-guide-actions"><button type="button" className="health-sync-mini-button" disabled={appleHealthSyncing} onClick={syncAppleHealth}>{appleHealthSyncing ? "동기화 중" : "지금 동기화"}</button><button type="button" onClick={() => openActivity(today)}>{energy.activity ? "수정" : "직접 기록"}</button></div></div>}
+      {!(travelToday && todayTravelLevel === "가볍게 기록") && <div className="energy-guide-mini"><span>{energy.activity ? <><b>걸음 {energy.activity.steps.toLocaleString()}걸음 · 활동 {energy.activityCalories.toLocaleString()} kcal · 총소모 약 {energy.expenditure.toLocaleString()} kcal</b>{energy.activity.source === "apple_health" && energy.activity.importedAt && <small>{new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit" }).format(new Date(energy.activity.importedAt))} 동기화</small>}</> : "활동을 기록하면 오늘의 섭취 범위를 조정해요"}</span><div className="energy-guide-actions"><button type="button" className="health-sync-mini-button" disabled={appleHealthSyncing} onClick={syncAppleHealth}>{appleHealthSyncing ? "동기화 중" : "지금 동기화"}</button><button type="button" onClick={() => openActivity(today)}>{energy.activity ? "수정" : "직접 기록"}</button></div></div>}
       {!(travelToday && todayTravelLevel === "가볍게 기록") && <NutrientBar label="단백질" value={nutrition.protein} min={goal.proteinMin} max={goal.proteinMax} unit="g" tone="coral" />}
       {!(travelToday && todayTravelLevel !== "목표 유지") && <><NutrientBar label="탄수화물" value={nutrition.carbs} min={goal.carbsMin} max={goal.carbsMax} unit="g" tone="gold" /><NutrientBar label="지방" value={nutrition.fat} min={goal.fatMin} max={goal.fatMax} unit="g" tone="sage" /></>}
       <div className="micro-grid"><MicroStat label="당류" value={travelToday && todayTravelLevel === "가볍게 기록" ? `${nutrition.sugar}g` : `${nutrition.sugar} / ${goal.sugarMax}g`} hint={travelToday && todayTravelLevel === "가볍게 기록" ? "기록값" : "상한 기준"} /><MicroStat label="식이섬유" value={travelToday && todayTravelLevel === "가볍게 기록" ? `${nutrition.fiber}g` : `${nutrition.fiber} / ${goal.fiberMin}g`} hint={travelToday && todayTravelLevel === "가볍게 기록" ? "기록값" : "최소 목표"} /></div>

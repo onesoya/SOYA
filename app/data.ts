@@ -229,6 +229,7 @@ export const initialState: AppState = {
     targetMuscleChange: 0.3,
     travelActive: false,
     travelDailyLevels: {},
+    birthDate: "1998-04-15",
     heightCm: 171,
     sex: "여성",
   },
