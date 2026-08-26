@@ -135,6 +135,8 @@ type RecordAuditResult = {
   bodyChanges: RecordAuditIssue[];
   missingActuals: RecordAuditIssue[];
 };
+
+type AppleHealthSyncRange = { startDate: string; endDate: string };
 type OnboardingDraft = {
   nickname: string;
   birthDate: string;
@@ -807,6 +809,11 @@ function recordAuditFor(state: AppState, today: string): RecordAuditResult {
   return { duplicates, cycles, bodyChanges, missingActuals };
 }
 
+function recordAuditCount(state: AppState, today: string) {
+  const audit = recordAuditFor(state, today);
+  return audit.duplicates.length + audit.cycles.length + audit.bodyChanges.length + audit.missingActuals.length;
+}
+
 function weekDates(start: string) {
   return Array.from({ length: 7 }, (_, index) => addDays(start, index));
 }
@@ -1342,11 +1349,13 @@ export function HealthApp() {
     setSaveState("saved");
   }, [authUser]);
 
-  const startAppleHealthSync = useCallback(() => {
+  const startAppleHealthSync = useCallback((range?: AppleHealthSyncRange) => {
     if (typeof window === "undefined") return;
     setAppleHealthSyncing(true);
     setModal(null);
     window.sessionStorage.setItem(appleHealthSyncPendingKey, "1");
+    const shortcutInput = range ? JSON.stringify({ mode: "history", ...range, batchDays: 31 }) : undefined;
+    const inputQuery = shortcutInput ? `&input=text&text=${encodeURIComponent(shortcutInput)}` : "";
     const standalone = window.matchMedia("(display-mode: standalone)").matches
       || Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
     if (standalone) {
@@ -1354,7 +1363,7 @@ export function HealthApp() {
       // request started in an installed Home Screen web app. Keeping the
       // shortcut in the foreground avoids unexpectedly opening a Safari tab;
       // SOYA refreshes as soon as the user returns to the Home Screen app.
-      window.location.assign(`shortcuts://run-shortcut?name=${encodeURIComponent(appleHealthShortcutName)}`);
+      window.location.assign(`shortcuts://run-shortcut?name=${encodeURIComponent(appleHealthShortcutName)}${inputQuery}`);
       return;
     }
     const returnUrl = new URL(window.location.href);
@@ -1364,13 +1373,13 @@ export function HealthApp() {
     // directly so "SOYA 건강 보내기" remains the exact shortcut name on iOS.
     const encodedReturnUrl = encodeURIComponent(returnUrl.toString());
     const shortcutUrl = [
-      `shortcuts://x-callback-url/run-shortcut?name=${encodeURIComponent(appleHealthShortcutName)}`,
+      `shortcuts://x-callback-url/run-shortcut?name=${encodeURIComponent(appleHealthShortcutName)}${inputQuery}`,
       `x-success=${encodedReturnUrl}`,
       `x-cancel=${encodedReturnUrl}`,
       `x-error=${encodedReturnUrl}`,
     ].join("&");
     window.location.assign(shortcutUrl);
-  }, []);
+  }, [setModal]);
 
   useEffect(() => {
     if (!authUser || !loaded) return;
@@ -1416,6 +1425,7 @@ export function HealthApp() {
   const plannedWorkout = todayWorkouts.find((entry) => entry.kind === "plan");
   const goalClock = goalTiming(state.profile, today);
   const travelToday = isTravelDate(state.profile, today);
+  const auditCount = useMemo(() => recordAuditCount(state, today), [state, today]);
 
   const nutrition = nutritionTotal(actualMeals);
 
@@ -2152,11 +2162,11 @@ export function HealthApp() {
       <main className="main-content">
         <header className="topbar">
           <div className="topbar-heading"><span className="topbar-tiger-button" aria-hidden="true"><Image className="topbar-tiger" src="/mascot-top-transparent.png" width={76} height={76} alt="" /></span><div><p className="date-text">{dateLabel(today)}</p><h1>{tab === "today" ? travelToday ? <>여행 중에도<br />내 리듬대로</> : <>오늘도<br />가볍게 기록해요</> : tabs.find((item) => item.id === tab)?.label}</h1></div></div>
-          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "저장 확인 필요" : "저장됨"}</span><button className="icon-button reminder-button" onClick={() => setModal("reminders")} aria-label="알림 설정"><span className="pixel-bell" aria-hidden="true" /></button><button className="account-menu-button" type="button" onClick={() => setModal("account")}>{state.profile.nickname?.trim() || authUser.displayName?.split(" ")[0] || "사용자"}님</button></div>
+          <div className="header-actions"><span className={`save-state ${saveState}`}>{saveState === "saving" ? "저장 중" : saveState === "offline" ? "저장 확인 필요" : "저장됨"}</span><button className="icon-button reminder-button" onClick={() => setModal("reminders")} aria-label="알림 설정"><span className="pixel-bell" aria-hidden="true" /></button><button className={`account-menu-button${auditCount ? " has-audit-alert" : ""}`} type="button" onClick={() => setModal("account")} aria-label={auditCount ? `${state.profile.nickname?.trim() || authUser.displayName?.split(" ")[0] || "사용자"}님, 확인할 기록 ${auditCount}개` : undefined}>{state.profile.nickname?.trim() || authUser.displayName?.split(" ")[0] || "사용자"}님{auditCount > 0 && <span className="account-alert-dot" aria-hidden="true" />}</button></div>
         </header>
 
         {tab === "today" && (
-          <TodayView state={state} today={today} todayBody={todayBody} nutrition={nutrition} completedCount={completedCount} totalCount={completed.length} nextAction={nextAction} mealActual={mealActual} mealPlan={mealPlan} actualWorkouts={actualWorkouts} plannedWorkout={plannedWorkout} openNextAction={openNextAction} skipNextAction={skipNextAction} setModal={setModal} setTab={setTab} openMeal={openMeal} openWorkout={openWorkout} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} syncAppleHealth={startAppleHealthSync} appleHealthSyncing={appleHealthSyncing} updateTravelDayLevel={updateTravelDayLevel} />
+          <TodayView state={state} today={today} todayBody={todayBody} nutrition={nutrition} completedCount={completedCount} totalCount={completed.length} nextAction={nextAction} mealActual={mealActual} mealPlan={mealPlan} actualWorkouts={actualWorkouts} plannedWorkout={plannedWorkout} openNextAction={openNextAction} skipNextAction={skipNextAction} setModal={setModal} setTab={setTab} openMeal={openMeal} openWorkout={openWorkout} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} syncAppleHealth={() => startAppleHealthSync()} appleHealthSyncing={appleHealthSyncing} updateTravelDayLevel={updateTravelDayLevel} />
         )}
         {tab === "food" && <FoodView state={state} today={today} openMeal={openMeal} deleteMeal={deleteMeal} openGoal={() => setModal("nutrition-goal")} openLibrary={() => setModal("food-library")} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} updateTravelDayLevel={updateTravelDayLevel} />}
         {tab === "workout" && <WorkoutView state={state} today={today} openWorkout={openWorkout} deleteWorkout={deleteWorkout} openGoal={() => setModal("workout-goal")} openActivity={(date) => { setActivityDate(date); setModal("activity"); }} updateTravelDayLevel={updateTravelDayLevel} />}
@@ -2184,7 +2194,7 @@ export function HealthApp() {
       {modal === "goal-complete" && <GoalCompletionSheet state={state} today={today} close={closeModal} save={finishCurrentGoal} />}
       {modal === "goal-history-detail" && selectedGoalHistory && <GoalHistoryDetailSheet goal={selectedGoalHistory} close={closeModal} />}
       {modal === "profile-settings" && <ProfileSettingsSheet profile={state.profile} googleName={authUser.displayName ?? undefined} today={today} close={closeAccountChild} save={saveProfileSettings} />}
-      {modal === "account" && <AccountSheet nickname={state.profile.nickname?.trim() || authUser.displayName?.split(" ")[0] || "사용자"} close={closeModal} openProfile={() => setModal("profile-settings")} openAudit={() => setModal("data-audit")} openData={() => setModal("data-management")} logout={async () => { await saveQueue.current; await signOutGoogleUser(); }} />}
+      {modal === "account" && <AccountSheet nickname={state.profile.nickname?.trim() || authUser.displayName?.split(" ")[0] || "사용자"} auditCount={auditCount} close={closeModal} openProfile={() => setModal("profile-settings")} openAudit={() => setModal("data-audit")} openData={() => setModal("data-management")} logout={async () => { await saveQueue.current; await signOutGoogleUser(); }} />}
       {(modal === "workout-plan" || modal === "workout-actual") && <WorkoutSheet today={today} kind={modal === "workout-plan" ? "plan" : "actual"} draft={workoutDraft} presetType={workoutPresetType} close={closeModal} save={saveWorkout} />}
       {modal === "workout-goal" && <WorkoutGoalSheet goal={state.workoutGoal ?? initialState.workoutGoal!} close={closeModal} save={saveWorkoutGoal} />}
       {modal === "weekly-plan" && <WeeklyPlanSheet state={state} today={today} initialStart={weeklyPlanStart} consultation={weeklyPlanConsultation} close={() => { setWeeklyPlanStart(undefined); setWeeklyPlanConsultation(undefined); closeModal(); }} save={saveWeeklyPlan} />}
@@ -3948,10 +3958,10 @@ function RecordAuditSheet({ state, today, close, openTarget }: { state: AppState
   </div></Sheet>;
 }
 
-function AccountSheet({ nickname, close, openProfile, openAudit, openData, logout }: { nickname: string; close: () => void; openProfile: () => void; openAudit: () => void; openData: () => void; logout: () => void | Promise<void> }) {
+function AccountSheet({ nickname, auditCount, close, openProfile, openAudit, openData, logout }: { nickname: string; auditCount: number; close: () => void; openProfile: () => void; openAudit: () => void; openData: () => void; logout: () => void | Promise<void> }) {
   return <Sheet title={`${nickname}님`} close={close}><div className="account-sheet-actions">
     <button type="button" onClick={openProfile}><span>내 정보 수정</span><b aria-hidden="true">›</b></button>
-    <button type="button" onClick={openAudit}><span>기록 점검</span><b aria-hidden="true">›</b></button>
+    <button type="button" onClick={openAudit}><span className="account-audit-label"><span>기록 점검</span>{auditCount > 0 && <em>{auditCount > 99 ? "99+" : auditCount}개 확인 필요</em>}</span><b aria-hidden="true">›</b></button>
     <button type="button" onClick={openData}><span>데이터 관리</span><b aria-hidden="true">›</b></button>
     <button type="button" className="logout" onClick={() => { if (window.confirm("로그아웃 하시겠습니까?")) void logout(); }}><span>로그아웃</span><b aria-hidden="true">›</b></button>
   </div></Sheet>;
@@ -3970,11 +3980,14 @@ function ActivitySheet({ today, draft, openAppleHealth, close, save, remove }: {
   </form></Sheet>;
 }
 
-function AppleHealthSheet({ close, refresh, syncNow, syncing }: { close: () => void; refresh: () => Promise<void>; syncNow: () => void; syncing: boolean }) {
+function AppleHealthSheet({ close, refresh, syncNow, syncing }: { close: () => void; refresh: () => Promise<void>; syncNow: (range?: AppleHealthSyncRange) => void; syncing: boolean }) {
   const [status, setStatus] = useState<AppleHealthConnectionStatus>();
   const [credentials, setCredentials] = useState<AppleHealthConnectionKey>();
   const [working, setWorking] = useState(true);
   const [message, setMessage] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyStart, setHistoryStart] = useState(addDays(todayKey(), -365));
+  const [historyEnd, setHistoryEnd] = useState(todayKey());
 
   useEffect(() => {
     let active = true;
@@ -4052,7 +4065,27 @@ function AppleHealthSheet({ close, refresh, syncNow, syncing }: { close: () => v
       ? `활동 ${status.lastResult.importedActivities}건 · 운동 ${status.lastResult.importedWorkouts}건 반영${status.lastResult.protectedManualRecords ? ` · 직접 기록 ${status.lastResult.protectedManualRecords}건 유지` : ""}`
       : "동기화 결과가 아직 없어요";
 
-  return <Sheet title="Apple 건강 연결" close={close}>
+  if (historyOpen) {
+    const selectedDays = historyStart && historyEnd && historyStart <= historyEnd ? daysBetween(historyStart, historyEnd) + 1 : 0;
+    const historyValid = selectedDays > 0 && historyEnd <= todayKey();
+    return <Sheet title="Apple 건강 과거 기록" close={() => setHistoryOpen(false)}>
+      <form className="form-stack health-history-form" onSubmit={(event) => {
+        event.preventDefault();
+        if (!historyValid) return;
+        syncNow({ startDate: historyStart, endDate: historyEnd });
+      }}>
+        <section className="health-history-intro"><strong>가져올 기간을 골라주세요</strong><p>SOYA가 선택한 기간을 단축어에 전달해요. 직접 입력한 하루 활동은 덮어쓰지 않고, 같은 Apple 건강 기록은 한 번만 저장해요.</p></section>
+        <div className="health-history-dates"><Field label="시작일"><input type="date" value={historyStart} max={historyEnd || todayKey()} onChange={(event) => setHistoryStart(event.target.value)} required /></Field><Field label="종료일"><input type="date" value={historyEnd} min={historyStart} max={todayKey()} onChange={(event) => setHistoryEnd(event.target.value)} required /></Field></div>
+        <div className="health-history-presets"><button type="button" onClick={() => setHistoryStart(addDays(todayKey(), -89))}>최근 3개월</button><button type="button" onClick={() => setHistoryStart(addDays(todayKey(), -364))}>최근 1년</button><button type="button" onClick={() => setHistoryStart("2014-01-01")}>가능한 전체</button></div>
+        <div className="health-history-summary"><span>선택한 기간</span><strong>{historyValid ? `${selectedDays.toLocaleString("ko-KR")}일` : "날짜 확인 필요"}</strong><small>과거용 단축어 설정에서는 최대 31일씩 나누어 SOYA로 보내요.</small></div>
+        <details className="health-history-shortcut-note"><summary>단축어에서 한 번 준비할 내용</summary><p>‘단축어 입력’을 사전으로 읽고 <b>mode가 history</b>이면 startDate부터 endDate까지 건강 데이터를 날짜별로 모아주세요. 한 번에 최대 31일씩 <b>days</b> 배열로 기존 받는 주소에 보내면 돼요.</p><pre>{`mode: history\nstartDate: yyyy-MM-dd\nendDate: yyyy-MM-dd\nbatchDays: 31`}</pre></details>
+        {!status?.connected && <p className="health-history-warning">먼저 Apple 건강 연결 키를 만들어주세요.</p>}
+        <button className="primary-button submit-button" type="submit" disabled={!historyValid || !status?.connected || syncing}>{syncing ? "가져오는 중" : "과거 기록 가져오기"}</button>
+      </form>
+    </Sheet>;
+  }
+
+  return <Sheet title="Apple 건강 연결" titleAction={<button type="button" className="sheet-title-action" onClick={() => setHistoryOpen(true)}>과거 기록 가져오기</button>} close={close}>
     <div className="health-connection-stack">
       <section className="health-connection-status">
         <div><span className={`health-status-dot ${status?.connected ? "connected" : ""}`} /><div><strong>{working && !status ? "연결 확인 중" : status?.connected ? "연결됨" : "연결되지 않음"}</strong><small>{status?.connected ? `마지막 동기화 · ${lastSuccess}` : "아이폰 단축어를 통해 안전하게 가져와요"}</small></div></div>
@@ -4082,7 +4115,7 @@ function AppleHealthSheet({ close, refresh, syncNow, syncing }: { close: () => v
       </section>
 
       {message && <p className="health-connection-message" role="status">{message}</p>}
-      <div className="health-connection-actions"><button type="button" className="primary-button health-sync-now-button" disabled={working || syncing || !status?.connected} onClick={syncNow}>{syncing ? "동기화 중" : "지금 동기화"}</button><button type="button" className="ghost-button" disabled={working} onClick={() => void reload()}>상태 새로고침</button>{status?.connected && <button type="button" className="delete-button" disabled={working} onClick={() => void revoke()}>연결 해제</button>}</div>
+      <div className="health-connection-actions"><button type="button" className="primary-button health-sync-now-button" disabled={working || syncing || !status?.connected} onClick={() => syncNow()}>{syncing ? "동기화 중" : "지금 동기화"}</button><button type="button" className="ghost-button" disabled={working} onClick={() => void reload()}>상태 새로고침</button>{status?.connected && <button type="button" className="delete-button" disabled={working} onClick={() => void revoke()}>연결 해제</button>}</div>
     </div>
   </Sheet>;
 }

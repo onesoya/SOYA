@@ -530,6 +530,22 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .health-connection-actions { display: flex; justify-content: flex-end; gap: 9px; }
 .health-connection-actions .primary-button, .health-connection-actions .ghost-button, .health-connection-actions .delete-button { min-height: 36px; padding: 0 11px; font-size: 8px; }
 .health-sync-now-button { margin-right: auto; }
+.health-history-form { gap: 14px; }
+.health-history-intro { padding: 14px; border: 1px solid var(--ink); background: var(--cream); display: grid; gap: 7px; }
+.health-history-intro strong { color: var(--coral); font-size: 10px; }
+.health-history-intro p, .health-history-shortcut-note p { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.7; }
+.health-history-dates { display: grid; gap: 11px; }
+.health-history-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.health-history-presets button { min-width: 0; min-height: 38px; padding: 0 6px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; font-size: 8px; font-weight: 850; cursor: pointer; }
+.health-history-summary { padding: 13px 14px; border: 1px solid var(--line); background: white; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 12px; }
+.health-history-summary span { color: var(--muted); font-size: 8px; font-weight: 800; }
+.health-history-summary strong { font-size: 12px; }
+.health-history-summary small { grid-column: 1 / -1; color: var(--muted); font-size: 7px; line-height: 1.6; }
+.health-history-shortcut-note { padding: 12px 14px; border: 1px solid var(--line); background: #fff6e7; }
+.health-history-shortcut-note summary { color: var(--coral); font-size: 9px; font-weight: 900; cursor: pointer; }
+.health-history-shortcut-note p { margin-top: 10px; }
+.health-history-shortcut-note pre { margin: 10px 0 0; padding: 10px; overflow-x: auto; background: var(--cream); color: var(--ink); font: 8px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.health-history-warning { margin: 0; padding: 10px 12px; border: 1px solid #d98a7d; background: #fff1ec; color: #9b4f46; font-size: 8px; font-weight: 800; }
 .micro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 19px; }
 .micro-stat { padding: 13px; background: var(--cream); border-radius: 16px; display: grid; gap: 4px; }
 .micro-stat span, .micro-stat small { color: var(--muted); font-size: 9px; }
@@ -1123,10 +1139,14 @@ html, body {
 .topbar-heading { position: relative; display: flex; align-items: center; gap: 13px; }
 .topbar-tiger-button { width: 76px; height: 76px; flex: none; display: grid; place-items: center; padding: 0; border: 0; background: transparent; line-height: 0; }
 .topbar-tiger { width: 48px; height: 48px; display: block; object-fit: cover; image-rendering: pixelated; border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--coral); }
-.account-menu-button { min-width: 88px; min-height: 42px; max-width: 106px; padding: 0 11px; overflow: hidden; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-family: inherit; font-size: 10px; font-weight: 850; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.account-menu-button { position: relative; min-width: 88px; min-height: 42px; max-width: 106px; padding: 0 11px; overflow: hidden; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-family: inherit; font-size: 10px; font-weight: 850; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.account-menu-button.has-audit-alert { padding-right: 20px; }
+.account-alert-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border: 2px solid var(--paper); background: var(--coral); box-shadow: 0 0 0 1px var(--ink); }
 .account-sheet-actions { display: grid; gap: 12px; }
 .account-sheet-actions button { min-height: 64px; padding: 0 18px; border: 2px solid var(--ink); background: var(--paper); color: var(--ink); box-shadow: 3px 3px 0 var(--ink); display: flex; align-items: center; justify-content: space-between; gap: 16px; font-family: inherit; font-size: 14px; font-weight: 900; text-align: left; cursor: pointer; }
 .account-sheet-actions button b { font-size: 20px; line-height: 1; }
+.account-audit-label { display: grid; gap: 5px; }
+.account-audit-label em { width: fit-content; padding: 4px 6px; background: #fff0e8; color: var(--coral); font-size: 8px; font-style: normal; font-weight: 900; }
 .account-sheet-actions .logout { background: var(--coral); color: white; }
 .mobile-nav-shield { display: none; }
 
