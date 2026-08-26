@@ -2014,7 +2014,7 @@ function TodayView(props: TodayViewProps) {
         <section className="card goal-summary-card">
           <CardTitle title="현재 목표" aside={<span className="goal-summary-actions">{goalReady ? <button className="text-button" onClick={() => setModal("goal-complete")}>목표 마무리</button> : <button className="text-button" onClick={() => setModal("profile-goal")}>목표 수정</button>}</span>} />
           <div className="goal-mode-line"><span className={`goal-mode-badge mode-${state.profile.mode}`}>{state.profile.mode}</span><strong>{targetTiming.week}주차 · {targetTiming.daysLeft}일 남음</strong></div>
-          {goalReady && <button type="button" className="goal-ready-banner" onClick={() => setModal("goal-complete")}><span>{goalTargetsReached && targetTiming.daysLeft > 0 ? "목표를 일찍 달성했어요" : "목표 기간이 끝났어요"}</span><strong>결과 정리하기 →</strong></button>}
+          {goalReady && <button type="button" className="goal-ready-banner" onClick={() => setModal("goal-complete")}><span>{goalTargetsReached && targetTiming.daysLeft > 0 ? "목표를 일찍 달성했어요" : "목표 기간이 끝났어요"}</span><strong>목표 마무리하기 →</strong></button>}
           <div className="goal-target-grid"><div><span>체지방량</span><strong>{signed(state.profile.targetBodyFatChange)}kg</strong></div><div><span>골격근량</span><strong>{signed(state.profile.targetMuscleChange)}kg</strong></div></div>
           {travelToday && <><div className="travel-level"><span>여행 모드 · 기본</span><strong>{state.profile.travelLevel ?? "균형 유지"}</strong></div><TravelDayControl date={today} level={todayTravelLevel} defaultLevel={state.profile.travelLevel ?? "균형 유지"} onChange={updateTravelDayLevel} /></>}
           <BodyGoalProgress state={state} endDate={today} />
