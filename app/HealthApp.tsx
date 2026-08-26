@@ -129,7 +129,7 @@ type RecordAuditTarget =
   | { kind: "cycle"; date: string }
   | { kind: "love"; date: string }
   | { kind: "food-library" };
-type RecordAuditIssue = { id: string; title: string; detail: string; target?: RecordAuditTarget; action?: string };
+type RecordAuditIssue = { id: string; title: string; detail: string; target?: RecordAuditTarget; action?: string; bodyRecords?: BodyRecord[] };
 type RecordAuditResult = {
   duplicates: RecordAuditIssue[];
   cycles: RecordAuditIssue[];
@@ -238,6 +238,8 @@ const optionalNumber = (value: FormDataEntryValue | null) => value === null || S
 const dateLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(new Date(`${value}T12:00:00`));
 const monthLabel = (value: string) => new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(new Date(`${value.slice(0, 7)}-01T12:00:00`));
 const signed = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
+const bodyRecordKey = (date: string, time?: string) => `${date}T${time || "07:00"}`;
+const bodyRecordsNewestFirst = (records: BodyRecord[]) => [...records].sort((a, b) => bodyRecordKey(b.date, b.time).localeCompare(bodyRecordKey(a.date, a.time)));
 
 function moveToTrash(current: AppState, label: string, payload: TrashPayload): AppState {
   const trashItem: TrashItem = { id: id("trash"), deletedAt: new Date().toISOString(), label, payload };
@@ -284,7 +286,7 @@ function normalizeAppState(value: unknown): AppState {
     },
     nutritionGoal: { ...initialState.nutritionGoal, ...(saved.nutritionGoal ?? {}) },
     workoutGoal: { ...initialState.workoutGoal!, ...(saved.workoutGoal ?? {}) },
-    bodyRecords: Array.isArray(saved.bodyRecords) ? saved.bodyRecords : [],
+    bodyRecords: Array.isArray(saved.bodyRecords) ? bodyRecordsNewestFirst(saved.bodyRecords) : [],
     circumferenceRecords: Array.isArray(saved.circumferenceRecords) ? saved.circumferenceRecords.map(normalizeCircumferenceRecord).filter((record): record is CircumferenceRecord => Boolean(record)) : [],
     healthExamRecords: Array.isArray(saved.healthExamRecords) ? saved.healthExamRecords : [],
     foodLibrary: (Array.isArray(saved.foodLibrary) ? saved.foodLibrary : []).map(normalizeFoodLibraryItem),
@@ -691,11 +693,11 @@ function recordAuditFor(state: AppState, today: string): RecordAuditResult {
     groups.forEach((group) => { if (group.length > 1) duplicates.push(describe(group)); });
   };
 
-  duplicateGroups(state.bodyRecords, (item) => item.date, (group) => ({
-    id: `body-${group[0].date}`,
-    title: `${group[0].date} 체성분 ${group.length}건`,
-    detail: "같은 날짜에 체성분 기록이 여러 개 있어요.",
-    target: { kind: "body", record: group[1] }, action: "확인",
+  duplicateGroups(state.bodyRecords, (item) => bodyRecordKey(item.date, item.time), (group) => ({
+    id: `body-${bodyRecordKey(group[0].date, group[0].time)}`,
+    title: `${group[0].date} ${group[0].time || "07:00"} 체성분 ${group.length}건`,
+    detail: "날짜와 시간까지 같은 기록이에요. 아래 값을 비교한 뒤 각각 열어서 확인해주세요.",
+    bodyRecords: bodyRecordsNewestFirst(group),
   }));
   duplicateGroups(state.circumferenceRecords ?? [], (item) => item.date, (group) => ({
     id: `circumference-${group[0].date}`,
@@ -789,7 +791,7 @@ function recordAuditFor(state: AppState, today: string): RecordAuditResult {
       id: `body-change-${current.id}`,
       title: `${current.date} 체성분 변화 확인`,
       detail: changes.map((rule) => `${rule.label} ${current[rule.key] >= previous[rule.key] ? "+" : ""}${roundNutrient(current[rule.key] - previous[rule.key])}${rule.unit}`).join(" · "),
-      target: { kind: "body", record: current }, action: "측정값 확인",
+      bodyRecords: [previous, current],
     });
   }
 
@@ -934,7 +936,8 @@ function ageOnDate(birthDate: string | undefined, date: string) {
 
 function dailyEnergyGuide(state: AppState, date: string): DailyEnergyGuide {
   const activity = (state.dailyActivities ?? []).find((item) => item.date === date);
-  const body = [...state.bodyRecords].sort((a, b) => b.date.localeCompare(a.date)).find((item) => item.date <= date) ?? state.bodyRecords[0];
+  const bodyRecords = bodyRecordsNewestFirst(state.bodyRecords);
+  const body = bodyRecords.find((item) => item.date <= date) ?? bodyRecords[0];
   const weight = body?.weight || 60;
   const height = state.profile.heightCm || 165;
   const age = ageOnDate(state.profile.birthDate, date);
@@ -2386,8 +2389,9 @@ function BodyGoalProgress({ state, endDate }: { state: AppState; endDate: string
 function TodayView(props: TodayViewProps) {
   const { state, today, todayBody, nutrition, completedCount, totalCount, nextAction, mealActual, mealPlan, actualWorkouts, plannedWorkout, openNextAction, skipNextAction, setModal, setTab, openMeal, openWorkout, openActivity, syncAppleHealth, appleHealthSyncing, updateTravelDayLevel } = props;
   const goal = state.nutritionGoal;
-  const latest = todayBody ?? state.bodyRecords[0];
-  const prev = state.bodyRecords.find((item: BodyRecord) => item.id !== latest?.id);
+  const bodyRecords = bodyRecordsNewestFirst(state.bodyRecords);
+  const latest = todayBody ?? bodyRecords[0];
+  const prev = bodyRecords.find((item: BodyRecord) => item.id !== latest?.id);
   const cycle = state.cycles.find((item: CycleEntry) => item.date === today);
   const phase = menstrualPhase(state.cycles, today);
   const workoutGoal = state.workoutGoal ?? initialState.workoutGoal!;
@@ -2621,10 +2625,11 @@ function ChangeConsultView({ state, today, setModal, commit, openWeeklyPlan, del
 function ChangeView({ state, today, setModal, openDetail, openCircumference, openHealthExams, openGoalHistory }: { state: AppState; today: string; setModal: (modal: Modal) => void; openDetail: (record: BodyRecord) => void; openCircumference: (record?: CircumferenceRecord) => void; openHealthExams: () => void; openGoalHistory: (goal: GoalHistoryEntry) => void }) {
   const [phaseFilter, setPhaseFilter] = useState<"all" | "focus" | "influence">("all");
   const [trendMetric, setTrendMetric] = useState<BodyTrendMetric>("bodyFatMass");
-  const latest = state.bodyRecords[0];
-  const recentRecords = state.bodyRecords.slice(0, 7).reverse();
+  const bodyRecords = bodyRecordsNewestFirst(state.bodyRecords);
+  const latest = bodyRecords[0];
+  const recentRecords = bodyRecords.slice(0, 7).reverse();
   const oldest = recentRecords[0];
-  const recordsWithPhase = state.bodyRecords.map((record) => ({ record, phase: menstrualPhase(state.cycles, record.date) }));
+  const recordsWithPhase = bodyRecords.map((record) => ({ record, phase: menstrualPhase(state.cycles, record.date) }));
   const filteredRecords = recordsWithPhase.filter(({ phase }) => {
     if (phaseFilter === "all") return true;
     if (phaseFilter === "focus") return phase.key === "focus";
@@ -3399,8 +3404,6 @@ function emptyBulkBodyDraft(): BulkBodyDraft {
     bodyFatMass: "", bodyFatRate: "", visceralFat: "", measurementTiming: "아침 공복", device: "InBody Dial H30",
   };
 }
-
-const bodyRecordKey = (date: string, time: string) => `${date}T${time || "07:00"}`;
 
 function parseCsvRows(text: string) {
   const rows: string[][] = [];
@@ -4395,8 +4398,20 @@ function RecordAuditSheet({ state, today, close, openTarget }: { state: AppState
         return <section className="record-audit-group" id={`audit-${group.key}`} key={group.key}>
           <header><strong>{group.label}</strong><span className={issues.length ? "has-count" : ""}>{issues.length}</span></header>
           {issues.length ? <div className="record-audit-list">{issues.map((issue) => <article key={issue.id}>
-            <div><strong>{issue.title}</strong><p>{issue.detail}</p></div>
-            {issue.target && <button type="button" onClick={() => openTarget(issue.target!)}>{issue.action ?? "확인"}<b aria-hidden="true">›</b></button>}
+            <div className="record-audit-issue-copy"><strong>{issue.title}</strong><p>{issue.detail}</p></div>
+            {issue.bodyRecords?.length ? <div className="record-audit-body-compare">
+              {issue.bodyRecords.map((record, index) => <button type="button" key={record.id} onClick={() => openTarget({ kind: "body", record })}>
+                <span className="record-audit-body-date"><strong>{issue.id.startsWith("body-change-") ? (index === 0 ? "이전 측정" : "다음 측정") : `측정 ${index + 1}`}</strong><small>{record.date} · {record.time || "07:00"}</small></span>
+                <i aria-hidden="true">›</i>
+                <span className="record-audit-body-values">
+                  <span><b>{record.weight}kg</b><small>체중</small></span>
+                  <span><b>{record.bodyFatMass}kg</b><small>체지방량</small></span>
+                  <span><b>{record.skeletalMuscle}kg</b><small>골격근량</small></span>
+                  <span><b>{record.bodyFatRate}%</b><small>체지방률</small></span>
+                  <span><b>{record.visceralFat}Lv</b><small>내장지방</small></span>
+                </span>
+              </button>)}
+            </div> : issue.target && <button type="button" onClick={() => openTarget(issue.target!)}>{issue.action ?? "확인"}<b aria-hidden="true">›</b></button>}
           </article>)}</div> : <p className="record-audit-empty"><span aria-hidden="true">✓</span>{group.empty}</p>}
         </section>;
       })}

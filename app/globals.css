@@ -424,6 +424,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .record-audit-list article p { margin: 0; color: var(--muted); font-size: 7px; line-height: 1.6; overflow-wrap: anywhere; }
 .record-audit-list article > button { flex: 0 0 auto; min-height: 34px; padding: 0 9px; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); font: inherit; font-size: 8px; font-weight: 900; cursor: pointer; display: flex; align-items: center; gap: 7px; }
 .record-audit-list article > button b { color: var(--coral); font-size: 14px; }
+.record-audit-list article:has(.record-audit-body-compare) { align-items: stretch; flex-direction: column; }
+.record-audit-body-compare { width: 100%; display: grid !important; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px !important; }
+.record-audit-body-compare button { min-width: 0; padding: 10px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) 10px; align-items: center; gap: 8px; text-align: left; }
+.record-audit-body-compare button:hover { border-color: var(--coral); }
+.record-audit-body-compare button > span { min-width: 0; display: grid; gap: 3px; }
+.record-audit-body-date strong { color: var(--coral); }
+.record-audit-body-compare button strong, .record-audit-body-compare button b { font-size: 8px; line-height: 1.3; }
+.record-audit-body-compare button small { color: var(--muted); font-size: 6px; white-space: nowrap; }
+.record-audit-body-compare button i { color: var(--coral); font-size: 15px; font-style: normal; }
+.record-audit-body-values { grid-column: 1 / -1; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 1px solid var(--line); padding-top: 8px; }
+.record-audit-body-values > span { min-width: 0; display: grid; gap: 3px; }
 .record-audit-empty { min-height: 66px; margin: 0; padding: 13px; color: var(--muted); font-size: 8px; line-height: 1.55; display: flex; align-items: center; gap: 8px; }
 .record-audit-empty span { width: 23px; height: 23px; flex: 0 0 auto; border: 1px solid var(--sage); color: var(--sage); display: grid; place-items: center; font-size: 9px; }
 .record-audit-footnote { margin: 0; padding: 11px 12px; border: 1px dashed var(--line); color: var(--muted); font-size: 7px; line-height: 1.7; }
