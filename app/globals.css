@@ -695,8 +695,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .consultation-markdown p { margin: 0; }
 .consultation-markdown strong { color: var(--ink); font-weight: 900; }
 .consultation-markdown ul,
-.consultation-markdown ol { margin: 0; padding-left: 21px; display: grid; gap: 6px; }
-.consultation-markdown li { padding-left: 2px; }
+.consultation-markdown ol { margin: 0; padding-left: 24px; display: grid; gap: 6px; list-style-position: outside; }
+.consultation-markdown ul { list-style-type: disc; }
+.consultation-markdown ol { list-style-type: decimal; }
+.consultation-markdown li { display: list-item; padding-left: 3px; }
 .consultation-markdown li::marker { color: var(--coral); font-weight: 900; }
 .consultation-markdown .consultation-markdown-kicker { padding: 7px 10px; border: 1px solid var(--line); background: var(--cream); color: var(--coral); font-size: 12px; }
 .consultation-meta { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }

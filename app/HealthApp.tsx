@@ -109,10 +109,10 @@ function ConsultationMarkdown({ text, className = "" }: { text?: string; classNa
       continue;
     }
 
-    if (/^[-*]\s+/.test(line)) {
+    if (/^[-*\u2022\u2013\u2014]\s+/.test(line)) {
       const items: ReactNode[] = [];
-      while (index < lines.length && /^[-*]\s+/.test(lines[index].trim())) {
-        const item = lines[index].trim().replace(/^[-*]\s+/, "");
+      while (index < lines.length && /^[-*\u2022\u2013\u2014]\s+/.test(lines[index].trim())) {
+        const item = lines[index].trim().replace(/^[-*\u2022\u2013\u2014]\s+/, "");
         items.push(<li key={`item-${index}`}>{renderConsultationInline(item, `item-${index}`)}</li>);
         index += 1;
       }
