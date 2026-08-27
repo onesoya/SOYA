@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AppState,
   BodyRecord,
@@ -3242,36 +3242,47 @@ const bodyTrendMetrics: Record<BodyTrendMetric, { label: string; unit: string }>
   visceralFat: { label: "내장지방", unit: "Lv" },
 };
 
+const bodyTrendChartGeometry = { width: 700, left: 52, right: 28, baseGap: 52, maxScale: 3 } as const;
+
+function bodyTrendGap(recordCount: number, scale: number) {
+  if (recordCount <= 1) return 0;
+  const { width, left, right, baseGap } = bodyTrendChartGeometry;
+  return Math.max(baseGap * scale, (width - left - right) / (recordCount - 1));
+}
+
 function BodyTrendChart({ records, cycles, metric, showMenstrualBands = false, emptyText = "체성분 기록을 입력하면 흐름이 보여요." }: { records: BodyRecord[]; cycles: CycleEntry[]; metric: BodyTrendMetric; showMenstrualBands?: boolean; emptyText?: string }) {
   const [zoomScale, setZoomScale] = useState(1);
+  const [pinchRevision, setPinchRevision] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pointerPositions = useRef(new Map<number, { x: number; y: number }>());
-  const pinchStart = useRef<{ distance: number; scale: number; anchorRatio: number } | undefined>(undefined);
-  const zoomAnchor = useRef<{ ratio: number; viewportX: number } | undefined>(undefined);
+  const pinchStart = useRef<{ distance: number; scale: number; anchorIndex: number } | undefined>(undefined);
+  const zoomAnchor = useRef<{ index: number; viewportX: number } | undefined>(undefined);
+  const pendingPinch = useRef<{ scale: number; index: number; viewportX: number } | undefined>(undefined);
+  const pinchFrame = useRef<number | undefined>(undefined);
   useEffect(() => {
     const viewport = scrollRef.current;
     if (viewport) viewport.scrollLeft = viewport.scrollWidth - viewport.clientWidth;
   }, [metric, records.length]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const viewport = scrollRef.current;
     const anchor = zoomAnchor.current;
     if (!viewport || !anchor) return;
-    const frame = window.requestAnimationFrame(() => {
-      viewport.scrollLeft = anchor.ratio * viewport.scrollWidth - anchor.viewportX;
-      zoomAnchor.current = undefined;
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [zoomScale]);
+    const gap = bodyTrendGap(records.length, zoomScale);
+    viewport.scrollLeft = bodyTrendChartGeometry.left + anchor.index * gap - anchor.viewportX;
+    zoomAnchor.current = undefined;
+  }, [pinchRevision, records.length, zoomScale]);
+  useEffect(() => () => {
+    if (pinchFrame.current !== undefined) window.cancelAnimationFrame(pinchFrame.current);
+  }, []);
   if (!records.length) return <div className="empty-chart">{emptyText}</div>;
   const metricInfo = bodyTrendMetrics[metric];
-  const pointGap = 52 * zoomScale;
   const height = 250;
-  const left = 52;
-  const right = 28;
+  const { width: minimumWidth, left, right, baseGap, maxScale } = bodyTrendChartGeometry;
   const top = 34;
   const bottom = 46;
-  const effectiveGap = records.length > 1 ? Math.max(pointGap, (700 - left - right) / (records.length - 1)) : 0;
-  const width = Math.min(60000, Math.max(700, left + right + Math.max(1, records.length - 1) * effectiveGap));
+  const effectiveGap = bodyTrendGap(records.length, zoomScale);
+  const minimumScale = records.length > 1 ? Math.min(1, ((minimumWidth - left - right) / (records.length - 1)) / baseGap) : 1;
+  const width = Math.min(60000, Math.max(minimumWidth, left + right + Math.max(1, records.length - 1) * effectiveGap));
   const values = records.map((item) => item[metric]);
   const min = Math.floor((Math.min(...values) - 0.2) * 10) / 10;
   const max = Math.ceil((Math.max(...values) + 0.2) * 10) / 10;
@@ -3306,6 +3317,13 @@ function BodyTrendChart({ records, cycles, metric, showMenstrualBands = false, e
     const endX = xForTime(new Date(`${range.end}T23:59:59`).getTime());
     return { x: startX, width: Math.max(4, endX - startX) };
   }) : [];
+  const minimumValueIndex = values.indexOf(Math.min(...values));
+  const maximumValueIndex = values.indexOf(Math.max(...values));
+  const valueLabelStride = effectiveGap >= 50 ? 1 : effectiveGap >= 34 ? 2 : effectiveGap >= 22 ? 4 : Number.POSITIVE_INFINITY;
+  const dateLabelStride = effectiveGap < 12 ? Number.POSITIVE_INFINITY : Math.max(1, Math.ceil(58 / effectiveGap));
+  const shouldShowValue = (index: number) => index === minimumValueIndex || index === maximumValueIndex || index === records.length - 1 || (Number.isFinite(valueLabelStride) && index % valueLabelStride === 0);
+  const shouldShowDate = (index: number) => index === 0 || index === records.length - 1 || (Number.isFinite(dateLabelStride) && index % dateLabelStride === 0);
+  const shouldShowPoint = (index: number) => effectiveGap >= 18 || shouldShowValue(index);
 
   const updatePinchStart = (viewport: HTMLDivElement) => {
     const touches = [...pointerPositions.current.values()];
@@ -3314,14 +3332,16 @@ function BodyTrendChart({ records, cycles, metric, showMenstrualBands = false, e
     const distance = Math.hypot(second.x - first.x, second.y - first.y);
     const rect = viewport.getBoundingClientRect();
     const viewportX = (first.x + second.x) / 2 - rect.left;
+    const currentGap = bodyTrendGap(records.length, zoomScale);
     pinchStart.current = {
       distance: Math.max(1, distance),
       scale: zoomScale,
-      anchorRatio: (viewport.scrollLeft + viewportX) / Math.max(1, viewport.scrollWidth),
+      anchorIndex: currentGap > 0 ? Math.min(records.length - 1, Math.max(0, (viewport.scrollLeft + viewportX - left) / currentGap)) : 0,
     };
   };
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== "touch") return;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
     pointerPositions.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointerPositions.current.size === 2) updatePinchStart(event.currentTarget);
   };
@@ -3335,23 +3355,30 @@ function BodyTrendChart({ records, cycles, metric, showMenstrualBands = false, e
     const [first, second] = touches;
     const distance = Math.hypot(second.x - first.x, second.y - first.y);
     const rect = event.currentTarget.getBoundingClientRect();
-    zoomAnchor.current = {
-      ratio: start.anchorRatio,
-      viewportX: (first.x + second.x) / 2 - rect.left,
-    };
-    const nextScale = Math.min(4, Math.max(0.5, start.scale * (distance / start.distance)));
-    setZoomScale((current) => Math.abs(current - nextScale) >= 0.015 ? nextScale : current);
+    const nextScale = Math.min(maxScale, Math.max(minimumScale, start.scale * (distance / start.distance)));
+    pendingPinch.current = { scale: nextScale, index: start.anchorIndex, viewportX: (first.x + second.x) / 2 - rect.left };
+    if (pinchFrame.current === undefined) {
+      pinchFrame.current = window.requestAnimationFrame(() => {
+        const pending = pendingPinch.current;
+        pinchFrame.current = undefined;
+        if (!pending) return;
+        pendingPinch.current = undefined;
+        zoomAnchor.current = { index: pending.index, viewportX: pending.viewportX };
+        setZoomScale(pending.scale);
+        setPinchRevision((revision) => revision + 1);
+      });
+    }
   };
   const handlePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
     pointerPositions.current.delete(event.pointerId);
     if (pointerPositions.current.size < 2) pinchStart.current = undefined;
   };
 
-  return <div className="trend-explorer"><div className="trend-explorer-toolbar"><div>{showMenstrualBands && <span className="menstrual-band-legend"><i />본 출혈 구간</span>}<span className="trend-pan-hint">한 손가락으로 이동 · 두 손가락으로 확대</span></div></div><div className="trend-chart-wrap" ref={scrollRef} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd}><svg className="trend-chart" style={{ width: `${width}px` }} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metricInfo.label} 전체 변화 선 그래프`}>
+  return <div className="trend-explorer"><div className="trend-explorer-toolbar"><div>{showMenstrualBands && <span className="menstrual-band-legend"><i />본 출혈 구간</span>}<span className="trend-pan-hint">한 손가락으로 이동 · 두 손가락으로 확대</span></div></div><div className="trend-chart-wrap" ref={scrollRef} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd} onLostPointerCapture={handlePointerEnd}><svg className="trend-chart" style={{ width: `${width}px` }} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metricInfo.label} 전체 변화 선 그래프`}>
     {bleedingBands.map((band, index) => <rect key={`bleeding-${index}`} x={band.x} y={top - 13} width={band.width} height={height - top - bottom + 26} className="chart-menstrual-band" />)}
     {[0, 0.5, 1].map((ratio) => { const y = top + ratio * (height - top - bottom); const value = max - ratio * range; return <g key={ratio}><line x1={left} x2={width - right} y1={y} y2={y} className="chart-grid-line" /><text x={left - 10} y={y + 4} textAnchor="end" className="chart-axis-value">{value.toFixed(1)}</text></g>; })}
     <polyline points={points.map((point) => `${point.x},${point.y}`).join(" ")} className="trend-line" />
-    {points.map(({ record, x, y }) => <g key={record.id}><circle cx={x} cy={y} r="6" className="trend-point" /><text x={x} y={y - 14} textAnchor="middle" className="trend-value">{record[metric]}{metricInfo.unit}</text><text x={x} y={height - 16} textAnchor="middle" className="trend-date">{record.date.slice(5).replace("-", "/")}</text></g>)}
+    {points.map(({ record, x, y }, index) => <g key={record.id}>{shouldShowPoint(index) && <circle cx={x} cy={y} r="6" className="trend-point" />}{shouldShowValue(index) && <text x={x} y={y - 14} textAnchor="middle" className="trend-value">{record[metric]}{metricInfo.unit}</text>}{shouldShowDate(index) && <text x={x} y={height - 16} textAnchor="middle" className="trend-date">{record.date.slice(5).replace("-", "/")}</text>}</g>)}
   </svg></div></div>;
 }
 
