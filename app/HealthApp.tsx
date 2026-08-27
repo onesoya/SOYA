@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, isValidElement, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AppState,
   BodyRecord,
@@ -81,6 +81,68 @@ type WeeklyWorkoutDraft = {
 };
 type WeeklyDayDraft = { meals: Record<MealType, string[]>; workouts: WeeklyWorkoutDraft[] };
 type WeeklyDraft = Record<string, WeeklyDayDraft>;
+
+function renderConsultationInline(text: string, keyPrefix: string): ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
+    const bold = part.startsWith("**") && part.endsWith("**");
+    return bold ? <strong key={`${keyPrefix}-${index}`}>{part.slice(2, -2)}</strong> : part;
+  });
+}
+
+function ConsultationMarkdown({ text, className = "" }: { text?: string; className?: string }) {
+  const lines = (text ?? "").replaceAll("\r\n", "\n").split("\n");
+  const blocks: ReactNode[] = [];
+
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index].trim();
+    if (!line) {
+      index += 1;
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      const level = Math.min(heading[1].length + 1, 4);
+      const content = renderConsultationInline(heading[2], `heading-${index}`);
+      blocks.push(level === 2 ? <h2 key={`block-${index}`}>{content}</h2> : level === 3 ? <h3 key={`block-${index}`}>{content}</h3> : <h4 key={`block-${index}`}>{content}</h4>);
+      index += 1;
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(line)) {
+      const items: ReactNode[] = [];
+      while (index < lines.length && /^[-*]\s+/.test(lines[index].trim())) {
+        const item = lines[index].trim().replace(/^[-*]\s+/, "");
+        items.push(<li key={`item-${index}`}>{renderConsultationInline(item, `item-${index}`)}</li>);
+        index += 1;
+      }
+      blocks.push(<ul key={`list-${index}`}>{items}</ul>);
+      continue;
+    }
+
+    if (/^\d+[.)]\s+/.test(line)) {
+      const items: ReactNode[] = [];
+      while (index < lines.length && /^\d+[.)]\s+/.test(lines[index].trim())) {
+        const item = lines[index].trim().replace(/^\d+[.)]\s+/, "");
+        items.push(<li key={`number-${index}`}>{renderConsultationInline(item, `number-${index}`)}</li>);
+        index += 1;
+      }
+      blocks.push(<ol key={`ordered-${index}`}>{items}</ol>);
+      continue;
+    }
+
+    if (/^◆\s*/.test(line)) {
+      blocks.push(<h3 className="consultation-markdown-kicker" key={`kicker-${index}`}>{renderConsultationInline(line.replace(/^◆\s*/, ""), `kicker-${index}`)}</h3>);
+      index += 1;
+      continue;
+    }
+
+    blocks.push(<p key={`paragraph-${index}`}>{renderConsultationInline(line, `paragraph-${index}`)}</p>);
+    index += 1;
+  }
+
+  return <div className={`consultation-markdown ${className}`.trim()}>{blocks}</div>;
+}
 type OfficialFoodResult = {
   code: string;
   name: string;
@@ -3179,9 +3241,9 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
         <div className="consultation-meta"><span className={`source-badge ${initialConsultation.source}`}>{initialConsultation.model === "gpt-5.6-sol" ? "GPT-5.6 Sol · High" : initialConsultation.model || "ChatGPT 상담"}</span>{aiUsage && <small>이번 달 {aiUsage.used}/{aiUsage.limit}회</small>}</div>
         <div className="consultation-flow initial-consultation-flow">
           <div className="consultation-flow-track" aria-label="첫 상담 진행 단계"><span className="done"><b>1</b>전체 분석</span><i /><span className={initialConsultation.userResponse ? "done" : "active"}><b>2</b>내가 확인</span><i /><span className={initialConsultation.flowStage === "initial-plan-ready" ? "active" : ""}><b>3</b>기준 확정</span></div>
-          <section className="consultation-step complete"><div className="consultation-step-heading"><span>1</span><strong>전체 기록 분석</strong><small>장기 흐름과 최근 8~12주를 함께 봤어요</small></div><div className="consultation-text">{initialConsultation.summaryText ?? initialConsultation.text}</div></section>
+          <section className="consultation-step complete"><div className="consultation-step-heading"><span>1</span><strong>전체 기록 분석</strong><small>장기 흐름과 최근 8~12주를 함께 봤어요</small></div><ConsultationMarkdown className="consultation-text" text={initialConsultation.summaryText ?? initialConsultation.text} /></section>
           <section className={`consultation-step ${initialConsultation.userResponse ? "complete" : "active"}`}><div className="consultation-step-heading"><span>2</span><strong>내가 확인하고 바로잡기</strong><small>{initialConsultation.userResponse ? "답변 완료" : "목표와 생활 조건을 알려주세요"}</small></div>{initialConsultation.userResponse ? <><p className="consultation-user-answer">{initialConsultation.userResponse}</p><button type="button" className="consultation-revise-answer" onClick={reviseInitialAnswer}>답변 수정하고 다시 제안받기</button></> : <div className="consultation-answer-editor"><ClearableFieldControl><textarea value={initialAnswer} onChange={(event) => setInitialAnswer(event.target.value)} maxLength={6000} placeholder="분석에서 맞는 점과 다른 점, 원하는 목표와 기간, 식사·운동 제약, 월경이나 여행 때 원하는 조정 방식 등을 자유롭게 알려주세요." aria-label="첫 상담 분석에 답변" /></ClearableFieldControl><div><small>{initialAnswer.length}/6000</small><button type="button" className="primary-button" onClick={requestInitialPlan} disabled={!initialAnswer.trim() || initialPlanLoading}>{initialPlanLoading ? "초기 기준을 만드는 중…" : "답변하고 초기 기준 받기"}</button></div></div>}</section>
-          <section className={`consultation-step ${initialConsultation.flowStage === "initial-plan-ready" ? "active" : "waiting"}`}><div className="consultation-step-heading"><span>3</span><strong>초기 목표와 기준 확정</strong><small>{initialConsultation.flowStage === "initial-plan-ready" ? "확인 전에는 앱에 반영되지 않아요" : "답변을 기다리고 있어요"}</small></div>{initialConsultation.flowStage === "initial-plan-ready" && initialConsultation.initialProposal ? <><div className="consultation-text">{initialConsultation.planText}</div><div className="initial-proposal-grid"><article><span>초기 목표</span><strong>체지방 {signed(initialConsultation.initialProposal.targetBodyFatChange)}kg</strong><b>골격근 {signed(initialConsultation.initialProposal.targetMuscleChange)}kg</b><small>{initialConsultation.initialProposal.goalEndDate.replaceAll("-", ".")}까지</small></article><article><span>하루 영양</span><strong>{initialConsultation.initialProposal.nutritionGoal.caloriesMin}~{initialConsultation.initialProposal.nutritionGoal.caloriesMax} kcal</strong><b>단백질 {initialConsultation.initialProposal.nutritionGoal.proteinMin}~{initialConsultation.initialProposal.nutritionGoal.proteinMax}g</b><small>당류 ≤ {initialConsultation.initialProposal.nutritionGoal.sugarMax}g · 식이섬유 ≥ {initialConsultation.initialProposal.nutritionGoal.fiberMin}g</small></article><article><span>주간 운동</span><strong>개인 유산소 {initialConsultation.initialProposal.workoutGoal.cardioSessions}회</strong><b>누적 {initialConsultation.initialProposal.workoutGoal.cardioMinutes}분</b><small>PT는 실제 일정에 맞춰 계획</small></article></div>{initialConsultation.initialProposal.adjustmentRules.length > 0 && <div className="initial-adjustment-rules"><strong>상황별 조정 원칙</strong><ul>{initialConsultation.initialProposal.adjustmentRules.map((rule) => <li key={rule}>{rule}</li>)}</ul></div>}<div className="consultation-not-saved"><strong>아직 적용되지 않았어요</strong><span>내용을 확인한 뒤 아래 버튼을 눌러야 목표·영양·운동 기준이 바뀌어요.</span></div><button type="button" className="primary-button initial-confirm-button" onClick={confirmInitialPlan}>이 기준으로 첫 목표 시작하기</button></> : <p className="consultation-waiting-text">소야님의 확인과 답변을 받은 뒤에만 초기 목표와 기준을 제안해요.</p>}</section>
+          <section className={`consultation-step ${initialConsultation.flowStage === "initial-plan-ready" ? "active" : "waiting"}`}><div className="consultation-step-heading"><span>3</span><strong>초기 목표와 기준 확정</strong><small>{initialConsultation.flowStage === "initial-plan-ready" ? "확인 전에는 앱에 반영되지 않아요" : "답변을 기다리고 있어요"}</small></div>{initialConsultation.flowStage === "initial-plan-ready" && initialConsultation.initialProposal ? <><ConsultationMarkdown className="consultation-text" text={initialConsultation.planText} /><div className="initial-proposal-grid"><article><span>초기 목표</span><strong>체지방 {signed(initialConsultation.initialProposal.targetBodyFatChange)}kg</strong><b>골격근 {signed(initialConsultation.initialProposal.targetMuscleChange)}kg</b><small>{initialConsultation.initialProposal.goalEndDate.replaceAll("-", ".")}까지</small></article><article><span>하루 영양</span><strong>{initialConsultation.initialProposal.nutritionGoal.caloriesMin}~{initialConsultation.initialProposal.nutritionGoal.caloriesMax} kcal</strong><b>단백질 {initialConsultation.initialProposal.nutritionGoal.proteinMin}~{initialConsultation.initialProposal.nutritionGoal.proteinMax}g</b><small>당류 ≤ {initialConsultation.initialProposal.nutritionGoal.sugarMax}g · 식이섬유 ≥ {initialConsultation.initialProposal.nutritionGoal.fiberMin}g</small></article><article><span>주간 운동</span><strong>개인 유산소 {initialConsultation.initialProposal.workoutGoal.cardioSessions}회</strong><b>누적 {initialConsultation.initialProposal.workoutGoal.cardioMinutes}분</b><small>PT는 실제 일정에 맞춰 계획</small></article></div>{initialConsultation.initialProposal.adjustmentRules.length > 0 && <div className="initial-adjustment-rules"><strong>상황별 조정 원칙</strong><ul>{initialConsultation.initialProposal.adjustmentRules.map((rule) => <li key={rule}>{rule}</li>)}</ul></div>}<div className="consultation-not-saved"><strong>아직 적용되지 않았어요</strong><span>내용을 확인한 뒤 아래 버튼을 눌러야 목표·영양·운동 기준이 바뀌어요.</span></div><button type="button" className="primary-button initial-confirm-button" onClick={confirmInitialPlan}>이 기준으로 첫 목표 시작하기</button></> : <p className="consultation-waiting-text">소야님의 확인과 답변을 받은 뒤에만 초기 목표와 기준을 제안해요.</p>}</section>
         </div>
         <div className="consult-buttons"><button className="delete-text-button" onClick={() => deleteConsultation(initialConsultation)}>첫 상담 삭제</button></div>
       </> : <EmptyState text={<>지금까지의 체성분 흐름과 최근 기록을 먼저 살펴보고,<br />소야님에게 꼭 필요한 것만 질문할게요.</>} action="첫 정밀 상담 시작" onClick={requestInitialAnalysis} showIcon={false} />}
@@ -3191,10 +3253,10 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
         <div className="consultation-meta"><span className={`source-badge ${visibleConsultation.source}`}>{visibleConsultation.source === "openai" ? visibleConsultation.model === "gpt-5.6-sol" ? "GPT-5.6 Sol · High" : visibleConsultation.model || "ChatGPT 상담" : "AI 연결 전 미리보기"}</span>{aiUsage && <small>이번 달 {aiUsage.used}/{aiUsage.limit}회</small>}</div>
         {visibleConsultation.flowStage ? <div className="consultation-flow">
           <div className="consultation-flow-track" aria-label="주간 상담 진행 단계"><span className="done"><b>1</b>이번 주 요약</span><i /><span className={visibleConsultation.userResponse ? "done" : "active"}><b>2</b>내가 답변</span><i /><span className={visibleConsultation.flowStage === "plan-ready" ? "done" : ""}><b>3</b>다음 주 계획</span></div>
-          <section className="consultation-step complete"><div className="consultation-step-heading"><span>1</span><strong>이번 주 요약</strong><small>AI가 목표와 기록을 함께 봤어요</small></div><div className="consultation-text">{visibleConsultation.summaryText ?? visibleConsultation.text}</div></section>
+          <section className="consultation-step complete"><div className="consultation-step-heading"><span>1</span><strong>이번 주 요약</strong><small>AI가 목표와 기록을 함께 봤어요</small></div><ConsultationMarkdown className="consultation-text" text={visibleConsultation.summaryText ?? visibleConsultation.text} /></section>
           <section className={`consultation-step ${visibleConsultation.userResponse ? "complete" : "active"}`}><div className="consultation-step-heading"><span>2</span><strong>내가 답변</strong><small>{visibleConsultation.userResponse ? "답변 완료" : "다음 주 조건을 알려주세요"}</small></div>{visibleConsultation.userResponse ? <p className="consultation-user-answer">{visibleConsultation.userResponse}</p> : <div className="consultation-answer-editor"><ClearableFieldControl><textarea value={weeklyAnswer} onChange={(event) => setWeeklyAnswer(event.target.value)} maxLength={4000} placeholder="다음 주 일정, 컨디션, 원하는 관리 강도와 꼭 반영할 점을 자유롭게 답해주세요." aria-label="이번 주 요약에 답변" /></ClearableFieldControl><div><small>{weeklyAnswer.length}/4000</small><button type="button" className="primary-button" onClick={requestWeeklyPlan} disabled={!weeklyAnswer.trim() || planLoading}>{planLoading ? "제안을 만드는 중…" : "답변하고 제안 받기"}</button></div></div>}</section>
-          <section className={`consultation-step ${visibleConsultation.flowStage === "plan-ready" ? "complete" : "waiting"}`}><div className="consultation-step-heading"><span>3</span><strong>다음 주 계획</strong><small>{visibleConsultation.flowStage === "plan-ready" ? "확인 후 반영해주세요" : "답변을 기다리고 있어요"}</small></div>{visibleConsultation.flowStage === "plan-ready" ? <><div className="consultation-text">{visibleConsultation.planText}</div>{visibleConsultation.planSuggestions?.length ? <div className="consultation-suggestion-preview">{visibleConsultation.planSuggestions.map((suggestion) => <article key={suggestion.id}><span>{suggestion.category === "meal" ? "식단" : "운동"}</span><strong>{suggestion.title}</strong><p>{suggestion.detail}</p></article>)}</div> : <p className="consultation-no-suggestions">바로 계획표에 넣을 제안은 없어요. 상담 내용을 확인한 뒤 직접 계획할 수 있어요.</p>}<div className="consultation-not-saved"><strong>아직 저장되지 않았어요</strong><span>제안을 확인하고 원하는 항목만 골라 반영할 수 있어요.</span></div></> : <p className="consultation-waiting-text">소야님의 답변을 받은 뒤에만 식단·운동 계획을 제안해요.</p>}</section>
-        </div> : <div className="consultation-text">{visibleConsultation.text}</div>}
+          <section className={`consultation-step ${visibleConsultation.flowStage === "plan-ready" ? "complete" : "waiting"}`}><div className="consultation-step-heading"><span>3</span><strong>다음 주 계획</strong><small>{visibleConsultation.flowStage === "plan-ready" ? "확인 후 반영해주세요" : "답변을 기다리고 있어요"}</small></div>{visibleConsultation.flowStage === "plan-ready" ? <><ConsultationMarkdown className="consultation-text" text={visibleConsultation.planText} />{visibleConsultation.planSuggestions?.length ? <div className="consultation-suggestion-preview">{visibleConsultation.planSuggestions.map((suggestion) => <article key={suggestion.id}><span>{suggestion.category === "meal" ? "식단" : "운동"}</span><strong>{suggestion.title}</strong><p>{suggestion.detail}</p></article>)}</div> : <p className="consultation-no-suggestions">바로 계획표에 넣을 제안은 없어요. 상담 내용을 확인한 뒤 직접 계획할 수 있어요.</p>}<div className="consultation-not-saved"><strong>아직 저장되지 않았어요</strong><span>제안을 확인하고 원하는 항목만 골라 반영할 수 있어요.</span></div></> : <p className="consultation-waiting-text">소야님의 답변을 받은 뒤에만 식단·운동 계획을 제안해요.</p>}</section>
+        </div> : <ConsultationMarkdown className="consultation-text" text={visibleConsultation.text} />}
         <div className="consult-buttons"><button className="delete-text-button" onClick={() => deleteConsultation(visibleConsultation)}>삭제</button>{(!visibleConsultation.flowStage || visibleConsultation.flowStage === "plan-ready") && <button className="ghost-button" onClick={() => setFollowUpOpen((current) => !current)}>대화 이어가기</button>}{visibleConsultation.flowStage === "plan-ready" && <button className="primary-button" onClick={() => openWeeklyPlan(addDays(visibleConsultation.weekStart ?? reviewStart, 7), visibleConsultation)}>제안 확인하고 계획하기</button>}{!visibleConsultation.flowStage && <button className="primary-button" onClick={() => openWeeklyPlan(addDays(visibleConsultation.weekStart ?? reviewStart, 7), visibleConsultation)}>{visibleConsultation.planSuggestions?.length ? "제안 골라 계획하기" : "다음 주 계획하기"}</button>}</div>
         {followUpOpen && <div className="consult-followup"><ClearableFieldControl><textarea value={followUpQuestion} onChange={(event) => setFollowUpQuestion(event.target.value)} maxLength={1000} placeholder="상담 내용에서 더 묻고 싶은 점을 적어주세요." aria-label="ChatGPT에게 이어서 질문" /></ClearableFieldControl><div><small>{followUpQuestion.length}/1000</small><button type="button" className="primary-button" onClick={requestFollowUp} disabled={!followUpQuestion.trim() || followUpLoading}>{followUpLoading ? "답변을 기다리는 중…" : "질문 보내기"}</button></div></div>}
       </> : <EmptyState text={<>체성분·식사·운동 기록을 바탕으로<br />이번 주를 함께 정리해요.</>} action="주간 상담 시작" onClick={requestReview} showIcon={false} />}
@@ -4684,7 +4746,7 @@ function BodyDetailSheet({ record, close, edit, remove }: { record: BodyRecord; 
 
 function ConsultationDetailSheet({ consultation, close, remove }: { consultation: Consultation; close: () => void; remove: () => void }) {
   const initial = consultation.consultationType === "initial";
-  return <Sheet title={initial ? "첫 상담 다시보기" : "상담 다시보기"} close={close}><div className="detail-date"><strong>{consultation.date}</strong>{initial && consultation.confirmedAt && <span>기준 확정 완료</span>}</div><span className={`source-badge ${consultation.source}`}>{consultation.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span>{consultation.flowStage ? <div className="consultation-detail-flow"><section><strong>1. {initial ? "전체 기록 분석" : "이번 주 요약"}</strong><div className="consultation-text consultation-popup-text">{consultation.summaryText ?? consultation.text}</div></section>{consultation.userResponse && <section><strong>2. {initial ? "나의 확인·수정" : "나의 답변"}</strong><p>{consultation.userResponse}</p></section>}{consultation.planText && <section><strong>3. {initial ? "초기 상담 리포트" : "다음 주 제안"}</strong><div className="consultation-text consultation-popup-text">{consultation.planText}</div></section>}</div> : <div className="consultation-text consultation-popup-text">{consultation.text}</div>}<button type="button" className="delete-button full-delete-button" onClick={remove}>상담 삭제</button></Sheet>;
+  return <Sheet title={initial ? "첫 상담 다시보기" : "상담 다시보기"} close={close}><div className="detail-date"><strong>{consultation.date}</strong>{initial && consultation.confirmedAt && <span>기준 확정 완료</span>}</div><span className={`source-badge ${consultation.source}`}>{consultation.source === "openai" ? "ChatGPT 상담" : "AI 연결 전 미리보기"}</span>{consultation.flowStage ? <div className="consultation-detail-flow"><section><strong>1. {initial ? "전체 기록 분석" : "이번 주 요약"}</strong><ConsultationMarkdown className="consultation-text consultation-popup-text" text={consultation.summaryText ?? consultation.text} /></section>{consultation.userResponse && <section><strong>2. {initial ? "나의 확인·수정" : "나의 답변"}</strong><p>{consultation.userResponse}</p></section>}{consultation.planText && <section><strong>3. {initial ? "초기 상담 리포트" : "다음 주 제안"}</strong><ConsultationMarkdown className="consultation-text consultation-popup-text" text={consultation.planText} /></section>}</div> : <ConsultationMarkdown className="consultation-text consultation-popup-text" text={consultation.text} />}<button type="button" className="delete-button full-delete-button" onClick={remove}>상담 삭제</button></Sheet>;
 }
 
 type LoveFormDraft = { date: string; count: string; contraception: LoveRecord["contraception"]; note: string };

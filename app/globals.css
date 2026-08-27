@@ -681,7 +681,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .source-badge { display: inline-block; margin-bottom: 14px; padding: 6px 9px; border-radius: 9px; font-size: 9px; font-weight: 900; }
 .source-badge.openai { background: var(--sage-soft); color: #536d57; }
 .source-badge.preview { background: var(--gold-soft); color: #8a682f; }
-.consultation-text { white-space: pre-line; color: #514c45; font-size: 12px; line-height: 1.85; }
+.consultation-text { color: #514c45; font-size: 12px; line-height: 1.85; }
+.consultation-markdown { display: grid; gap: 10px; min-width: 0; }
+.consultation-markdown h2,
+.consultation-markdown h3,
+.consultation-markdown h4 { margin: 10px 0 1px; color: var(--ink); line-height: 1.4; }
+.consultation-markdown h2 { padding: 8px 10px; border-left: 4px solid var(--coral); background: var(--coral-soft); font-size: 15px; }
+.consultation-markdown h3 { font-size: 13px; }
+.consultation-markdown h4 { font-size: 12px; }
+.consultation-markdown h2:first-child,
+.consultation-markdown h3:first-child,
+.consultation-markdown h4:first-child { margin-top: 0; }
+.consultation-markdown p { margin: 0; }
+.consultation-markdown strong { color: var(--ink); font-weight: 900; }
+.consultation-markdown ul,
+.consultation-markdown ol { margin: 0; padding-left: 21px; display: grid; gap: 6px; }
+.consultation-markdown li { padding-left: 2px; }
+.consultation-markdown li::marker { color: var(--coral); font-weight: 900; }
+.consultation-markdown .consultation-markdown-kicker { padding: 7px 10px; border: 1px solid var(--line); background: var(--cream); color: var(--coral); font-size: 12px; }
 .consultation-meta { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .consultation-meta small { color: var(--muted); font-size: 8px; }
 .consultation-error { margin: 0; padding: 11px 13px; border: 1px solid var(--coral); background: var(--coral-soft); color: #8e4939; font-size: 9px; line-height: 1.6; }
