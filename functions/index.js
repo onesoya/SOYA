@@ -624,7 +624,7 @@ export const getAiUsageSummary = onCall({
 export const createWeeklyConsultation = onCall({
   region: "asia-northeast3",
   memory: "256MiB",
-  timeoutSeconds: 120,
+  timeoutSeconds: 300,
   secrets: [openAiApiKey],
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Google 로그인 후 상담할 수 있어요.");
@@ -678,6 +678,13 @@ export const createWeeklyConsultation = onCall({
           : `직전 상담:\n${previousConsultation}\n\n사용자의 추가 질문:\n${question}`;
 
   try {
+    const maxOutputTokens = kind === "initial-analysis"
+      ? 12000
+      : kind === "initial-plan"
+        ? 10000
+        : kind === "weekly-plan"
+          ? 3000
+          : 2000;
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${openAiApiKey.value()}` },
@@ -686,23 +693,44 @@ export const createWeeklyConsultation = onCall({
         instructions,
         input,
         reasoning: { effort: "high" },
-        max_output_tokens: kind === "initial-plan" ? 4500 : kind === "initial-analysis" ? 3500 : kind === "weekly-plan" ? 3000 : 2000,
+        max_output_tokens: maxOutputTokens,
         store: false,
         safety_identifier: createHash("sha256").update(request.auth.uid).digest("hex").slice(0, 64),
         ...(initialResponseFormat(kind) ? { text: initialResponseFormat(kind) } : {}),
       }),
     });
-    if (!response.ok) throw new Error(`OpenAI ${response.status}`);
+    if (!response.ok) {
+      const failure = await response.json().catch(() => undefined);
+      const message = safeText(failure?.error?.message, 500);
+      console.error("SOYA OpenAI request rejected", { kind, status: response.status, message });
+      throw new Error(`OpenAI ${response.status}`);
+    }
     const data = await response.json();
     const rawText = outputText(data);
-    if (!rawText) throw new Error("Empty OpenAI response");
+    const inputTokens = Number(data?.usage?.input_tokens || 0);
+    const outputTokens = Number(data?.usage?.output_tokens || 0);
+    if (!rawText) {
+      await usageRef.set({
+        inputTokens: FieldValue.increment(inputTokens),
+        outputTokens: FieldValue.increment(outputTokens),
+        lastUsedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      console.error("SOYA consultation returned no text", {
+        kind,
+        status: data?.status,
+        incompleteReason: data?.incomplete_details?.reason,
+        inputTokens,
+        outputTokens,
+        maxOutputTokens,
+        outputTypes: (Array.isArray(data?.output) ? data.output : []).map((item) => item?.type).filter(Boolean),
+      });
+      throw new Error("Empty OpenAI response");
+    }
     const result = kind === "followup"
       ? { text: rawText, planSuggestions: [] }
       : kind === "initial-analysis" || kind === "initial-plan"
         ? initialConsultationOutput(rawText)
         : weeklyConsultationOutput(rawText);
-    const inputTokens = Number(data?.usage?.input_tokens || 0);
-    const outputTokens = Number(data?.usage?.output_tokens || 0);
     await usageRef.set({
       inputTokens: FieldValue.increment(inputTokens),
       outputTokens: FieldValue.increment(outputTokens),

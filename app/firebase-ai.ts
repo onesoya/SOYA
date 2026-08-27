@@ -57,7 +57,7 @@ type AiConsultationRequest = WeeklySummaryRequest | WeeklyPlanRequest | InitialA
 
 export async function requestAiConsultation(payload: AiConsultationRequest) {
   const functions = getFunctions(firebaseApp(), "asia-northeast3");
-  const callable = httpsCallable<AiConsultationRequest, AiConsultationResult>(functions, "createWeeklyConsultation");
+  const callable = httpsCallable<AiConsultationRequest, AiConsultationResult>(functions, "createWeeklyConsultation", { timeout: 300000 });
   const response = await callable(payload);
   return response.data;
 }
