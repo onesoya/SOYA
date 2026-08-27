@@ -357,6 +357,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .goal-current-body > div { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .goal-current-body b { color: var(--ink); font-size: 8px; }
 .goal-current-body.empty { min-height: 34px; align-content: center; }
+.goal-target-preview { border: 1px solid var(--line); background: var(--paper); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.goal-target-preview article { min-width: 0; padding: 10px; display: grid; gap: 4px; }
+.goal-target-preview article + article { border-left: 1px solid var(--line); }
+.goal-target-preview span { color: var(--muted); font-size: 8px; }
+.goal-target-preview strong { color: var(--ink); font-size: 14px; }
+.goal-target-preview small { color: var(--coral); font-size: 8px; }
+.goal-target-preview > em { grid-column: 1 / -1; padding: 6px 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 7px; font-style: normal; text-align: right; }
+.goal-change-fields .field-clear-button { left: 8px; right: auto; width: 18px; height: 18px; font-size: 11px; line-height: 18px; }
+.goal-change-fields .clearable-field-control > input { padding-left: 34px; padding-right: 8px; }
 .travel-level-picker label { min-width: 0; padding: 10px; border: 1px solid var(--line); background: var(--paper); display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
 .travel-level-picker label:has(input:checked) { border-color: var(--coral); box-shadow: inset 0 0 0 1px var(--coral); }
 .travel-level-picker input { flex: 0 0 auto; width: 18px; height: 18px; accent-color: var(--coral); }
@@ -1126,6 +1135,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .measure-field > div:last-child { min-width: 120px; }
   .measure-field .clearable-field-control { width: 88px; }
   .measure-field input { width: 88px; }
+  .body-entry-form .measure-field .field-clear-button { left: 2px; right: auto; width: 16px; height: 16px; font-size: 10px; line-height: 16px; }
+  .body-entry-form .measure-field .clearable-field-control > input { padding-left: 18px; padding-right: 15px; }
   .food-set-row { grid-template-columns: minmax(0, 1fr) minmax(110px, .65fr); }
   .food-set-row .delete-text-button { grid-column: 1 / -1; min-height: 28px; justify-self: end; }
 }
