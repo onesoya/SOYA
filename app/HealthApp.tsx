@@ -56,6 +56,7 @@ import {
 type Tab = "today" | "food" | "workout" | "menstrual" | "change";
 type Modal = null | "quick" | "measurement-picker" | "movement-picker" | "body" | "body-bulk" | "body-detail" | "circumference" | "health-exams" | "health-exam" | "activity" | "apple-health" | "meal-plan" | "meal-actual" | "food-library" | "nutrition-goal" | "profile-goal" | "goal-complete" | "goal-history-detail" | "profile-settings" | "account" | "workout-plan" | "workout-actual" | "workout-goal" | "weekly-plan" | "cycle" | "love" | "consultation-detail" | "reminders" | "data-management" | "data-audit";
 type Consultation = AppState["consultations"][number];
+type InitialConsultationProposal = NonNullable<Consultation["initialProposal"]>;
 type WeeklyReview = NonNullable<AppState["weeklyReviews"]>[number];
 type BleedingState = Exclude<CycleEntry["state"], "없음">;
 type CycleRange = { id: string; start: string; end: string; states?: Record<string, BleedingState> };
@@ -179,6 +180,10 @@ type GoalCompletionChoice = {
   targetBodyFatChange: number;
   targetMuscleChange: number;
   note: string;
+};
+type GoalCompletionDraft = Omit<GoalCompletionChoice, "targetBodyFatChange" | "targetMuscleChange"> & {
+  targetBodyFatChange: string;
+  targetMuscleChange: string;
 };
 type RecordAuditTarget =
   | { kind: "body"; record: BodyRecord }
@@ -2575,7 +2580,7 @@ function FoodView({ state, today, openMeal, deleteMeal, openGoal, openLibrary, o
         const plans = state.meals.filter((m) => m.date === selectedDate && m.mealType === type && m.kind === "plan");
         const actuals = state.meals.filter((m) => m.date === selectedDate && m.mealType === type && m.kind === "actual");
         return <article key={type} className="meal-card editable-meal-card"><div><span>{mealLabels[type]}</span>{actuals.length > 0 && <b>기록 완료</b>}</div>
-          {plans.map((plan) => <EntryItem key={plan.id} label="계획" title={plan.title} record={() => openMeal("actual", type, plan, selectedDate)} edit={() => openMeal("plan", type, plan, selectedDate)} remove={() => deleteMeal(plan)} />)}
+          {!actuals.length && plans.map((plan) => <EntryItem key={plan.id} label="계획" title={plan.title} record={() => openMeal("actual", type, plan, selectedDate)} edit={() => openMeal("plan", type, plan, selectedDate)} remove={() => deleteMeal(plan)} />)}
           {actuals.map((actual) => <EntryItem key={actual.id} label="기록" title={actual.title} detail={actual.skipped ? "건너뜀으로 기록" : `${actual.calories} kcal · 단백질 ${actual.protein}g`} edit={() => openMeal("actual", type, actual, selectedDate)} remove={() => deleteMeal(actual)} />)}
           {!plans.length && !actuals.length && <p className="no-entry">아직 계획이나 기록이 없어요.</p>}
           <div className="meal-add-actions">{!actuals.length && <button onClick={() => openMeal("plan", type, undefined, selectedDate)}>계획 추가</button>}<button onClick={() => openMeal("actual", type, undefined, selectedDate)}>{actuals.length ? "기록 추가" : "기록하기"}</button></div>
@@ -2687,6 +2692,8 @@ function ChangeConsultView({ state, today, setModal, commit, openWeeklyPlan, del
 function ChangeView({ state, today, setModal, openDetail, openCircumference, openHealthExams, openGoalHistory }: { state: AppState; today: string; setModal: (modal: Modal) => void; openDetail: (record: BodyRecord) => void; openCircumference: (record?: CircumferenceRecord) => void; openHealthExams: () => void; openGoalHistory: (goal: GoalHistoryEntry) => void }) {
   const [phaseFilter, setPhaseFilter] = useState<"all" | "focus" | "influence">("all");
   const [trendMetric, setTrendMetric] = useState<BodyTrendMetric>("bodyFatMass");
+  const [recordYear, setRecordYear] = useState("전체");
+  const [recordMonth, setRecordMonth] = useState("전체");
   const bodyRecords = bodyRecordsNewestFirst(state.bodyRecords);
   const latest = bodyRecords[0];
   const recentRecords = bodyRecords.slice(0, 7).reverse();
@@ -2698,7 +2705,10 @@ function ChangeView({ state, today, setModal, openDetail, openCircumference, ope
     return phase.key === "premenstrual" || phase.key === "bleeding";
   });
   const chartRecords = filteredRecords.map(({ record }) => record).reverse();
-  const visibleRecords = filteredRecords.slice(0, 8);
+  const recordYears = [...new Set(filteredRecords.map(({ record }) => record.date.slice(0, 4)))].sort((a, b) => b.localeCompare(a));
+  const recordMonths = [...new Set(filteredRecords.filter(({ record }) => recordYear === "전체" || record.date.startsWith(recordYear)).map(({ record }) => record.date.slice(5, 7)))].sort((a, b) => b.localeCompare(a));
+  const periodRecords = filteredRecords.filter(({ record }) => (recordYear === "전체" || record.date.startsWith(recordYear)) && (recordMonth === "전체" || record.date.slice(5, 7) === recordMonth));
+  const visibleRecords = periodRecords.slice(0, 50);
   const circumferenceRecords = [...(state.circumferenceRecords ?? [])].sort((a, b) => b.date.localeCompare(a.date));
   const latestCircumference = circumferenceRecords[0];
   const circumferenceChartRecords = circumferenceRecords.slice(0, 8).reverse();
@@ -2725,7 +2735,7 @@ function ChangeView({ state, today, setModal, openDetail, openCircumference, ope
     <section className="card health-exam-card"><CardTitle title="건강검진 기록" aside={<button type="button" className="text-button" onClick={openHealthExams}>관리하기</button>} />
       {latestHealthExam ? <><div className="health-exam-latest"><div><span>{latestHealthExam.date.replaceAll("-", ".")} · {latestHealthExam.examType}</span><strong>{latestHealthExam.institution || "검진기관 미입력"}</strong></div><div className="health-exam-metrics">{healthExamSummaryMetrics(latestHealthExam, 4).map((metric) => <span key={metric.label}><small>{metric.label}</small><b>{metric.value}<i>{metric.unit}</i></b></span>)}</div></div><button type="button" className="health-exam-open-button" onClick={openHealthExams}>검진 기록 {healthExamRecords.length}건 보기 <b aria-hidden="true">›</b></button></> : <EmptyState text="건강검진 결과를 한곳에 모아보세요." action="검진 결과 추가" onClick={openHealthExams} showIcon={false} />}
     </section>
-    <section className="card"><CardTitle title="측정 기록" aside={`${filteredRecords.length}개`} />{visibleRecords.length ? <div className="data-table">{visibleRecords.map(({ record, phase }) => <button type="button" key={record.id} onClick={() => openDetail(record)} aria-label={`${record.date} 인바디 상세 보기, ${phase.label}`}><span><strong>{record.date}</strong><i className={`record-phase-badge phase-${phase.key}`}>{phase.label}</i><small>{record.time} · {record.measurementTiming ?? record.condition.split(" · ")[0]} · {record.device ?? record.condition.split(" · ")[1]}</small></span><span>{record.bodyFatMass}<small>kg 지방</small></span><span>{record.skeletalMuscle}<small>kg 골격근</small></span><b aria-hidden="true">›</b></button>)}</div> : <div className="phase-record-empty">이 구간의 측정 기록이 아직 없어요.</div>}</section>
+    <section className="card measurement-record-card"><CardTitle title="측정 기록" aside={`${periodRecords.length}개`} /><div className="measurement-period-filter"><select value={recordYear} onChange={(event) => { setRecordYear(event.target.value); setRecordMonth("전체"); }} aria-label="측정 기록 연도"><option value="전체">전체 연도</option>{recordYears.map((year) => <option key={year} value={year}>{year}년</option>)}</select><select value={recordMonth} onChange={(event) => setRecordMonth(event.target.value)} aria-label="측정 기록 월"><option value="전체">전체 월</option>{recordMonths.map((month) => <option key={month} value={month}>{Number(month)}월</option>)}</select></div>{visibleRecords.length ? <div className="data-table">{visibleRecords.map(({ record, phase }) => <button type="button" key={record.id} onClick={() => openDetail(record)} aria-label={`${record.date} 인바디 상세 보기, ${phase.label}`}><span><strong>{record.date}</strong><i className={`record-phase-badge phase-${phase.key}`}>{phase.label}</i><small>{record.time} · {record.measurementTiming ?? record.condition.split(" · ")[0]} · {record.device ?? record.condition.split(" · ")[1]}</small></span><span>{record.bodyFatMass}<small>kg 지방</small></span><span>{record.skeletalMuscle}<small>kg 골격근</small></span><b aria-hidden="true">›</b></button>)}</div> : <div className="phase-record-empty">선택한 기간의 측정 기록이 아직 없어요.</div>}</section>
   </div>;
 }
 
@@ -2737,6 +2747,7 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [followUpQuestion, setFollowUpQuestion] = useState("");
   const [consultationError, setConsultationError] = useState("");
+  const [proposalEditing, setProposalEditing] = useState(false);
   const [aiUsage, setAiUsage] = useState<AiUsageSummary>();
   const [reviewStart, setReviewStart] = useState(weekStart(todayKey()));
   const savedReview = (state.weeklyReviews ?? []).find((item) => item.weekStart === reviewStart);
@@ -3121,6 +3132,45 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
       consultations: current.consultations.map((item) => item.id === initialConsultation.id ? { ...item, flowStage: "initial-confirmed", confirmedAt } : item),
     }));
   };
+  const saveInitialProposalEdits = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!initialConsultation?.initialProposal) return;
+    const data = new FormData(event.currentTarget);
+    const next: InitialConsultationProposal = {
+      ...initialConsultation.initialProposal,
+      goalEndDate: String(data.get("goalEndDate")),
+      targetBodyFatChange: number(data.get("targetBodyFatChange")),
+      targetMuscleChange: number(data.get("targetMuscleChange")),
+      nutritionGoal: {
+        caloriesMin: number(data.get("caloriesMin")),
+        caloriesMax: number(data.get("caloriesMax")),
+        proteinMin: number(data.get("proteinMin")),
+        proteinMax: number(data.get("proteinMax")),
+        carbsMin: number(data.get("carbsMin")),
+        carbsMax: number(data.get("carbsMax")),
+        fatMin: number(data.get("fatMin")),
+        fatMax: number(data.get("fatMax")),
+        sugarMax: number(data.get("sugarMax")),
+        fiberMin: number(data.get("fiberMin")),
+      },
+      workoutGoal: {
+        cardioSessions: number(data.get("cardioSessions")),
+        cardioMinutes: number(data.get("cardioMinutes")),
+      },
+    };
+    if (next.nutritionGoal.caloriesMin > next.nutritionGoal.caloriesMax
+      || next.nutritionGoal.proteinMin > next.nutritionGoal.proteinMax
+      || next.nutritionGoal.carbsMin > next.nutritionGoal.carbsMax
+      || next.nutritionGoal.fatMin > next.nutritionGoal.fatMax) {
+      window.alert("영양 범위의 최소값과 최대값을 확인해주세요.");
+      return;
+    }
+    commit((current) => ({
+      ...current,
+      consultations: current.consultations.map((item) => item.id === initialConsultation.id ? { ...item, initialProposal: next } : item),
+    }));
+    setProposalEditing(false);
+  };
   const requestReview = async () => {
     setLoading(true);
     setConsultationError("");
@@ -3243,7 +3293,7 @@ function ConsultView({ state, commit, openWeeklyPlan, deleteConsultation, openDe
           <div className="consultation-flow-track" aria-label="첫 상담 진행 단계"><span className="done"><b>1</b>전체 분석</span><i /><span className={initialConsultation.userResponse ? "done" : "active"}><b>2</b>내가 확인</span><i /><span className={initialConsultation.flowStage === "initial-plan-ready" ? "active" : ""}><b>3</b>기준 확정</span></div>
           <section className="consultation-step complete"><div className="consultation-step-heading"><span>1</span><strong>전체 기록 분석</strong><small>장기 흐름과 최근 8~12주를 함께 봤어요</small></div><ConsultationMarkdown className="consultation-text" text={initialConsultation.summaryText ?? initialConsultation.text} /></section>
           <section className={`consultation-step ${initialConsultation.userResponse ? "complete" : "active"}`}><div className="consultation-step-heading"><span>2</span><strong>내가 확인하고 바로잡기</strong><small>{initialConsultation.userResponse ? "답변 완료" : "목표와 생활 조건을 알려주세요"}</small></div>{initialConsultation.userResponse ? <><p className="consultation-user-answer">{initialConsultation.userResponse}</p><button type="button" className="consultation-revise-answer" onClick={reviseInitialAnswer}>답변 수정하고 다시 제안받기</button></> : <div className="consultation-answer-editor"><ClearableFieldControl><textarea value={initialAnswer} onChange={(event) => setInitialAnswer(event.target.value)} maxLength={6000} placeholder="분석에서 맞는 점과 다른 점, 원하는 목표와 기간, 식사·운동 제약, 월경이나 여행 때 원하는 조정 방식 등을 자유롭게 알려주세요." aria-label="첫 상담 분석에 답변" /></ClearableFieldControl><div><small>{initialAnswer.length}/6000</small><button type="button" className="primary-button" onClick={requestInitialPlan} disabled={!initialAnswer.trim() || initialPlanLoading}>{initialPlanLoading ? "초기 기준을 만드는 중…" : "답변하고 초기 기준 받기"}</button></div></div>}</section>
-          <section className={`consultation-step ${initialConsultation.flowStage === "initial-plan-ready" ? "active" : "waiting"}`}><div className="consultation-step-heading"><span>3</span><strong>초기 목표와 기준 확정</strong><small>{initialConsultation.flowStage === "initial-plan-ready" ? "확인 전에는 앱에 반영되지 않아요" : "답변을 기다리고 있어요"}</small></div>{initialConsultation.flowStage === "initial-plan-ready" && initialConsultation.initialProposal ? <><ConsultationMarkdown className="consultation-text" text={initialConsultation.planText} /><div className="initial-proposal-grid"><article><span>초기 목표</span><strong>체지방 {signed(initialConsultation.initialProposal.targetBodyFatChange)}kg</strong><b>골격근 {signed(initialConsultation.initialProposal.targetMuscleChange)}kg</b><small>{initialConsultation.initialProposal.goalEndDate.replaceAll("-", ".")}까지</small></article><article><span>하루 영양</span><strong>{initialConsultation.initialProposal.nutritionGoal.caloriesMin}~{initialConsultation.initialProposal.nutritionGoal.caloriesMax} kcal</strong><b>단백질 {initialConsultation.initialProposal.nutritionGoal.proteinMin}~{initialConsultation.initialProposal.nutritionGoal.proteinMax}g</b><small>당류 ≤ {initialConsultation.initialProposal.nutritionGoal.sugarMax}g · 식이섬유 ≥ {initialConsultation.initialProposal.nutritionGoal.fiberMin}g</small></article><article><span>주간 운동</span><strong>개인 유산소 {initialConsultation.initialProposal.workoutGoal.cardioSessions}회</strong><b>누적 {initialConsultation.initialProposal.workoutGoal.cardioMinutes}분</b><small>PT는 실제 일정에 맞춰 계획</small></article></div>{initialConsultation.initialProposal.adjustmentRules.length > 0 && <div className="initial-adjustment-rules"><strong>상황별 조정 원칙</strong><ul>{initialConsultation.initialProposal.adjustmentRules.map((rule) => <li key={rule}>{rule}</li>)}</ul></div>}<div className="consultation-not-saved"><strong>아직 적용되지 않았어요</strong><span>내용을 확인한 뒤 아래 버튼을 눌러야 목표·영양·운동 기준이 바뀌어요.</span></div><button type="button" className="primary-button initial-confirm-button" onClick={confirmInitialPlan}>이 기준으로 첫 목표 시작하기</button></> : <p className="consultation-waiting-text">소야님의 확인과 답변을 받은 뒤에만 초기 목표와 기준을 제안해요.</p>}</section>
+          <section className={`consultation-step ${initialConsultation.flowStage === "initial-plan-ready" ? "active" : "waiting"}`}><div className="consultation-step-heading"><span>3</span><strong>초기 목표와 기준 확정</strong><small>{initialConsultation.flowStage === "initial-plan-ready" ? "확인 전에는 앱에 반영되지 않아요" : "답변을 기다리고 있어요"}</small></div>{initialConsultation.flowStage === "initial-plan-ready" && initialConsultation.initialProposal ? <><ConsultationMarkdown className="consultation-text" text={initialConsultation.planText} /><div className="initial-proposal-grid"><article><span>초기 목표</span><strong>체지방 {signed(initialConsultation.initialProposal.targetBodyFatChange)}kg</strong><b>골격근 {signed(initialConsultation.initialProposal.targetMuscleChange)}kg</b><small>{initialConsultation.initialProposal.goalEndDate.replaceAll("-", ".")}까지</small></article><article><span>하루 영양</span><strong>{initialConsultation.initialProposal.nutritionGoal.caloriesMin}~{initialConsultation.initialProposal.nutritionGoal.caloriesMax} kcal</strong><b>단백질 {initialConsultation.initialProposal.nutritionGoal.proteinMin}~{initialConsultation.initialProposal.nutritionGoal.proteinMax}g</b><small>당류 ≤ {initialConsultation.initialProposal.nutritionGoal.sugarMax}g · 식이섬유 ≥ {initialConsultation.initialProposal.nutritionGoal.fiberMin}g</small></article><article><span>주간 운동</span><strong>개인 유산소 {initialConsultation.initialProposal.workoutGoal.cardioSessions}회</strong><b>누적 {initialConsultation.initialProposal.workoutGoal.cardioMinutes}분</b><small>PT는 실제 일정에 맞춰 계획</small></article></div>{initialConsultation.initialProposal.adjustmentRules.length > 0 && <div className="initial-adjustment-rules"><strong>상황별 조정 원칙</strong><ul>{initialConsultation.initialProposal.adjustmentRules.map((rule) => <li key={rule}>{rule}</li>)}</ul></div>}{proposalEditing && <InitialProposalEditForm proposal={initialConsultation.initialProposal} save={saveInitialProposalEdits} cancel={() => setProposalEditing(false)} />}<div className="consultation-not-saved"><strong>아직 적용되지 않았어요</strong><span>마음에 들지 않는 부분만 조정한 뒤 최종 반영할 수 있어요.</span></div><div className="initial-proposal-actions"><button type="button" className="ghost-button" onClick={() => setProposalEditing((current) => !current)}>{proposalEditing ? "조정 닫기" : "일부 조정하기"}</button><button type="button" className="primary-button initial-confirm-button" onClick={confirmInitialPlan}>이 기준으로 첫 목표 시작하기</button></div></> : <p className="consultation-waiting-text">소야님의 확인과 답변을 받은 뒤에만 초기 목표와 기준을 제안해요.</p>}</section>
         </div>
         <div className="consult-buttons"><button className="delete-text-button" onClick={() => deleteConsultation(initialConsultation)}>첫 상담 삭제</button></div>
       </> : <EmptyState text={<>지금까지의 체성분 흐름과 최근 기록을 먼저 살펴보고,<br />소야님에게 꼭 필요한 것만 질문할게요.</>} action="첫 정밀 상담 시작" onClick={requestInitialAnalysis} showIcon={false} />}
@@ -3878,12 +3928,40 @@ function ClearableFieldControl({ children }: { children: React.ReactNode }) {
   };
   return <span className="clearable-field-control" onInput={(event) => setHasValue(hasInputValue((event.target as HTMLInputElement | HTMLTextAreaElement).value))}>{children}{hasValue && <button type="button" className="field-clear-button" onClick={clear} aria-label="입력 내용 전체 지우기">×</button>}</span>;
 }
+function InitialProposalEditForm({ proposal, save, cancel }: { proposal: InitialConsultationProposal; save: (event: FormEvent<HTMLFormElement>) => void; cancel: () => void }) {
+  const Range = ({ label, minName, maxName, min, max, unit }: { label: string; minName: string; maxName: string; min: number; max: number; unit: string }) => <section className="initial-proposal-range"><strong>{label} ({unit})</strong><div className="two-fields"><Field label="최소"><input type="number" name={minName} min="0" step="0.1" defaultValue={min} required /></Field><Field label="최대"><input type="number" name={maxName} min="0" step="0.1" defaultValue={max} required /></Field></div></section>;
+  return <form className="initial-proposal-edit-form" onSubmit={save}>
+    <div className="initial-proposal-edit-heading"><strong>제안 일부 조정</strong><small>바꾸고 싶은 칸만 수정하면 나머지는 그대로 유지돼요.</small></div>
+    <div className="two-fields"><Field label="목표 종료일"><input type="date" name="goalEndDate" defaultValue={proposal.goalEndDate} required /></Field><Field label="체지방량 변화 (kg)"><input type="number" name="targetBodyFatChange" step="0.1" defaultValue={proposal.targetBodyFatChange} required /></Field></div>
+    <Field label="골격근량 변화 (kg)"><input type="number" name="targetMuscleChange" step="0.1" defaultValue={proposal.targetMuscleChange} required /></Field>
+    <div className="initial-proposal-range-grid">
+      <Range label="칼로리" minName="caloriesMin" maxName="caloriesMax" min={proposal.nutritionGoal.caloriesMin} max={proposal.nutritionGoal.caloriesMax} unit="kcal" />
+      <Range label="단백질" minName="proteinMin" maxName="proteinMax" min={proposal.nutritionGoal.proteinMin} max={proposal.nutritionGoal.proteinMax} unit="g" />
+      <Range label="탄수화물" minName="carbsMin" maxName="carbsMax" min={proposal.nutritionGoal.carbsMin} max={proposal.nutritionGoal.carbsMax} unit="g" />
+      <Range label="지방" minName="fatMin" maxName="fatMax" min={proposal.nutritionGoal.fatMin} max={proposal.nutritionGoal.fatMax} unit="g" />
+    </div>
+    <div className="two-fields"><Field label="당류 상한 (g)"><input type="number" name="sugarMax" min="0" step="0.1" defaultValue={proposal.nutritionGoal.sugarMax} required /></Field><Field label="식이섬유 하한 (g)"><input type="number" name="fiberMin" min="0" step="0.1" defaultValue={proposal.nutritionGoal.fiberMin} required /></Field></div>
+    <div className="two-fields"><Field label="개인 유산소 (회/주)"><input type="number" name="cardioSessions" min="0" step="1" defaultValue={proposal.workoutGoal.cardioSessions} required /></Field><Field label="주간 누적시간 (분)"><input type="number" name="cardioMinutes" min="0" step="5" defaultValue={proposal.workoutGoal.cardioMinutes} required /></Field></div>
+    <div className="initial-proposal-edit-actions"><button type="button" className="ghost-button" onClick={cancel}>취소</button><button type="submit" className="primary-button">조정 내용 반영</button></div>
+  </form>;
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   const props = isValidElement(children) ? children.props as { type?: string } : {};
   const clearable = isValidElement(children) && (children.type === "textarea" || (children.type === "input" && [undefined, "text", "search", "email", "url", "tel", "number", "date", "time"].includes(props.type)));
   return <label className="field"><span>{label}</span>{clearable ? <ClearableFieldControl>{children}</ClearableFieldControl> : children}</label>;
 }
-function MeasureField({ label, name, unit, previous, value, step = "0.1" }: { label: string; name: string; unit: string; previous?: number; value?: number; step?: string }) { return <label className="measure-field"><div><span>{label} ({unit})</span>{previous !== undefined && <small>이전 측정 {previous}{unit}</small>}</div><div><ClearableFieldControl><input inputMode="decimal" type="number" step={step} min="0" name={name} defaultValue={value ?? previous} required /></ClearableFieldControl><b>{unit}</b></div></label>; }
+function MeasureField({ label, name, unit, previous, value, step = "0.1" }: { label: string; name: string; unit: string; previous?: number; value?: number; step?: string }) {
+  const initialValue = value ?? previous;
+  const [draftValue, setDraftValue] = useState(initialValue !== undefined ? String(initialValue) : "");
+  const adjust = (direction: -1 | 1) => {
+    const increment = Number(step) || 0.1;
+    const base = draftValue === "" ? (value ?? previous ?? 0) : Number(draftValue);
+    const decimals = (step.split(".")[1] ?? "").length;
+    setDraftValue(String(Math.max(0, Number((base + direction * increment).toFixed(decimals)))));
+  };
+  return <label className="measure-field"><div><span>{label} ({unit})</span>{previous !== undefined && <small>이전 측정 {previous}{unit}</small>}</div><div className="measure-value-control"><button type="button" className="measure-step-button" onClick={() => adjust(-1)} aria-label={`${label} ${step} 줄이기`}>−</button><ClearableFieldControl><input inputMode="decimal" type="number" step={step} min="0" name={name} value={draftValue} onChange={(event) => setDraftValue(event.target.value)} required /></ClearableFieldControl><button type="button" className="measure-step-button" onClick={() => adjust(1)} aria-label={`${label} ${step} 늘리기`}>＋</button><b>{unit}</b></div></label>;
+}
 
 function MealSheet({ today, kind, library, draft, presetType, close, save }: { today: string; kind: EntryKind; library: FoodLibraryItem[]; draft?: MealEntry; presetType?: MealType; close: () => void; save: (event: FormEvent<HTMLFormElement>, kind: EntryKind) => void }) {
   const hour = new Date().getHours();
@@ -3968,8 +4046,12 @@ function MealSheet({ today, kind, library, draft, presetType, close, save }: { t
   const addManual = () => syncComponents([...components, manualComponent()]);
   const removeComponent = (componentId: string) => syncComponents(components.filter((item) => item.id !== componentId));
   const changeName = (componentId: string, name: string) => setComponents((current) => current.map((item) => item.id === componentId ? { ...item, name } : item));
-  const changeQuantity = (component: MealFoodComponent, value: number) => {
-    const nextAmount = Math.max(0.1, value || component.quantity || 1);
+  const changeQuantity = (component: MealFoodComponent, value: string) => {
+    if (value === "") {
+      setComponents((current) => current.map((item) => item.id === component.id ? { ...item, quantity: undefined } : item));
+      return;
+    }
+    const nextAmount = Math.max(0.1, Number(value));
     const food = library.find((item) => item.id === component.foodLibraryId);
     if (food) {
       syncComponents(components.map((item) => item.id === component.id ? makeFoodComponent(food, nextAmount, item.id) : item));
@@ -3995,10 +4077,10 @@ function MealSheet({ today, kind, library, draft, presetType, close, save }: { t
       <section className="saved-food-picker"><div className="saved-food-picker-heading"><strong>음식 보관함에서 추가</strong></div>{library.length ? <><ClearableFieldControl><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="음식 또는 세트 검색" /></ClearableFieldControl><div className="saved-food-results">{results.map((food) => <button type="button" key={food.id} onClick={() => addFood(food)}><strong>{food.name}</strong><span>{foodBasisLabel(food)} · {food.calories}kcal</span><em>추가</em></button>)}</div></> : <p className="saved-food-empty">저장된 음식이 없어요.</p>}</section>
       <OfficialFoodSearch title="식약처에서 바로 추가" actionLabel="추가" onChoose={addOfficialFood} />
       <section className="meal-component-box"><div className="meal-component-heading"><strong>{kind === "plan" ? "먹고 싶은 음식" : "먹은 음식"}</strong><div><span>{components.length}개</span><button type="button" onClick={addManual}>직접 추가</button></div></div>{components.length ? <div className="meal-component-list">{components.map((component) => {
-        const measured = Boolean(component.quantity && component.unit);
-        return <article key={component.id} className={measured ? "measured-component" : "manual-component"}><div className="meal-component-main">{measured ? <strong>{component.name}</strong> : <ClearableFieldControl><input value={component.name} onChange={(event) => changeName(component.id, event.target.value)} placeholder="음식 이름" aria-label="음식 이름" /></ClearableFieldControl>}{measured && <div className="component-quantity"><ClearableFieldControl><input type="number" min="0.1" step="0.1" value={component.quantity} onChange={(event) => changeQuantity(component, Number(event.target.value))} aria-label={`${component.name} 양`} /></ClearableFieldControl><b>{component.unit}</b></div>}</div><button type="button" className="delete-text-button" onClick={() => removeComponent(component.id)}>삭제</button></article>;
+        const measured = Boolean(component.unit);
+        return <article key={component.id} className={measured ? "measured-component" : "manual-component"}><div className="meal-component-main">{measured ? <strong>{component.name}</strong> : <ClearableFieldControl><input value={component.name} onChange={(event) => changeName(component.id, event.target.value)} placeholder="음식 이름" aria-label="음식 이름" /></ClearableFieldControl>}{measured && <div className="component-quantity"><ClearableFieldControl><input type="number" min="0.1" step="0.1" value={component.quantity ?? ""} onChange={(event) => changeQuantity(component, event.target.value)} aria-label={`${component.name} 양`} /></ClearableFieldControl><b>{component.unit}</b></div>}</div><button type="button" className="delete-text-button" onClick={() => removeComponent(component.id)}>삭제</button></article>;
       })}</div> : <p className="meal-component-empty">음식을 추가해주세요.</p>}</section>
-      {kind === "actual" && <div className="macro-grid"><Field label="칼로리 (kcal)"><input type="number" name="calories" min="0" value={nutrients.calories} onChange={(event) => setNutrient("calories", event.target.value)} placeholder="kcal" /></Field><Field label="단백질 (g)"><input type="number" name="protein" min="0" step="0.1" value={nutrients.protein} onChange={(event) => setNutrient("protein", event.target.value)} placeholder="g" /></Field><Field label="탄수화물 (g)"><input type="number" name="carbs" min="0" step="0.1" value={nutrients.carbs} onChange={(event) => setNutrient("carbs", event.target.value)} placeholder="g" /></Field><Field label="지방 (g)"><input type="number" name="fat" min="0" step="0.1" value={nutrients.fat} onChange={(event) => setNutrient("fat", event.target.value)} placeholder="g" /></Field><Field label="당류 (g)"><input type="number" name="sugar" min="0" step="0.1" value={nutrients.sugar} onChange={(event) => setNutrient("sugar", event.target.value)} placeholder="g" /></Field><Field label="식이섬유 (g)"><input type="number" name="fiber" min="0" step="0.1" value={nutrients.fiber} onChange={(event) => setNutrient("fiber", event.target.value)} placeholder="g" /></Field></div>}
+      {kind === "actual" && <div className="macro-grid"><Field label="칼로리 (kcal)"><input type="number" name="calories" min="0" step="0.1" value={nutrients.calories} onChange={(event) => setNutrient("calories", event.target.value)} placeholder="kcal" /></Field><Field label="단백질 (g)"><input type="number" name="protein" min="0" step="0.1" value={nutrients.protein} onChange={(event) => setNutrient("protein", event.target.value)} placeholder="g" /></Field><Field label="탄수화물 (g)"><input type="number" name="carbs" min="0" step="0.1" value={nutrients.carbs} onChange={(event) => setNutrient("carbs", event.target.value)} placeholder="g" /></Field><Field label="지방 (g)"><input type="number" name="fat" min="0" step="0.1" value={nutrients.fat} onChange={(event) => setNutrient("fat", event.target.value)} placeholder="g" /></Field><Field label="당류 (g)"><input type="number" name="sugar" min="0" step="0.1" value={nutrients.sugar} onChange={(event) => setNutrient("sugar", event.target.value)} placeholder="g" /></Field><Field label="식이섬유 (g)"><input type="number" name="fiber" min="0" step="0.1" value={nutrients.fiber} onChange={(event) => setNutrient("fiber", event.target.value)} placeholder="g" /></Field></div>}
       <button className="primary-button submit-button" type="submit" disabled={!title}>{editing ? "수정 저장" : kind === "plan" ? "계획 저장" : "식사 기록 저장"}</button>
       {kind === "actual" && <button className="meal-skip-button" type="submit" name="skipped" value="true">{draft?.skipped ? "먹지 않음으로 유지" : "이번 끼니는 먹지 않음"}</button>}
     </form>
@@ -4006,7 +4088,7 @@ function MealSheet({ today, kind, library, draft, presetType, close, save }: { t
 }
 
 function FoodLibrarySheet({ library, close, save, saveSet, remove }: { library: FoodLibraryItem[]; close: () => void; save: (event: FormEvent<HTMLFormElement>) => void; saveSet: (name: string, components: { foodId: string; amount: number }[], editingId?: string) => void; remove: (item: FoodLibraryItem) => void }) {
-  type ComponentDraft = { id: string; foodId: string; amount: number };
+  type ComponentDraft = { id: string; foodId: string; amount: string };
   const foods = library.filter((item) => item.kind !== "set");
   const [mode, setMode] = useState<"food" | "set">("food");
   const [editing, setEditing] = useState<FoodLibraryItem>();
@@ -4015,8 +4097,8 @@ function FoodLibrarySheet({ library, close, save, saveSet, remove }: { library: 
   const [formVersion, setFormVersion] = useState(0);
   const [setName, setSetName] = useState("");
   const [components, setComponents] = useState<ComponentDraft[]>([
-    { id: id("component"), foodId: "", amount: 1 },
-    { id: id("component"), foodId: "", amount: 1 },
+    { id: id("component"), foodId: "", amount: "1" },
+    { id: id("component"), foodId: "", amount: "1" },
   ]);
 
   const reset = (nextMode: "food" | "set") => {
@@ -4024,7 +4106,7 @@ function FoodLibrarySheet({ library, close, save, saveSet, remove }: { library: 
     setEditing(undefined);
     setOfficialDraft(undefined);
     setSetName("");
-    setComponents([{ id: id("component"), foodId: "", amount: 1 }, { id: id("component"), foodId: "", amount: 1 }]);
+    setComponents([{ id: id("component"), foodId: "", amount: "1" }, { id: id("component"), foodId: "", amount: "1" }]);
     setFormVersion((version) => version + 1);
   };
   const finishSave = (event: FormEvent<HTMLFormElement>) => {
@@ -4037,29 +4119,29 @@ function FoodLibrarySheet({ library, close, save, saveSet, remove }: { library: 
     setMode(item.kind === "set" ? "set" : "food");
     setSetName(item.kind === "set" ? item.name : "");
     setComponents(item.kind === "set" && item.components?.length
-      ? item.components.map((component) => ({ id: id("component"), ...component }))
-      : [{ id: id("component"), foodId: "", amount: 1 }, { id: id("component"), foodId: "", amount: 1 }]);
+      ? item.components.map((component) => ({ id: id("component"), foodId: component.foodId, amount: String(component.amount) }))
+      : [{ id: id("component"), foodId: "", amount: "1" }, { id: id("component"), foodId: "", amount: "1" }]);
     setFormVersion((version) => version + 1);
   };
   const updateComponent = (componentId: string, patch: Partial<ComponentDraft>) => setComponents((current) => current.map((component) => component.id === componentId ? { ...component, ...patch } : component));
   const chooseComponentFood = (componentId: string, foodId: string) => {
     const food = foods.find((item) => item.id === foodId);
-    updateComponent(componentId, { foodId, amount: food ? foodBasis(food).amount : 1 });
+    updateComponent(componentId, { foodId, amount: String(food ? foodBasis(food).amount : 1) });
   };
   const finishSet = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const valid = components.filter((component) => component.foodId && component.amount > 0);
+    const valid = components.filter((component) => component.foodId && Number(component.amount) > 0);
     if (valid.length < 2) {
       window.alert("세트에는 음식을 2개 이상 넣어주세요.");
       return;
     }
-    saveSet(setName, valid.map(({ foodId, amount }) => ({ foodId, amount })), editing?.kind === "set" ? editing.id : undefined);
+    saveSet(setName, valid.map(({ foodId, amount }) => ({ foodId, amount: Number(amount) })), editing?.kind === "set" ? editing.id : undefined);
     reset("set");
   };
   const totals = components.reduce((sum, component) => {
     const food = foods.find((item) => item.id === component.foodId);
     if (!food) return sum;
-    const factor = component.amount / foodBasis(food).amount;
+    const factor = Number(component.amount || 0) / foodBasis(food).amount;
     return { calories: sum.calories + food.calories * factor, protein: sum.protein + food.protein * factor };
   }, { calories: 0, protein: 0 });
   const formFood = editing && editing.kind !== "set" ? editing : officialDraft;
@@ -4101,9 +4183,9 @@ function FoodLibrarySheet({ library, close, save, saveSet, remove }: { library: 
       <Field label="세트 이름"><input value={setName} onChange={(event) => setSetName(event.target.value)} placeholder="예: 아침 요거트 세트" required /></Field>
       <div className="food-set-components">{components.map((component, index) => {
         const food = foods.find((item) => item.id === component.foodId);
-        return <div className="food-set-row" key={component.id}><Field label={`음식 ${index + 1}`}><select value={component.foodId} onChange={(event) => chooseComponentFood(component.id, event.target.value)} required><option value="">음식 선택</option>{foods.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></Field><Field label={`양 (${food ? foodBasis(food).unit : "단위"})`}><div className="amount-with-unit"><ClearableFieldControl><input type="number" min="0.1" step="0.1" value={component.amount} onChange={(event) => updateComponent(component.id, { amount: Number(event.target.value) })} required /></ClearableFieldControl><b>{food ? foodBasis(food).unit : "-"}</b></div></Field>{components.length > 2 && <button type="button" className="delete-text-button" onClick={() => setComponents((current) => current.filter((item) => item.id !== component.id))}>삭제</button>}</div>;
+        return <div className="food-set-row" key={component.id}><Field label={`음식 ${index + 1}`}><select value={component.foodId} onChange={(event) => chooseComponentFood(component.id, event.target.value)} required><option value="">음식 선택</option>{foods.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></Field><Field label={`양 (${food ? foodBasis(food).unit : "단위"})`}><div className="amount-with-unit"><ClearableFieldControl><input type="number" min="0.1" step="0.1" value={component.amount} onChange={(event) => updateComponent(component.id, { amount: event.target.value })} required /></ClearableFieldControl><b>{food ? foodBasis(food).unit : "-"}</b></div></Field>{components.length > 2 && <button type="button" className="delete-text-button" onClick={() => setComponents((current) => current.filter((item) => item.id !== component.id))}>삭제</button>}</div>;
       })}</div>
-      <button type="button" className="food-set-add" onClick={() => setComponents((current) => [...current, { id: id("component"), foodId: "", amount: 1 }])}>+ 음식 더 넣기</button>
+      <button type="button" className="food-set-add" onClick={() => setComponents((current) => [...current, { id: id("component"), foodId: "", amount: "1" }])}>+ 음식 더 넣기</button>
       {!foods.length && <p className="saved-food-empty">먼저 음식을 2개 이상 추가해주세요.</p>}
       <div className="food-set-total"><span>세트 1인분</span><strong>{roundNutrient(totals.calories)} kcal · 단백질 {roundNutrient(totals.protein)}g</strong></div>
       <div className="food-library-form-actions">{editing && <button type="button" className="ghost-button" onClick={() => reset("set")}>새 세트</button>}<button className="primary-button" type="submit" disabled={foods.length < 2}>{editing ? "세트 수정 저장" : "세트 저장"}</button></div>
@@ -4373,24 +4455,24 @@ function NutritionGoalSheet({ goal, close, save }: { goal: AppState["nutritionGo
 function GoalCompletionSheet({ state, today, close, save }: { state: AppState; today: string; close: () => void; save: (choice: GoalCompletionChoice) => void }) {
   const progress = bodyGoalProgressFor(state, today);
   const report = goalReportFor(state, today);
-  const [choice, setChoice] = useState<GoalCompletionChoice>({
+  const [choice, setChoice] = useState<GoalCompletionDraft>({
     outcome: "유지기로 전환",
     mode: "유지기",
     goalEndDate: addDays(today, 28),
-    targetBodyFatChange: 0,
-    targetMuscleChange: 0,
+    targetBodyFatChange: "0",
+    targetMuscleChange: "0",
     note: "",
   });
   const choose = (outcome: GoalCompletionChoice["outcome"]) => {
     setChoice((current) => {
-      if (outcome === "유지기로 전환") return { outcome, mode: "유지기", goalEndDate: addDays(today, 28), targetBodyFatChange: 0, targetMuscleChange: 0, note: current.note };
-      if (outcome === "강도를 낮춰 이어가기") return { outcome, mode: state.profile.mode, goalEndDate: addDays(today, 28), targetBodyFatChange: roundNutrient(state.profile.targetBodyFatChange / 2), targetMuscleChange: roundNutrient(state.profile.targetMuscleChange / 2), note: current.note };
-      return { outcome, mode: state.profile.mode, goalEndDate: addDays(today, 56), targetBodyFatChange: state.profile.targetBodyFatChange, targetMuscleChange: state.profile.targetMuscleChange, note: current.note };
+      if (outcome === "유지기로 전환") return { outcome, mode: "유지기", goalEndDate: addDays(today, 28), targetBodyFatChange: "0", targetMuscleChange: "0", note: current.note };
+      if (outcome === "강도를 낮춰 이어가기") return { outcome, mode: state.profile.mode, goalEndDate: addDays(today, 28), targetBodyFatChange: String(roundNutrient(state.profile.targetBodyFatChange / 2)), targetMuscleChange: String(roundNutrient(state.profile.targetMuscleChange / 2)), note: current.note };
+      return { outcome, mode: state.profile.mode, goalEndDate: addDays(today, 56), targetBodyFatChange: String(state.profile.targetBodyFatChange), targetMuscleChange: String(state.profile.targetMuscleChange), note: current.note };
     });
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    save({ ...choice, goalEndDate: choice.goalEndDate < today ? today : choice.goalEndDate });
+    save({ ...choice, goalEndDate: choice.goalEndDate < today ? today : choice.goalEndDate, targetBodyFatChange: Number(choice.targetBodyFatChange), targetMuscleChange: Number(choice.targetMuscleChange) });
   };
   return <Sheet title="목표 마무리" close={close}><form className="form-stack goal-completion-form" onSubmit={submit}>
     <section className="goal-result-card"><span>{state.profile.goalStartDate?.replaceAll("-", ".")} → {today.replaceAll("-", ".")}</span><strong>{state.profile.mode} 결과</strong><div><p><small>체지방량</small><b>{progress.baseline && progress.latestRecord ? `${signed(progress.bodyFatChange)}kg` : "측정 부족"}</b><em>목표 {signed(state.profile.targetBodyFatChange)}kg</em></p><p><small>골격근량</small><b>{progress.baseline && progress.latestRecord ? `${signed(progress.muscleChange)}kg` : "측정 부족"}</b><em>목표 {signed(state.profile.targetMuscleChange)}kg</em></p></div></section>
@@ -4402,7 +4484,7 @@ function GoalCompletionSheet({ state, today, close, save }: { state: AppState; t
         ["새 목표 시작", "기간과 변화량을 새로 정해요."],
       ] as const).map(([outcome, detail]) => <button key={outcome} type="button" className={choice.outcome === outcome ? "active" : ""} onClick={() => choose(outcome)}><span><b>{outcome}</b><small>{detail}</small></span><i aria-hidden="true">{choice.outcome === outcome ? "✓" : ""}</i></button>)}
     </div></section>
-    <section className="goal-next-fields"><div className="two-fields"><Field label="다음 관리 모드"><select value={choice.mode} onChange={(event) => setChoice((current) => ({ ...current, mode: event.target.value as GoalCompletionChoice["mode"] }))}><option>감량기</option><option>유지기</option></select></Field><Field label="다음 목표일"><input type="date" min={today} value={choice.goalEndDate} onChange={(event) => setChoice((current) => ({ ...current, goalEndDate: event.target.value }))} required /></Field></div><div className="two-fields"><Field label="체지방량 변화 (kg)"><input type="number" step="0.1" value={choice.targetBodyFatChange} onChange={(event) => setChoice((current) => ({ ...current, targetBodyFatChange: Number(event.target.value) }))} required /></Field><Field label="골격근량 변화 (kg)"><input type="number" step="0.1" value={choice.targetMuscleChange} onChange={(event) => setChoice((current) => ({ ...current, targetMuscleChange: Number(event.target.value) }))} required /></Field></div></section>
+    <section className="goal-next-fields"><div className="two-fields"><Field label="다음 관리 모드"><select value={choice.mode} onChange={(event) => setChoice((current) => ({ ...current, mode: event.target.value as GoalCompletionChoice["mode"] }))}><option>감량기</option><option>유지기</option></select></Field><Field label="다음 목표일"><input type="date" min={today} value={choice.goalEndDate} onChange={(event) => setChoice((current) => ({ ...current, goalEndDate: event.target.value }))} required /></Field></div><div className="two-fields"><Field label="체지방량 변화 (kg)"><input type="number" step="0.1" value={choice.targetBodyFatChange} onChange={(event) => setChoice((current) => ({ ...current, targetBodyFatChange: event.target.value }))} required /></Field><Field label="골격근량 변화 (kg)"><input type="number" step="0.1" value={choice.targetMuscleChange} onChange={(event) => setChoice((current) => ({ ...current, targetMuscleChange: event.target.value }))} required /></Field></div></section>
     <Field label="이번 목표 회고 (선택)"><textarea value={choice.note} onChange={(event) => setChoice((current) => ({ ...current, note: event.target.value }))} placeholder="잘된 점과 다음 목표에서 바꾸고 싶은 점을 남겨주세요." /></Field>
     <p className="goal-archive-note">지금 목표의 결과는 ‘변화’ 탭에 보관되고, 오늘부터 다음 목표가 시작돼요.</p>
     <button type="submit" className="primary-button submit-button">결과 저장하고 이어가기</button>
