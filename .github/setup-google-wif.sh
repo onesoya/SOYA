@@ -8,6 +8,7 @@ soya_pool_id="github-actions"
 soya_provider_id="onesoya-soya"
 soya_service_account_id="github-actions-firebase"
 soya_service_account_email="${soya_service_account_id}@${soya_project_id}.iam.gserviceaccount.com"
+soya_scheduler_role_id="githubActionsFirebaseSchedulerUpdater"
 soya_workflow_ref="${soya_repository}/.github/workflows/deploy-firebase-functions.yml@refs/heads/main"
 
 gcloud config set project "${soya_project_id}"
@@ -20,6 +21,24 @@ if ! gcloud iam service-accounts describe "${soya_service_account_email}" >/dev/
   gcloud iam service-accounts create "${soya_service_account_id}" \
     --display-name="GitHub Actions Firebase deployer"
 fi
+
+# Firebase updates an existing scheduler job when its scheduled function is
+# deployed. A custom role avoids granting create, delete, or run permissions.
+if ! gcloud iam roles describe "${soya_scheduler_role_id}" \
+  --project="${soya_project_id}" >/dev/null 2>&1
+then
+  gcloud iam roles create "${soya_scheduler_role_id}" \
+    --project="${soya_project_id}" \
+    --title="GitHub Actions Firebase scheduler updater" \
+    --description="Allows Firebase deploys to update existing Cloud Scheduler jobs" \
+    --permissions="cloudscheduler.jobs.update" \
+    --stage="GA"
+fi
+
+gcloud projects add-iam-policy-binding "${soya_project_id}" \
+  --member="serviceAccount:${soya_service_account_email}" \
+  --role="projects/${soya_project_id}/roles/${soya_scheduler_role_id}" \
+  --condition=None >/dev/null
 
 for soya_role in \
   roles/cloudfunctions.admin \
