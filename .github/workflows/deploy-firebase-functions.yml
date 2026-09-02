@@ -1,0 +1,48 @@
+name: Deploy Firebase Functions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "functions/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/deploy-firebase-functions.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-functions-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: soya-e12cd
+          workload_identity_provider: projects/641439217344/locations/global/workloadIdentityPools/github-actions/providers/onesoya-soya
+          service_account: github-actions-firebase@soya-e12cd.iam.gserviceaccount.com
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install function dependencies
+        run: npm ci --prefix functions
+
+      - name: Deploy Firebase Functions
+        run: npx --yes firebase-tools@15.28.2 deploy --only functions --project soya-e12cd --non-interactive
