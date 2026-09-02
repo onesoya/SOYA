@@ -44,6 +44,18 @@ do
   fi
 done
 
+# The Firebase CLI checks that bound secrets exist while planning a deploy.
+# Grant metadata-only access to the one secret used by the functions; this does
+# not allow the deployer to read the secret value.
+if gcloud secrets describe "OPENAI_API_KEY" \
+  --project="${soya_project_id}" >/dev/null 2>&1
+then
+  gcloud secrets add-iam-policy-binding "OPENAI_API_KEY" \
+    --project="${soya_project_id}" \
+    --member="serviceAccount:${soya_service_account_email}" \
+    --role="roles/secretmanager.viewer" >/dev/null
+fi
+
 if ! gcloud iam workload-identity-pools describe "${soya_pool_id}" \
   --project="${soya_project_id}" \
   --location="global" >/dev/null 2>&1
