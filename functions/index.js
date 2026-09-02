@@ -349,6 +349,44 @@ function validHealthDate(value) {
   return /^20\d{2}-\d{2}-\d{2}$/.test(String(value || ""));
 }
 
+function parseHealthJson(value) {
+  if (typeof value !== "string") return value;
+  const text = value.trim();
+  if (!text || (!text.startsWith("[") && !text.startsWith("{"))) return value;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return value;
+  }
+}
+
+function healthDayCandidates(value, fallbackDate) {
+  const parsed = parseHealthJson(value);
+  if (Array.isArray(parsed)) {
+    return parsed.flatMap((item) => healthDayCandidates(item));
+  }
+  if (!parsed || typeof parsed !== "object") return [];
+  if (validHealthDate(parsed.date)) return [parsed];
+  if (validHealthDate(fallbackDate)) return [{ ...parsed, date: fallbackDate }];
+
+  for (const wrapper of ["items", "values", "value"]) {
+    if (Object.hasOwn(parsed, wrapper)) {
+      const wrapped = healthDayCandidates(parsed[wrapper]);
+      if (wrapped.length) return wrapped;
+    }
+  }
+
+  return Object.entries(parsed).flatMap(([key, item]) => healthDayCandidates(item, key));
+}
+
+function healthDaysFromPayload(payload) {
+  const body = parseHealthJson(payload);
+  if (body && typeof body === "object" && !Array.isArray(body) && Object.hasOwn(body, "days")) {
+    return healthDayCandidates(body.days);
+  }
+  return healthDayCandidates(body);
+}
+
 function boundedNumber(value, min, max) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return undefined;
@@ -463,7 +501,7 @@ export const importAppleHealth = onRequest({
   const connectionRef = connection.docs[0].ref;
   const connectionData = connection.docs[0].data();
   const uid = connection.docs[0].id;
-  const suppliedDays = Array.isArray(request.body?.days) ? request.body.days : [request.body];
+  const suppliedDays = healthDaysFromPayload(request.body);
   const uniqueDays = new Map();
   for (const day of suppliedDays.slice(0, 31)) {
     if (validHealthDate(day?.date)) uniqueDays.set(String(day.date), day);
